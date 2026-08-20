@@ -1,0 +1,1 @@
+Dash assets are loaded from app.py's inline layout for now.

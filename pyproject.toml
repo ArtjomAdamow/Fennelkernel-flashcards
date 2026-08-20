@@ -1,0 +1,24 @@
+[project]
+name = "spatial-flashcards"
+version = "0.1.0"
+description = "Interactive 3D flashcard learning space"
+requires-python = ">=3.13"
+dependencies = [
+    "dash>=3.0.0",
+    "plotly>=6.0.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["flashcards_app"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
