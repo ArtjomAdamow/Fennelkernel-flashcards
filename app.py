@@ -167,4 +167,4 @@ def update_card(click_data, panel_clicks, random_clicks, deck, selected_id, reve
 
 if __name__ == "__main__":
     save_positions(STATE_PATH, POSITIONS)
-    app.run(debug=True)
+    app.run(debug=False)
