@@ -18,20 +18,34 @@ Use `backticks` for code, commands etc.
 ## Spatial Flashcards
 
 This folder now contains a small Dash application for learning from the Markdown decks.
+Coordinates are stored in `data/positions.json` and are kept separate from the Markdown decks.
 
 ### Run locally
 
 With Python 3.13 or newer:
 
 ```powershell
-cd "c:\Users\artjo\Projekte\Poster\flashcards"
 uv sync
 uv run python app.py
 ```
 
-Open the local URL printed by Dash. Drag the 3D space to rotate it, hover over a point for a preview, and click a point to select its card. Click the question frame to reveal the answer. The **Random card** action provides a second way to study.
+Open the local URL printed by Dash.
 
-Coordinates are stored in `data/positions.json` and are kept separate from the Markdown decks so later versions can support manual rearrangement, highlighting, and visual connections.
+### Howto:
+
+1. Select deck of flashcards. Hover over a card-point to preview the question.
+2. Use mouse to drag the 3D space to rotate, zoom and select cards (dots).
+3. Alternativly use key arrows to scroll through the cards.
+4. A selected card can be flipped by clicking on it.
+5. For a flipped card the learning progress can be set with a slider.
+6. The button "Random card" will only select flipped cards and will prefer cards with low progress.
+7. Change coordinates of cards (only flipped cards) to arrange in the 3D space.
+8. Assign cards to groups, apply names and color code.
+9. Focus on groups to see only assigned cards.
+10. Connect cards with visual lines.
+11. Reset removes all settings.
+
+
 
 ### Tests
 
