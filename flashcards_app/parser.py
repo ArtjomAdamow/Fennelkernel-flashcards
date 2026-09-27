@@ -59,8 +59,12 @@ def parse_deck(path: Path) -> list[Flashcard]:
     return cards
 
 
-def load_decks(folder: Path) -> list[Flashcard]:
+def load_decks(folder: Path, deck_names: list[str] | None = None) -> list[Flashcard]:
     cards: list[Flashcard] = []
-    for path in sorted(folder.glob("*.md")):
+    paths = sorted(folder.glob("*.md"))
+    if deck_names is not None:
+        selected_decks = set(deck_names)
+        paths = [path for path in paths if path.stem in selected_decks]
+    for path in paths:
         cards.extend(parse_deck(path))
     return cards
