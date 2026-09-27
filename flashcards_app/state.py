@@ -73,12 +73,25 @@ def load_links(path: Path, card_ids: list[str]) -> list[CardLink]:
     ]
 
 
+def load_enabled_decks(path: Path, available_decks: list[str]) -> list[str]:
+    if not path.exists():
+        return list(available_decks)
+
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    saved_decks = payload.get("decks")
+    if saved_decks is None:
+        return list(available_decks)
+    available = set(available_decks)
+    return [deck for deck in saved_decks if deck in available]
+
+
 def save_state(
     path: Path,
     positions: list[CardPosition],
     progress: dict[str, CardProgress],
     groups: list[CardGroup] | None = None,
     links: list[CardLink] | None = None,
+    enabled_decks: list[str] | None = None,
 ) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = {
@@ -88,4 +101,6 @@ def save_state(
         "groups": [asdict(group) for group in groups or []],
         "links": [asdict(link) for link in links or []],
     }
+    if enabled_decks is not None:
+        payload["decks"] = list(enabled_decks)
     path.write_text(json.dumps(payload, indent=2), encoding="utf-8")

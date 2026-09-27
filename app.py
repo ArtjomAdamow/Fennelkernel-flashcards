@@ -1,17 +1,40 @@
 from pathlib import Path
 import time
+import uuid
 
+import numpy as np
+import dash_daq as daq
 import plotly.graph_objects as go
 from dash import Dash, Input, Output, State, dcc, html
+from flask import jsonify
 
 from flashcards_app.models import CardGroup, CardLink, CardProgress, Flashcard
 from flashcards_app.geometry import sphere_positions
 from flashcards_app.parser import load_decks
-from flashcards_app.state import load_groups, load_links, load_positions, load_progress, save_state
+from flashcards_app.state import load_enabled_decks, load_groups, load_links, load_positions, load_progress, save_state
 
 BASE_DIR = Path(__file__).resolve().parent
 STATE_PATH = BASE_DIR / "data" / "positions.json"
-CARDS = load_decks(BASE_DIR)
+CARDS_DIR = BASE_DIR / "data" / "cards"
+SERVER_BOOT_ID = uuid.uuid4().hex
+NONE_DECK = "None"
+
+
+def available_decks() -> list[str]:
+    return sorted(
+        path.stem
+        for path in CARDS_DIR.glob("*.md")
+        if path.stem.casefold() not in {"readme", NONE_DECK.casefold()}
+    )
+
+
+AVAILABLE_DECKS = available_decks()
+ENABLED_DECKS = [
+    deck
+    for deck in load_enabled_decks(STATE_PATH, AVAILABLE_DECKS)
+    if deck.casefold() != "readme"
+]
+CARDS = load_decks(CARDS_DIR, ENABLED_DECKS)
 POSITIONS = load_positions(STATE_PATH, [card.id for card in CARDS])
 PROGRESS = load_progress(STATE_PATH, [card.id for card in CARDS])
 GROUPS = load_groups(STATE_PATH, [card.id for card in CARDS])
@@ -20,15 +43,86 @@ CARD_BY_ID = {card.id: card for card in CARDS}
 POSITION_BY_ID = {position.card_id: position for position in POSITIONS}
 
 
-def progress_color(card_id: str) -> str:
-    progress = PROGRESS[card_id]
-    if not progress.read:
-        return "#7c8b99"
-    if progress.difficulty < 35:
-        return "#e76f51"
-    if progress.difficulty < 70:
-        return "#f5b942"
+def refresh_deck_state() -> None:
+    card_ids = [card.id for card in CARDS]
+    stored_positions = {position.card_id: position for position in POSITIONS}
+    generated_positions = sphere_positions(card_ids, seed=time.time_ns())
+    POSITIONS[:] = [stored_positions.get(position.card_id, position) for position in generated_positions]
+
+    stored_progress = dict(PROGRESS)
+    PROGRESS.clear()
+    PROGRESS.update({card_id: stored_progress.get(card_id, CardProgress(card_id)) for card_id in card_ids})
+
+    valid_ids = set(card_ids)
+    for group in GROUPS:
+        group.card_ids = [card_id for card_id in group.card_ids if card_id in valid_ids]
+    LINKS[:] = [
+        link for link in LINKS
+        if link.source_id in valid_ids and link.target_id in valid_ids
+    ]
+    CARD_BY_ID.clear()
+    CARD_BY_ID.update({card.id: card for card in CARDS})
+    POSITION_BY_ID.clear()
+    POSITION_BY_ID.update({position.card_id: position for position in POSITIONS})
+
+
+def visible_cards(deck: str, focused_group: str | None) -> list[Flashcard]:
+    cards = [] if deck in {None, NONE_DECK} else [card for card in CARDS if deck == "all" or card.deck == deck]
+    if focused_group:
+        group = next((item for item in GROUPS if item.id == focused_group), None)
+        focused_ids = set(group.card_ids) if group else set()
+        cards = [card for card in cards if card.id in focused_ids]
+    return cards
+
+
+def deck_filter_options() -> list[dict[str, str]]:
+    return [{"label": "None", "value": NONE_DECK}, {"label": "All decks", "value": "all"}] + [
+        {"label": deck, "value": deck}
+        for deck in sorted(ENABLED_DECKS)
+    ]
+
+
+def hex_to_rgb(value: str) -> tuple[int, int, int]:
+    value = value.lstrip("#")
+    return tuple(int(value[i : i + 2], 16) for i in (0, 2, 4))
+
+
+def rgb_to_hex(rgb: tuple[int, int, int]) -> str:
+    return "#" + "".join(f"{channel:02x}" for channel in rgb)
+
+
+def interpolate_color(start: str, end: str, progress: float) -> str:
+    start_rgb = hex_to_rgb(start)
+    end_rgb = hex_to_rgb(end)
+    ratio = max(0.0, min(1.0, progress))
+    mixed = tuple(
+        round(start_channel + (end_channel - start_channel) * ratio)
+        for start_channel, end_channel in zip(start_rgb, end_rgb)
+    )
+    return rgb_to_hex(mixed)
+
+
+def progress_color(value_or_card_id: str | int) -> str:
+    if isinstance(value_or_card_id, str):
+        progress = PROGRESS.get(value_or_card_id)
+        if progress is None or not progress.read:
+            return "#7c8b99"
+        value = progress.difficulty
+    else:
+        value = int(value_or_card_id)
+    value = max(1, min(100, value))
+    if value < 35:
+        return interpolate_color("#e76f51", "#f5b942", (value - 1) / 34)
+    if value < 70:
+        return interpolate_color("#f5b942", "#69c6a5", (value - 35) / 35)
     return "#69c6a5"
+
+
+def group_color(card_id: str) -> str:
+    for group in GROUPS:
+        if card_id in group.card_ids:
+            return group.color
+    return "#7c8b99"
 
 
 def choose_random_card(cards: list[Flashcard], progress: dict, rng) -> Flashcard | None:
@@ -84,13 +178,27 @@ def make_figure(cards: list[Flashcard], selected_id: str | None = None, camera: 
                 y=[point.y for point in regular],
                 z=[point.z for point in regular],
                 mode="markers",
+                marker={
+                    "size": 7 * 1.4,
+                    "color": [progress_color(point.card_id) for point in regular],
+                },
+                hoverinfo="skip",
+                showlegend=False,
+                name="Card progress",
+            )
+        )
+        figure.add_trace(
+            go.Scatter3d(
+                x=[point.x for point in regular],
+                y=[point.y for point in regular],
+                z=[point.z for point in regular],
+                mode="markers",
                 customdata=[point.card_id for point in regular],
                 text=[CARD_BY_ID[point.card_id].question for point in regular],
                 hovertemplate="%{text}<extra></extra>",
                 marker={
                     "size": 7,
-                    "color": [progress_color(point.card_id) for point in regular],
-                    "opacity": 0.9,
+                    "color": [group_color(point.card_id) for point in regular],
                 },
                 name="Cards",
             )
@@ -103,10 +211,25 @@ def make_figure(cards: list[Flashcard], selected_id: str | None = None, camera: 
                 y=[point.y],
                 z=[point.z],
                 mode="markers",
+                marker={
+                    "size": 13 * 1.4,
+                    "color": progress_color(point.card_id),
+                },
+                hoverinfo="skip",
+                showlegend=False,
+                name="Selected progress",
+            )
+        )
+        figure.add_trace(
+            go.Scatter3d(
+                x=[point.x],
+                y=[point.y],
+                z=[point.z],
+                mode="markers",
                 customdata=[point.card_id],
                 text=[CARD_BY_ID[point.card_id].question],
                 hovertemplate="%{text}<extra></extra>",
-                marker={"size": 13, "color": "#e76f51", "line": {"width": 2, "color": "#fff3d6"}},
+                marker={"size": 13, "color": group_color(point.card_id)},
                 name="Selected",
             )
         )
@@ -153,21 +276,27 @@ def card_panel(card: Flashcard | None, revealed: bool = False) -> html.Div:
 
 def difficulty_control(card: Flashcard | None) -> html.Div:
     is_flipped = bool(card and PROGRESS[card.id].read)
+    current_value = PROGRESS[card.id].difficulty if card and card.id in PROGRESS else 1
+    progress_percent = (current_value - 1) / 99 * 100
     return html.Div(
         [
-            html.Label("Learning progress", htmlFor="difficulty-slider", className="card-label"),
-            dcc.Slider(
-                id="difficulty-slider",
-                min=1,
-                max=100,
-                step=1,
-                value=PROGRESS[card.id].difficulty if card else 1,
-                disabled=not is_flipped,
-                marks={
-                    1: {"label": "review", "style": {"color": "#ffffff"}},
-                    50: {"label": "developing", "style": {"color": "#ffffff"}},
-                    100: {"label": "learned", "style": {"color": "#ffffff"}},
-                },
+            html.Label("Progress", htmlFor="difficulty-slider", className="card-label"),
+            html.Div(
+                dcc.Slider(
+                    id="difficulty-slider",
+                    min=1,
+                    max=100,
+                    step=1,
+                    value=current_value,
+                    disabled=not is_flipped,
+                    marks={
+                        1: {"label": "review", "style": {"color": "#ffffff"}},
+                        50: {"label": "developing", "style": {"color": "#ffffff"}},
+                        100: {"label": "learned", "style": {"color": "#ffffff"}},
+                    },
+                ),
+                className="progress-slider" if is_flipped else "progress-slider disabled-progress-slider",
+                style={"--progress": f"{progress_percent:.4f}%"},
             ),
         ],
         className="progress-control",
@@ -184,21 +313,23 @@ def position_control(card: Flashcard | None, drag_enabled: bool = False) -> html
             html.Div("Position", className="card-label"),
             html.Div(
                 [
-                    html.Button("Stop changing position" if drag_enabled else "Change position", id="toggle-drag", n_clicks=0, disabled=position is None, className="tool-button"),
-                    html.Button("Save position", id="save-position", n_clicks=0, disabled=position is None, className="tool-button"),
+                    html.Div(
+                        [
+                            html.Button("Stop changing position" if drag_enabled else "Change", id="toggle-drag", n_clicks=0, disabled=position is None, className="tool-button"),
+                            html.Button("Save", id="save-position", n_clicks=0, disabled=position is None, className="tool-button"),
+                        ],
+                        className="position-actions",
+                    ),
+                    html.Div(
+                        [
+                            html.Div([html.Label("X", htmlFor="drag-x"), dcc.Slider(id="drag-x", min=-1, max=1, step=0.001, value=x_value, disabled=not drag_enabled, marks={-1: {"label": "-1", "style": {"color": "#ffffff"}}, 0: {"label": "0", "style": {"color": "#ffffff"}}, 1: {"label": "1", "style": {"color": "#ffffff"}}})], className="coordinate-control"),
+                            html.Div([html.Label("Y", htmlFor="drag-y"), dcc.Slider(id="drag-y", min=-1, max=1, step=0.001, value=y_value, disabled=not drag_enabled, marks={-1: {"label": "-1", "style": {"color": "#ffffff"}}, 0: {"label": "0", "style": {"color": "#ffffff"}}, 1: {"label": "1", "style": {"color": "#ffffff"}}})], className="coordinate-control"),
+                            html.Div([html.Label("Z", htmlFor="drag-z"), dcc.Slider(id="drag-z", min=-1, max=1, step=0.001, value=z_value, disabled=not drag_enabled, marks={-1: {"label": "-1", "style": {"color": "#ffffff"}}, 0: {"label": "0", "style": {"color": "#ffffff"}}, 1: {"label": "1", "style": {"color": "#ffffff"}}})], className="coordinate-control"),
+                        ],
+                        className="position-sliders",
+                    ),
                 ],
-                className="position-actions",
-            ),
-            html.Div(
-                [
-                    html.Label("X", htmlFor="drag-x"),
-                    dcc.Slider(id="drag-x", min=-1, max=1, step=0.001, value=x_value, disabled=not drag_enabled, marks={-1: {"label": "-1", "style": {"color": "#ffffff"}}, 0: {"label": "0", "style": {"color": "#ffffff"}}, 1: {"label": "1", "style": {"color": "#ffffff"}}}),
-                    html.Label("Y", htmlFor="drag-y"),
-                    dcc.Slider(id="drag-y", min=-1, max=1, step=0.001, value=y_value, disabled=not drag_enabled, marks={-1: {"label": "-1", "style": {"color": "#ffffff"}}, 0: {"label": "0", "style": {"color": "#ffffff"}}, 1: {"label": "1", "style": {"color": "#ffffff"}}}),
-                    html.Label("Z", htmlFor="drag-z"),
-                    dcc.Slider(id="drag-z", min=-1, max=1, step=0.001, value=z_value, disabled=not drag_enabled, marks={-1: {"label": "-1", "style": {"color": "#ffffff"}}, 0: {"label": "0", "style": {"color": "#ffffff"}}, 1: {"label": "1", "style": {"color": "#ffffff"}}}),
-                ],
-                className="drag-controls",
+                className="position-row",
             ),
         ],
         className="tool-panel",
@@ -206,7 +337,6 @@ def position_control(card: Flashcard | None, drag_enabled: bool = False) -> html
 
 
 def group_control(card: Flashcard | None, dialog: str | None = None) -> html.Div:
-    group_options = [{"label": group.name, "value": group.id} for group in GROUPS]
     selected_groups = [group.id for group in GROUPS if card and card.id in group.card_ids]
     dialog_options = [
         {"label": group.name, "value": group.id}
@@ -216,7 +346,7 @@ def group_control(card: Flashcard | None, dialog: str | None = None) -> html.Div
     dialog_title = {"new": "New group", "add": "Add to group", "remove": "Remove from group", "delete": "Delete group", "focus": "Focus group"}.get(dialog)
     dialog_body = [
         dcc.Input(id="dialog-group-name", type="text", placeholder="Group name", style={"display": "block" if dialog == "new" else "none"}),
-        dcc.Input(id="dialog-group-color", type="color", value="#f5b942", style={"display": "block" if dialog == "new" else "none"}),
+        daq.ColorPicker(id="dialog-group-color", value={"hex": "#f5b942"}, size=140, style={"display": "block" if dialog == "new" else "none"}),
         dcc.Dropdown(
             id="dialog-group-select",
             className="closed-dropdown",
@@ -229,22 +359,17 @@ def group_control(card: Flashcard | None, dialog: str | None = None) -> html.Div
     ]
     return html.Div(
         [
-            html.Div("Groups and connections", className="card-label"),
+            html.Div("Groups", className="card-label"),
             html.Div(
                 [
                     html.Button("New", id="new-group", n_clicks=0, disabled=card is None, className="tool-button"),
+                    html.Button("Delete", id="delete-group", n_clicks=0, disabled=card is None, className="tool-button"),
                     html.Button("Add", id="add-group", n_clicks=0, disabled=card is None, className="tool-button"),
                     html.Button("Remove", id="remove-group", n_clicks=0, disabled=card is None, className="tool-button"),
-                ],
-                className="tool-row",
-            ),
-            html.Div(
-                [
-                    html.Button("Delete", id="delete-group", n_clicks=0, disabled=card is None, className="tool-button"),
                     html.Button("Focus", id="focus-group", n_clicks=0, disabled=not GROUPS, className="tool-button"),
                     html.Button("All", id="all-groups", n_clicks=0, className="tool-button"),
                 ],
-                className="tool-row",
+                className="tool-row control-actions",
             ),
             html.Div(
                 [
@@ -270,23 +395,103 @@ def group_control(card: Flashcard | None, dialog: str | None = None) -> html.Div
                 ],
                 className="group-dialog" if dialog else "group-dialog group-dialog-hidden",
             ),
-            html.Div(
-                [
-                    dcc.Dropdown(
-                        id="link-target",
-                        className="closed-dropdown",
-                        options=[{"label": other.question[:55], "value": other.id} for other in CARDS if not card or other.id != card.id],
-                        placeholder="Connect selected card to...",
-                        disabled=card is None,
-                        clearable=True,
-                    ),
-                    html.Button("Connect", id="create-link", n_clicks=0, disabled=card is None, className="tool-button"),
-                ],
-                className="tool-row",
-            ),
             html.Div(id="group-status", className="tool-status"),
         ],
         className="tool-panel",
+    )
+
+
+def deck_control(dialog: str | None = None, selected_deck: str | None = NONE_DECK) -> html.Div:
+    current_decks = available_decks()
+    dialog_options = [
+        {"label": deck, "value": deck}
+        for deck in current_decks
+        if (dialog == "add" and deck not in ENABLED_DECKS)
+        or (dialog in {"remove", "focus"} and deck in ENABLED_DECKS)
+    ]
+    dialog_title = {"add": "Add deck", "remove": "Remove deck", "focus": "Focus deck"}.get(dialog)
+    return html.Div(
+        [
+            html.Div("Deck", className="card-label"),
+            html.Div(
+                [
+                    html.Button("Add", id="add-deck", n_clicks=0, className="tool-button"),
+                    html.Button("Remove", id="remove-deck", n_clicks=0, className="tool-button"),
+                    html.Button("Focus", id="focus-deck", n_clicks=0, className="tool-button"),
+                    html.Button("All", id="all-decks", n_clicks=0, className="tool-button"),
+                    html.Button("Reset", id="reset-cards", n_clicks=0, className="reset-button"),
+                ],
+                className="tool-row control-actions",
+            ),
+            dcc.Dropdown(
+                id="deck-filter",
+                className="closed-dropdown",
+                options=deck_filter_options(),
+                value=selected_deck,
+                clearable=False,
+                style={"display": "none"},
+            ),
+            html.Div(
+                [
+                    html.Div(dialog_title, className="dialog-title"),
+                    dcc.Dropdown(
+                        id="deck-dialog-select",
+                        className="closed-dropdown",
+                        options=dialog_options,
+                        placeholder="Select a deck",
+                        clearable=True,
+                    ),
+                    html.Div(
+                        [
+                            html.Button("Confirm", id="deck-dialog-submit", n_clicks=0, className="tool-button"),
+                            html.Button("Cancel", id="deck-dialog-cancel", n_clicks=0, className="tool-button"),
+                        ],
+                        className="tool-row",
+                    ),
+                ],
+                className="group-dialog" if dialog else "group-dialog group-dialog-hidden",
+            ),
+        ],
+        className="tool-panel compact-panel deck-panel",
+    )
+
+
+def connection_control(card: Flashcard | None, deck: str = "all", focused_group: str | None = None) -> html.Div:
+    candidate_cards = [entry for entry in CARDS if deck == "all" or entry.deck == deck]
+    if focused_group:
+        group = next((item for item in GROUPS if item.id == focused_group), None)
+        if group:
+            candidate_cards = [entry for entry in candidate_cards if entry.id in group.card_ids]
+    options = [
+        {"label": other.question[:55], "value": other.id}
+        for other in candidate_cards
+        if other.id != (card.id if card else "")
+    ]
+    return html.Div(
+        [
+            html.Div("Connections", className="card-label"),
+            html.Div(
+                [
+                    html.Div(
+                        [
+                            html.Button("Connect", id="create-link", n_clicks=0, disabled=card is None, className="tool-button"),
+                            html.Button("Disconnect", id="disconnect-link", n_clicks=0, disabled=card is None, className="tool-button"),
+                        ],
+                        className="connection-buttons",
+                    ),
+                    dcc.Dropdown(
+                        id="link-target",
+                        className="closed-dropdown",
+                        options=options,
+                        placeholder="Select a card",
+                        disabled=card is None,
+                        clearable=True,
+                    ),
+                ],
+                className="connection-actions",
+            ),
+        ],
+        className="tool-panel compact-panel",
     )
 
 
@@ -305,6 +510,17 @@ def color_legend() -> html.Div:
 
 app = Dash(__name__)
 app.title = "Spatial Flashcards"
+app.index_string = app.index_string.replace(
+    "{%app_entry%}",
+    f'<script>window.__SERVER_BOOT_ID__ = "{SERVER_BOOT_ID}";</script>{{%app_entry%}}',
+)
+
+
+@app.server.route("/boot-id")
+def boot_id():
+    return jsonify({"bootId": SERVER_BOOT_ID})
+
+
 app.layout = html.Main(
     [
         html.Header(
@@ -313,7 +529,6 @@ app.layout = html.Main(
                 html.Div(
                     [
                         html.Button("Random card", id="random-card", className="random-button", n_clicks=0),
-                        html.Button("Reset cards", id="reset-cards", className="reset-button", n_clicks=0),
                     ],
                     className="topbar-actions",
                 ),
@@ -321,44 +536,42 @@ app.layout = html.Main(
             className="topbar",
         ),
         html.Section(
-            [
-                html.Div(
-                    [
-                        html.Label("Deck", htmlFor="deck-filter"),
-                        dcc.Dropdown(
-                            id="deck-filter",
-                            className="closed-dropdown",
-                            options=[{"label": "All decks", "value": "all"}] + [
-                                {"label": deck, "value": deck}
-                                for deck in sorted({card.deck for card in CARDS})
-                            ],
-                            value="all",
-                            clearable=False,
-                        ),
-                    ],
-                    className="filter-control",
-                ),
-                html.Div(f"{len(CARDS)} cards mapped", id="card-count", className="card-count"),
-            ],
+            [html.Div("0 cards mapped", id="card-count", className="card-count")],
             className="toolbar",
         ),
         html.Section(
             [
                 html.Div(
                     [
-                        dcc.Graph(id="sphere", figure=make_figure(CARDS), config={"displayModeBar": False, "scrollZoom": True, "doubleClick": "reset+autosize"}),
+                        html.Div(
+                            [
+                                dcc.Graph(
+                                    id="sphere",
+                                    figure=make_figure([]),
+                                    config={"displayModeBar": False, "scrollZoom": True, "doubleClick": "reset+autosize"},
+                                ),
+                            ],
+                            className="map-frame",
+                        ),
                         color_legend(),
                     ],
                     className="map-column",
                 ),
                 html.Div(
                     [
-                        html.Div(id="selected-card", children=card_panel(None), n_clicks=0),
-                        html.Div(id="difficulty-control", children=difficulty_control(None)),
-                        html.Div(id="position-control", children=position_control(None)),
-                        html.Div(id="group-control", children=group_control(None)),
+                        html.Div(id="selected-card", children=card_panel(None), n_clicks=0, className="window-a-card"),
+                        html.Div(id="difficulty-control", children=difficulty_control(None), className="window-a-progress"),
+                        html.Div(id="position-control", children=position_control(None), className="window-a-position"),
                     ],
-                    className="card-column",
+                    className="layout-window window-a",
+                ),
+                html.Div(
+                    [
+                        html.Div(id="deck-control", children=deck_control(), className="stack-window"),
+                        html.Div(id="group-control", children=group_control(None), className="stack-window"),
+                        html.Div(id="connection-control", children=connection_control(None, "all", None), className="stack-window"),
+                    ],
+                    className="layout-window window-b",
                 ),
             ],
             className="workspace",
@@ -367,6 +580,7 @@ app.layout = html.Main(
         dcc.Store(id="revealed", data=False),
         dcc.Store(id="drag-enabled", data=False),
         dcc.Store(id="group-dialog", data=None),
+        dcc.Store(id="deck-dialog-state", data=None),
         dcc.Store(id="focused-group", data=None),
         dcc.Input(id="keyboard-nav", value="", type="text", className="keyboard-nav"),
         dcc.ConfirmDialog(
@@ -384,6 +598,7 @@ app.layout = html.Main(
     Output("difficulty-control", "children"),
     Output("position-control", "children"),
     Output("group-control", "children"),
+    Output("connection-control", "children"),
     Output("group-status", "children"),
     Output("selected-id", "data"),
     Output("revealed", "data"),
@@ -393,6 +608,9 @@ app.layout = html.Main(
     Output("reset-confirm", "displayed"),
     Output("group-dialog", "data"),
     Output("focused-group", "data"),
+    Output("deck-control", "children"),
+    Output("deck-dialog-state", "data"),
+    Output("deck-filter", "options"),
     Input("sphere", "clickData"),
     Input("selected-card", "n_clicks"),
     Input("random-card", "n_clicks"),
@@ -401,6 +619,7 @@ app.layout = html.Main(
     Input("save-position", "n_clicks"),
     Input("new-group", "n_clicks"),
     Input("create-link", "n_clicks"),
+    Input("disconnect-link", "n_clicks"),
     Input("add-group", "n_clicks"),
     Input("remove-group", "n_clicks"),
     Input("delete-group", "n_clicks"),
@@ -415,30 +634,37 @@ app.layout = html.Main(
     Input("keyboard-nav", "value"),
     Input("reset-cards", "n_clicks"),
     Input("reset-confirm", "submit_n_clicks"),
+    Input("add-deck", "n_clicks"),
+    Input("remove-deck", "n_clicks"),
+    Input("focus-deck", "n_clicks"),
+    Input("all-decks", "n_clicks"),
+    Input("deck-dialog-submit", "n_clicks"),
+    Input("deck-dialog-cancel", "n_clicks"),
     State("selected-id", "data"),
     State("revealed", "data"),
     State("link-target", "value"),
     State("sphere", "relayoutData"),
+    State("sphere", "hoverData"),
     State("drag-enabled", "data"),
     State("group-dialog", "data"),
     State("focused-group", "data"),
     State("dialog-group-name", "value"),
     State("dialog-group-color", "value"),
     State("dialog-group-select", "value"),
+    State("deck-dialog-state", "data"),
+    State("deck-dialog-select", "value"),
 )
-def update_card(click_data, panel_clicks, random_clicks, deck, difficulty, save_position_clicks, new_group_clicks, create_link_clicks, add_group_clicks, remove_group_clicks, delete_group_clicks, focus_group_clicks, all_groups_clicks, dialog_submit_clicks, dialog_cancel_clicks, toggle_drag_clicks, drag_x, drag_y, drag_z, keyboard_nav, reset_clicks, reset_submit_clicks, selected_id, revealed, link_target, relayout_data, drag_enabled, group_dialog, focused_group, dialog_group_name, dialog_group_color, dialog_group_select):
+def update_card(click_data, panel_clicks, random_clicks, deck, difficulty, save_position_clicks, new_group_clicks, create_link_clicks, disconnect_link_clicks, add_group_clicks, remove_group_clicks, delete_group_clicks, focus_group_clicks, all_groups_clicks, dialog_submit_clicks, dialog_cancel_clicks, toggle_drag_clicks, drag_x, drag_y, drag_z, keyboard_nav, reset_clicks, reset_submit_clicks, add_deck_clicks, remove_deck_clicks, focus_deck_clicks, all_decks_clicks, deck_dialog_submit_clicks, deck_dialog_cancel_clicks, selected_id, revealed, link_target, relayout_data, hover_data, drag_enabled, group_dialog, focused_group, dialog_group_name, dialog_group_color, dialog_group_select, deck_dialog_state, deck_dialog_select):
     from dash import ctx
     import random
 
-    cards = [card for card in CARDS if deck == "all" or card.deck == deck]
-    if focused_group:
-        group = next((item for item in GROUPS if item.id == focused_group), None)
-        focused_ids = set(group.card_ids) if group else set()
-        cards = [card for card in cards if card.id in focused_ids]
+    cards = visible_cards(deck, focused_group)
     trigger = ctx.triggered_id
     reset_dialog = False
     next_group_dialog = group_dialog
     next_focused_group = focused_group
+    next_deck_dialog = deck_dialog_state
+    next_deck = deck
     if trigger == "reset-cards":
         reset_dialog = True
     elif trigger == "reset-confirm":
@@ -454,9 +680,46 @@ def update_card(click_data, panel_clicks, random_clicks, deck, difficulty, save_
         revealed = False
         drag_enabled = False
         next_focused_group = None
+    elif trigger == "add-deck":
+        next_deck_dialog = "add"
+    elif trigger == "remove-deck":
+        next_deck_dialog = "remove"
+    elif trigger == "focus-deck":
+        next_deck_dialog = "focus"
+    elif trigger == "all-decks":
+        next_deck = "all"
+        next_deck_dialog = None
+    elif trigger == "deck-dialog-cancel":
+        next_deck_dialog = None
+    elif trigger == "deck-dialog-submit" and deck_dialog_select and deck_dialog_state == "add":
+        if deck_dialog_select in available_decks() and deck_dialog_select not in ENABLED_DECKS:
+            ENABLED_DECKS.append(deck_dialog_select)
+            ENABLED_DECKS.sort()
+            CARDS[:] = load_decks(CARDS_DIR, ENABLED_DECKS)
+            refresh_deck_state()
+        next_deck_dialog = None
+    elif trigger == "deck-dialog-submit" and deck_dialog_select and deck_dialog_state == "remove":
+        if deck_dialog_select in ENABLED_DECKS:
+            ENABLED_DECKS.remove(deck_dialog_select)
+            CARDS[:] = load_decks(CARDS_DIR, ENABLED_DECKS)
+            refresh_deck_state()
+            if selected_id and selected_id not in {card.id for card in CARDS}:
+                selected_id = None
+                revealed = False
+            if deck != "all" and deck == deck_dialog_select:
+                next_deck = NONE_DECK
+        next_deck_dialog = None
+    elif trigger == "deck-dialog-submit" and deck_dialog_select and deck_dialog_state == "focus":
+        if deck_dialog_select in ENABLED_DECKS:
+            next_deck = deck_dialog_select
+        next_deck_dialog = None
     elif trigger == "sphere" and click_data and click_data.get("points"):
-        selected_id = click_data["points"][0].get("customdata")
-        revealed = False
+        hovered_points = (hover_data or {}).get("points", [])
+        hovered_id = hovered_points[0].get("customdata") if hovered_points else None
+        clicked_id = hovered_id or click_data["points"][0].get("customdata")
+        if clicked_id:
+            selected_id = clicked_id
+            revealed = False
     elif trigger == "selected-card" and selected_id:
         revealed = not revealed
         if revealed and selected_id in PROGRESS:
@@ -488,7 +751,21 @@ def update_card(click_data, panel_clicks, random_clicks, deck, difficulty, save_
     elif trigger == "new-group" and selected_id:
         next_group_dialog = "new"
     elif trigger == "create-link" and selected_id and link_target and link_target != selected_id:
-        LINKS.append(CardLink(selected_id, link_target))
+        exists = any(
+            (link.source_id == selected_id and link.target_id == link_target)
+            or (link.source_id == link_target and link.target_id == selected_id)
+            for link in LINKS
+        )
+        if not exists:
+            LINKS.append(CardLink(selected_id, link_target))
+    elif trigger == "disconnect-link" and selected_id and link_target and link_target != selected_id:
+        LINKS[:] = [
+            link for link in LINKS
+            if not (
+                (link.source_id == selected_id and link.target_id == link_target)
+                or (link.source_id == link_target and link.target_id == selected_id)
+            )
+        ]
     elif trigger == "add-group" and selected_id:
         next_group_dialog = "add"
     elif trigger == "remove-group" and selected_id:
@@ -501,7 +778,8 @@ def update_card(click_data, panel_clicks, random_clicks, deck, difficulty, save_
         next_group_dialog = None
     elif trigger == "group-dialog-submit" and selected_id and group_dialog == "new" and dialog_group_name:
         group_id = f"group-{len(GROUPS) + 1}"
-        GROUPS.append(CardGroup(group_id, dialog_group_name.strip(), dialog_group_color or "#f5b942", [selected_id]))
+        group_color_value = (dialog_group_color or {}).get("hex", "#f5b942")
+        GROUPS.append(CardGroup(group_id, dialog_group_name.strip(), group_color_value, [selected_id]))
         next_group_dialog = None
     elif trigger == "group-dialog-submit" and selected_id and group_dialog == "add" and dialog_group_select:
         group = next((item for item in GROUPS if item.id == dialog_group_select), None)
@@ -531,22 +809,25 @@ def update_card(click_data, panel_clicks, random_clicks, deck, difficulty, save_
             selected_id = None
         revealed = False
 
+    cards = visible_cards(next_deck, next_focused_group)
     if next_focused_group:
         focused_group = next((group for group in GROUPS if group.id == next_focused_group), None)
         focused_ids = set(focused_group.card_ids) if focused_group else set()
         cards = [card for card in cards if card.id in focused_ids]
-        if selected_id not in {card.id for card in cards}:
-            selected_id = None
+    if selected_id not in {card.id for card in cards}:
+        selected_id = None
+        revealed = False
 
     selected_card = CARD_BY_ID.get(selected_id)
-    save_state(STATE_PATH, POSITIONS, PROGRESS, GROUPS, LINKS)
+    save_state(STATE_PATH, POSITIONS, PROGRESS, GROUPS, LINKS, ENABLED_DECKS)
     return (
         make_figure(cards, selected_id, (relayout_data or {}).get("scene.camera")),
         card_panel(selected_card, revealed),
         difficulty_control(selected_card),
         position_control(selected_card, bool(drag_enabled)),
         group_control(selected_card, next_group_dialog),
-        "Saved" if trigger in {"save-position", "create-link", "group-dialog-submit", "delete-group"} else "",
+        connection_control(selected_card, next_deck or "all", next_focused_group or focused_group),
+        "Saved" if trigger in {"save-position", "create-link", "disconnect-link", "group-dialog-submit", "delete-group"} else "",
         selected_id,
         revealed,
         f"{len(cards)} cards mapped",
@@ -555,9 +836,12 @@ def update_card(click_data, panel_clicks, random_clicks, deck, difficulty, save_
         reset_dialog,
         next_group_dialog,
         next_focused_group,
+        deck_control(next_deck_dialog, next_deck),
+        next_deck_dialog,
+        deck_filter_options(),
     )
 
 
 if __name__ == "__main__":
     save_state(STATE_PATH, POSITIONS, PROGRESS, GROUPS, LINKS)
-    app.run(debug=False)
+    app.run(debug=True)
