@@ -13,18 +13,19 @@ from flashcards_app.geometry import sphere_positions
 from flashcards_app.parser import load_decks
 from flashcards_app.state import load_enabled_decks, load_groups, load_links, load_positions, load_progress, save_state
 
+# Application configuration
 BASE_DIR = Path(__file__).resolve().parent
-STATE_PATH = BASE_DIR / "data" / "positions.json"
-CARDS_DIR = BASE_DIR / "data" / "cards"
+STATE_PATH = BASE_DIR / "data" / "positions.json" # single cards position - random as placeholder
+CARDS_DIR = BASE_DIR / "data" / "cards" # preprocessed examples
 SERVER_BOOT_ID = uuid.uuid4().hex
-NONE_DECK = "None"
+NONE_DECK = "None" # this is a workaround to display empty map on startup
 
 
 def available_decks() -> list[str]:
     return sorted(
         path.stem
         for path in CARDS_DIR.glob("*.md")
-        if path.stem.casefold() not in {"readme", NONE_DECK.casefold()}
+        if path.stem.casefold() not in {"readme", NONE_DECK.casefold()} # cannot be loaded: dummy NONE_DECK, readme files
     )
 
 
@@ -32,7 +33,7 @@ AVAILABLE_DECKS = available_decks()
 ENABLED_DECKS = [
     deck
     for deck in load_enabled_decks(STATE_PATH, AVAILABLE_DECKS)
-    if deck.casefold() != "readme"
+# DELETE?   if deck.casefold() != "readme" # cannot be loaded
 ]
 CARDS = load_decks(CARDS_DIR, ENABLED_DECKS)
 POSITIONS = load_positions(STATE_PATH, [card.id for card in CARDS])
@@ -81,7 +82,7 @@ def deck_filter_options() -> list[dict[str, str]]:
         for deck in sorted(ENABLED_DECKS)
     ]
 
-
+# TO_DO: in this section are some visual finctions, move to frontend_file
 def hex_to_rgb(value: str) -> tuple[int, int, int]:
     value = value.lstrip("#")
     return tuple(int(value[i : i + 2], 16) for i in (0, 2, 4))
@@ -100,7 +101,6 @@ def interpolate_color(start: str, end: str, progress: float) -> str:
         for start_channel, end_channel in zip(start_rgb, end_rgb)
     )
     return rgb_to_hex(mixed)
-
 
 def progress_color(value_or_card_id: str | int) -> str:
     if isinstance(value_or_card_id, str):
@@ -124,6 +124,7 @@ def group_color(card_id: str) -> str:
             return group.color
     return "#7c8b99"
 
+# end of frontend block
 
 def choose_random_card(cards: list[Flashcard], progress: dict, rng) -> Flashcard | None:
     if not cards:
@@ -143,6 +144,7 @@ def adjacent_card(cards: list[Flashcard], selected_id: str | None, direction: in
     index = next(index for index, card in enumerate(cards) if card.id == selected_id)
     return cards[(index + direction) % len(cards)]
 
+#more frontend parts
 
 def make_figure(cards: list[Flashcard], selected_id: str | None = None, camera: dict | None = None) -> go.Figure:
     visible_ids = {card.id for card in cards}
@@ -153,6 +155,8 @@ def make_figure(cards: list[Flashcard], selected_id: str | None = None, camera: 
     figure = go.Figure()
     position_by_id = {position.card_id: position for position in points}
     group_by_id = {group.id: group for group in GROUPS}
+    
+    # Draw connection lines between cards
     for link in LINKS:
         source = position_by_id.get(link.source_id)
         target = position_by_id.get(link.target_id)
@@ -171,6 +175,8 @@ def make_figure(cards: list[Flashcard], selected_id: str | None = None, camera: 
                 name="Connection",
             )
         )
+    
+    # Draw regular cards
     if regular:
         figure.add_trace(
             go.Scatter3d(
@@ -203,6 +209,8 @@ def make_figure(cards: list[Flashcard], selected_id: str | None = None, camera: 
                 name="Cards",
             )
         )
+    
+    # Draw selected card with highlight
     if selected:
         point = selected[0]
         figure.add_trace(
@@ -273,6 +281,8 @@ def card_panel(card: Flashcard | None, revealed: bool = False) -> html.Div:
         className="card-panel",
     )
 
+# end of more frontend parts
+# here start control features
 
 def difficulty_control(card: Flashcard | None) -> html.Div:
     is_flipped = bool(card and PROGRESS[card.id].read)
@@ -495,6 +505,8 @@ def connection_control(card: Flashcard | None, deck: str = "all", focused_group:
     )
 
 
+# more frontend
+
 def color_legend() -> html.Div:
     return html.Div(
         [
@@ -515,6 +527,7 @@ app.index_string = app.index_string.replace(
     f'<script>window.__SERVER_BOOT_ID__ = "{SERVER_BOOT_ID}";</script>{{%app_entry%}}',
 )
 
+# end of frontend
 
 @app.server.route("/boot-id")
 def boot_id():
@@ -654,7 +667,16 @@ app.layout = html.Main(
     State("deck-dialog-state", "data"),
     State("deck-dialog-select", "value"),
 )
-def update_card(click_data, panel_clicks, random_clicks, deck, difficulty, save_position_clicks, new_group_clicks, create_link_clicks, disconnect_link_clicks, add_group_clicks, remove_group_clicks, delete_group_clicks, focus_group_clicks, all_groups_clicks, dialog_submit_clicks, dialog_cancel_clicks, toggle_drag_clicks, drag_x, drag_y, drag_z, keyboard_nav, reset_clicks, reset_submit_clicks, add_deck_clicks, remove_deck_clicks, focus_deck_clicks, all_decks_clicks, deck_dialog_submit_clicks, deck_dialog_cancel_clicks, selected_id, revealed, link_target, relayout_data, hover_data, drag_enabled, group_dialog, focused_group, dialog_group_name, dialog_group_color, dialog_group_select, deck_dialog_state, deck_dialog_select):
+def update_card(
+    click_data, panel_clicks, random_clicks, deck, difficulty, save_position_clicks, new_group_clicks,
+    create_link_clicks, disconnect_link_clicks, add_group_clicks, remove_group_clicks,
+    delete_group_clicks, focus_group_clicks, all_groups_clicks, dialog_submit_clicks, dialog_cancel_clicks,
+    toggle_drag_clicks, drag_x, drag_y, drag_z, keyboard_nav, reset_clicks, reset_submit_clicks,
+    add_deck_clicks, remove_deck_clicks, focus_deck_clicks, all_decks_clicks, deck_dialog_submit_clicks,
+    deck_dialog_cancel_clicks, selected_id, revealed, link_target, relayout_data, hover_data,
+    drag_enabled, group_dialog, focused_group, dialog_group_name, dialog_group_color,
+    dialog_group_select, deck_dialog_state, deck_dialog_select
+):
     from dash import ctx
     import random
 
@@ -665,6 +687,7 @@ def update_card(click_data, panel_clicks, random_clicks, deck, difficulty, save_
     next_focused_group = focused_group
     next_deck_dialog = deck_dialog_state
     next_deck = deck
+    
     if trigger == "reset-cards":
         reset_dialog = True
     elif trigger == "reset-confirm":

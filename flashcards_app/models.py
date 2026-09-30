@@ -1,13 +1,12 @@
 from dataclasses import dataclass, field
+from typing import List, Optional
 
-
-@dataclass(frozen=True)
+@dataclass
 class Flashcard:
     id: str
     deck: str
     question: str
     answer: str
-
 
 @dataclass
 class CardPosition:
@@ -16,8 +15,7 @@ class CardPosition:
     y: float
     z: float
     status: str = "new"
-    related_ids: list[str] = field(default_factory=list)
-
+    related_ids: List[str] = field(default_factory=list)
 
 @dataclass
 class CardProgress:
@@ -26,19 +24,17 @@ class CardProgress:
     difficulty: int = 1
 
     def __post_init__(self) -> None:
-        self.difficulty = max(1, min(100, int(self.difficulty)))
-
+        object.__setattr__(self, "difficulty", max(1, min(100, int(self.difficulty))))
 
 @dataclass
 class CardGroup:
     id: str
     name: str
     color: str
-    card_ids: list[str] = field(default_factory=list)
-
+    card_ids: List[str] = field(default_factory=list)
 
 @dataclass
 class CardLink:
     source_id: str
     target_id: str
-    group_id: str | None = None
+    group_id: Optional[str] = None
