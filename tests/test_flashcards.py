@@ -3,7 +3,7 @@ from pathlib import Path
 from flashcards_app.geometry import sphere_positions
 from flashcards_app.models import CardProgress, Flashcard
 from flashcards_app.parser import format_technical_terms, load_decks
-from flashcards_app.state import load_enabled_decks, load_positions, load_progress, save_positions, save_state
+from flashcards_app.state import load_enabled_decks, load_positions, load_progress, save_state
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -42,7 +42,7 @@ def test_positions_are_deterministic_and_inside_sphere():
 def test_positions_round_trip(tmp_path):
     path = tmp_path / "positions.json"
     original = sphere_positions(["one", "two"], seed=3)
-    save_positions(path, original)
+    save_state(path, original)
     restored = load_positions(path, ["one", "two"], seed=99)
     assert restored == original
 

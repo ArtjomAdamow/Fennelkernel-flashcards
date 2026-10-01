@@ -113,7 +113,7 @@ line_start: 11
 line_end: 18
 tags: [position, geometry, 3d]
 dependencies: []
-used_in: ["geometry:sphere_positions", "state:load_positions", "state:save_positions", "state:save_state"]
+used_in: ["geometry:sphere_positions", "state:load_positions", "state:save_state"]
 ```
 ---
 
@@ -477,26 +477,6 @@ line_end: 128
 tags: [persistence, state, json]
 dependencies: ["models:card_group", "models:card_link", "models:card_position", "models:card_progress"]
 used_in: ["app:update_card"]
-```
----
-
-### [`save_positions()`](./flashcards_app/state.py#def&nbspsave_positions)
-Save the positions of all cards to JSON. Ensures that the layout of cards is persisted across sessions.
-
-**Algorithm**:
-1. Create parent directory if needed
-2. Build payload dict with current card positions
-3. Write JSON with indent=2
-
-```yaml
-component_id: state:save_positions
-type: function
-file: flashcards_app/state.py
-line_start: 26
-line_end: 30
-tags: [persistence, state, positions, json]
-dependencies: ["models:card_position"]
-used_in: []
 ```
 ---
 
