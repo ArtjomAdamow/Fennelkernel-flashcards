@@ -5,13 +5,13 @@ __pycache__/
 image/presentations/1787319510739.png
 archive/presentations.md
 archive/temp.md
-archive/temp2.md
-archive/update_index1.py
-archive/update_index2.py
+archive/temp*.md
+archive/update_index*.py
 
 docs/prompts.md
 
 data/positions.json
 
+INDEX_bak_*.md
 INDEX.md
 update_index.py

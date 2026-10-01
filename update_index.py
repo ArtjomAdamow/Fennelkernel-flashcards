@@ -11,8 +11,8 @@ Maintained automatically (per YAML block, only if the key exists there):
 Never touched: tags, type, and every other key or comment.
 
 NEW: unindexed components
-    Classes/functions that indexed components depend on, but that have no
-    entry in the index yet, are written to a generated section at the END of
+    Classes/functions that have no entry in the index yet, but are connected
+    to indexed components, are written to a generated section at the END of
     the index file, starting with the line
         **The update_index script has found unindexed components:**
     Each block there has a heading with anchor link and a complete YAML block
@@ -20,6 +20,11 @@ NEW: unindexed components
     index it. The section is regenerated on every run: everything from that
     title line to the end of the file is replaced, so do not write your own
     text below it.
+    "Connected" means: an indexed component depends on it (forward), or it
+    depends on an indexed component (reverse; switch off with --no-reverse).
+    --new-depth N continues the search N levels from newly found components,
+    in both directions. Test files and folders (tests/, test_*.py, *_test.py,
+    conftest.py) are skipped unless --include-tests is given.
 
 Expected index layout (one entry per component):
 
@@ -61,8 +66,19 @@ Dependency analysis (static, heuristic):
 Entries in dependencies / used_in are the `component_id` (fallback: code
 name). Use --ref name to always use the code name.
 
+Backup: before the index file is written, a copy INDEX_bak_00.md is made next
+to it (the next free number if copies exist: _01, _02, ...). If nothing has to
+be written, or with --dry-run / --check, no backup is made.
+
+Interactive start: without arguments the script finds INDEX.md (current folder,
+then the script's folder) and asks before doing anything:
+    Ready to update ... in place (backup copy: ...) y/n   y = run
+    n or Enter -> "A report only run with checks will start now y/n"
+        y or Enter = INDEX.md --dry-run --check, n = show this usage and exit
+
 Usage:
-    python update_index.py INDEX.md              # update in place
+    python update_index.py                       # interactive start (asks first)
+    python update_index.py INDEX.md              # update in place (backup first)
     python update_index.py INDEX.md --dry-run    # only report
     python update_index.py INDEX.md --check      # exit 1 if index is stale (CI)
     python update_index.py INDEX.md --root .     # base dir for `file:` paths
@@ -72,8 +88,11 @@ Usage:
     python update_index.py INDEX.md --scan indexed     # look only in indexed files
     python update_index.py INDEX.md --ignore helper    # never list this name
     python update_index.py INDEX.md --exclude-dir tests
+    python update_index.py INDEX.md --no-reverse       # only dependencies of indexed
+    python update_index.py INDEX.md --include-tests    # also scan test files
 
-Exit codes: 0 ok, 1 stale (--check), 2 unresolved entries, 3 write failed.
+Exit codes: 0 ok, 1 stale (--check), 2 unresolved entries, 3 write failed,
+            4 interactive start without INDEX.md or without input.
 """
 from __future__ import annotations
 
@@ -81,6 +100,7 @@ import argparse
 import ast
 import os
 import re
+import shutil
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -91,6 +111,8 @@ SECTION_TITLE = "**The update_index script has found unindexed components:**"
 DEFAULT_SKIP_DIRS = {".git", ".hg", ".svn", "__pycache__", "node_modules", ".venv", "venv",
                      "env", ".tox", ".mypy_cache", ".pytest_cache", ".idea", ".vscode",
                      "build", "dist", "site-packages"}
+
+TEST_DIRS = {"tests", "test"}
 
 FENCE_OPEN = re.compile(r"^\s*```ya?ml\s*$")
 FENCE_CLOSE = re.compile(r"^\s*```\s*$")
@@ -263,6 +285,16 @@ def resolve(file_value: str, md_path: Path, root: Path) -> Path | None:
     return None
 
 
+def is_test_path(py: Path, root: Path) -> bool:
+    try:
+        parts = py.relative_to(root).parts
+    except ValueError:
+        parts = py.parts
+    name = py.name
+    return (any(p in TEST_DIRS for p in parts[:-1]) or name.startswith("test_")
+            or name.endswith("_test.py") or name == "conftest.py")
+
+
 def iter_py_files(root: Path, exclude: set[str]):
     skip = DEFAULT_SKIP_DIRS | exclude
     for dirpath, dirnames, filenames in os.walk(root):
@@ -282,6 +314,8 @@ class Options:
     scan: str = "project"
     ignore: set = field(default_factory=set)
     exclude_dirs: set = field(default_factory=set)
+    reverse: bool = True
+    include_tests: bool = False
 
 
 @dataclass
@@ -297,7 +331,8 @@ class Entry:
     cid: str = ""
     file_value: str = ""
     is_new: bool = False        # found in code, not in the index
-    active: bool = False        # new and reachable -> listed in the section
+    active: bool = False        # new and connected -> listed in the section
+    via: str = ""               # why it was found (console report only)
     deps: set = field(default_factory=set)
     used_in: set = field(default_factory=set)
 
@@ -365,7 +400,7 @@ def discover_unindexed(entries, cache, root, opts, warnings) -> list[Entry]:
         files |= set(iter_py_files(root, opts.exclude_dirs))
     pool = []
     for py in sorted(files):
-        if py == SELF:
+        if py == SELF or (not opts.include_tests and is_test_path(py, root)):
             continue
         if py not in cache:
             try:
@@ -395,7 +430,7 @@ def assign_new_refs(active: list[Entry], entries: list[Entry], ref_mode: str) ->
         e.ref = cid if ref_mode == "id" else e.sym[4]
 
 
-def build_graph(entries, pool, new_depth, warnings, ref_mode) -> list[Entry]:
+def build_graph(entries, pool, new_depth, warnings, ref_mode, reverse=True) -> list[Entry]:
     """Fill deps / used_in. Returns the unindexed components to list."""
     live = [e for e in entries if e.sym is not None]
 
@@ -442,15 +477,26 @@ def build_graph(entries, pool, new_depth, warnings, ref_mode) -> list[Entry]:
         found += [t for a in attrs for t in pick(a, src, True)]
         return found
 
-    # phase A: which unindexed components are reachable (up to new_depth levels)?
+    # reverse map: who depends on whom (only unindexed components as dependents)
+    users_of: dict[int, list[Entry]] = {}
+    if reverse:
+        for p in pool:
+            for t in targets_of(p):
+                users_of.setdefault(id(t), []).append(p)
+
+    # phase A: which unindexed components are connected (up to new_depth levels)?
     frontier = live
     for _ in range(new_depth):
         nxt = []
         for src in frontier:
-            for t in targets_of(src):
+            for t in targets_of(src):                     # forward: src depends on t
                 if t.is_new and not t.active:
-                    t.active = True
+                    t.active, t.via = True, f"used by {src.sym[4]}"
                     nxt.append(t)
+            for u in users_of.get(id(src), []):           # reverse: u depends on src
+                if not u.active:
+                    u.active, u.via = True, f"uses {src.sym[4]}"
+                    nxt.append(u)
         frontier = nxt
         if not frontier:
             break
@@ -580,7 +626,7 @@ def sync(md_path: Path, root: Path, opts: Options) -> Result:
     if graph_on:
         pool = (discover_unindexed(entries, cache, root, opts, warnings)
                 if opts.new_depth >= 1 else [])
-        new = build_graph(entries, pool, opts.new_depth, warnings, opts.ref_mode)
+        new = build_graph(entries, pool, opts.new_depth, warnings, opts.ref_mode, opts.reverse)
 
     out, pos, report = [], 0, []
     for e in entries:
@@ -616,7 +662,68 @@ def sync(md_path: Path, root: Path, opts: Options) -> Result:
     return Result(text, report, warnings, new if section_enabled else [], section_changed)
 
 
-def main() -> int:
+def next_backup_path(md_path: Path) -> Path:
+    """INDEX.md -> INDEX_bak_00.md; continues after the highest existing number."""
+    pattern = re.compile(rf"^{re.escape(md_path.stem)}_bak_(\d+){re.escape(md_path.suffix)}$", re.I)
+    numbers = [int(m.group(1)) for f in md_path.parent.iterdir() if (m := pattern.match(f.name))]
+    n = max(numbers) + 1 if numbers else 0
+    while True:
+        candidate = md_path.with_name(f"{md_path.stem}_bak_{n:02d}{md_path.suffix}")
+        if not candidate.exists():
+            return candidate
+        n += 1
+
+
+def find_default_index() -> Path | None:
+    for folder in dict.fromkeys([Path.cwd().resolve(), SELF.parent]):
+        exact = folder / "INDEX.md"
+        if exact.is_file():
+            return exact
+        for p in sorted(folder.glob("*.md")):
+            if p.name.lower() == "index.md":
+                return p
+    return None
+
+
+def usage_text() -> str:
+    doc = __doc__ or ""
+    return doc[doc.rindex("Usage:"):].rstrip() if "Usage:" in doc else ""
+
+
+def ask(question: str) -> str:
+    try:
+        return input(question).strip().lower()
+    except EOFError:
+        print("\nno input available - nothing was run.\n")
+        print(usage_text())
+        sys.exit(4)
+
+
+def interactive_start() -> list[str]:
+    """Used when the script is started without arguments. Returns the argv to run."""
+    md = find_default_index()
+    if md is None:
+        print("No INDEX.md found in the current folder or next to this script.\n")
+        print(usage_text())
+        sys.exit(4)
+    if md.parent != Path.cwd().resolve():
+        print(f"index file: {md}")
+    answer = ask(f"Ready to update the file {md.name} in place "
+                 f"(backup copy: {next_backup_path(md).name}) y/n ")
+    if answer in ("y", "yes"):
+        return [str(md)]
+    answer = ask("A report only run with checks will start now y/n ")
+    if answer in ("", "y", "yes"):
+        return [str(md), "--dry-run", "--check"]
+    print()
+    print(usage_text())
+    sys.exit(0)
+
+
+def main(argv: list[str] | None = None) -> int:
+    argv = sys.argv[1:] if argv is None else argv
+    if not argv:
+        argv = interactive_start()
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("index", type=Path, help="Markdown index file")
     ap.add_argument("--root", type=Path, help="base dir for `file:` paths (default: index dir)")
@@ -634,7 +741,11 @@ def main() -> int:
                     help="never list this component name (repeatable)")
     ap.add_argument("--exclude-dir", action="append", default=[], metavar="DIR",
                     help="extra directory name to skip while scanning (repeatable)")
-    args = ap.parse_args()
+    ap.add_argument("--no-reverse", dest="reverse", action="store_false",
+                    help="do not list unindexed components that depend on indexed ones")
+    ap.add_argument("--include-tests", action="store_true",
+                    help="also scan test files/folders (skipped by default)")
+    args = ap.parse_args(argv)
 
     fields = {f.strip() for f in args.fields.split(",") if f.strip()}
     if not fields or not fields <= ALL_FIELDS:
@@ -642,7 +753,8 @@ def main() -> int:
     if args.new_depth < 0:
         ap.error("--new-depth must be >= 0")
     opts = Options(fields=fields, ref_mode=args.ref, new_depth=args.new_depth, scan=args.scan,
-                   ignore=set(args.ignore), exclude_dirs=set(args.exclude_dir))
+                   ignore=set(args.ignore), exclude_dirs=set(args.exclude_dir),
+                   reverse=args.reverse, include_tests=args.include_tests)
 
     md_path = args.index.resolve()
     root = (args.root or md_path.parent).resolve()
@@ -657,7 +769,7 @@ def main() -> int:
         for e in res.new:
             users = ", ".join(sorted(e.used_in)) or "-"
             print(f"  {label((e.sym[2], e.sym[4])):<30} {rel_path(root, e.py)}:{e.sym[0]}-{e.sym[1]}"
-                  f"   used in: {users}")
+                  f"   used in: {users}   ({e.via})")
     for w in res.warnings:
         print(f"WARNING: {w}")
 
@@ -675,6 +787,13 @@ def main() -> int:
     elif args.dry_run or args.check:
         print("NOT written (--dry-run / --check given).")
     else:
+        try:
+            backup = next_backup_path(md_path)
+            shutil.copy2(md_path, backup)
+        except OSError as exc:
+            print(f"BACKUP FAILED: {exc} - the index file was not touched.")
+            return 3
+        print(f"backup: {backup.name}")
         try:
             md_path.write_bytes(res.text.encode("utf-8"))
         except OSError as exc:
