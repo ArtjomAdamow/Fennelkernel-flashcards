@@ -85,7 +85,7 @@ Core flashcard entity with question and answer. Represents individual learning c
 - `answer` (str): The answer/reveal text
 
 ```yaml
-component_id: flashcard:core
+component_id: models:flashcard
 type: dataclass
 file: flashcards_app/models.py
 line_start: 4
@@ -106,7 +106,7 @@ used_in: ["app:adjacent_card", "app:card_panel", "app:choose_random_card", "app:
 - `related_ids` (List[str]): IDs of related cards
 
 ```yaml
-component_id: card_position:3d
+component_id: models:card_position
 type: dataclass
 file: flashcards_app/models.py
 line_start: 11
@@ -126,14 +126,14 @@ Learning progress tracking. Tracks read status and difficulty level (1-100) for 
 - `difficulty` (int): Progress level (1=review to 100=learned)
 
 ```yaml
-component_id: card_progress:tracking
+component_id: models:card_progress
 type: dataclass
 file: flashcards_app/models.py
 line_start: 20
 line_end: 26
-tags: [progress, learning, difficulty]
+tags: [tracking, progress, learning, difficulty]
 dependencies: []
-used_in: ["app:choose_random_card", refresh_deck_state, "state:load_progress", "state:save_state"]
+used_in: ["app:choose_random_card", "app:refresh_deck_state", "state:load_progress", "state:save_state"]
 ```
 ---
 
@@ -147,12 +147,12 @@ Grouping mechanism for organizing flashcards. Organizes cards into visual groups
 - `card_ids` (List[str]): IDs of cards belonging to this group
 
 ```yaml
-component_id: card_group:organizer
+component_id: models:card_group
 type: dataclass
 file: flashcards_app/models.py
 line_start: 28
 line_end: 33
-tags: [group, organization, color]
+tags: [group, organizer, color]
 dependencies: []
 used_in: ["app:update_card", "state:load_groups", "state:save_state"]
 ```
@@ -168,7 +168,7 @@ Connection/link between two flashcards. Connects related cards, optionally belon
 - `group_id` (Optional[str]): Optional group this link belongs to
 
 ```yaml
-component_id: card_link:connection
+component_id: models:card_link
 type: dataclass
 file: flashcards_app/models.py
 line_start: 35
@@ -190,7 +190,7 @@ Select available decks from the system. Returns a list of deck names. Ignores em
 3. Return the list of available deck names
 
 ```yaml
-component_id: available_decks
+component_id: app:available_decks
 type: function
 file: app.py
 line_start: 24
@@ -219,7 +219,7 @@ file: flashcards_app/parser.py
 line_start: 47
 line_end: 79
 tags: [parsing, markdown, deck]
-dependencies: [_clean_answer, _clean_question, "flashcard:core"]
+dependencies: ["parser:_clean_answer", "parser:_clean_question", "models:flashcard"]
 used_in: ["parser:load_decks"]
 ```
 ---
@@ -232,7 +232,7 @@ Cleans and formats the question part of a flashcard. Applies technical term form
 2. Perform any additional necessary transformations
 
 ```yaml
-component_id: _clean_question
+component_id: parser:_clean_question
 type: function
 file: flashcards_app/parser.py
 line_start: 31
@@ -251,7 +251,7 @@ Cleans and formats the answer part of a flashcard. Applies technical term format
 2. Perform any additional necessary transformations
 
 ```yaml
-component_id: _clean_answer
+component_id: parser:_clean_answer
 type: function
 file: flashcards_app/parser.py
 line_start: 41
@@ -263,7 +263,7 @@ used_in: ["parser:deck_parser"]
 ---
 
 
-### [`format_technical_terms()`](./flashcards_app/parser.py#def&nbspsformat_technical_terms)
+### [`format_technical_terms()`](./flashcards_app/parser.py#def&nbsps;format_technical_terms)
 Wrap code-like terms in backticks. Identifies and wraps snake_case and function calls.
 
 **Algorithm**:
@@ -280,7 +280,7 @@ line_start: 23
 line_end: 29
 tags: [formatting, technical_terms, markdown]
 dependencies: []
-used_in: [_clean_answer, _clean_question]
+used_in: ["parser:_clean_answer", "parser:_clean_question" ]
 ```
 ---
 
@@ -301,7 +301,7 @@ file: flashcards_app/parser.py
 line_start: 81
 line_end: 95
 tags: [loading, deck, filtering]
-dependencies: ["flashcard:core", "parser:deck_parser"]
+dependencies: ["models:flashcard", "parser:deck_parser"]
 used_in: ["app:update_card"]
 ```
 ---
@@ -345,7 +345,7 @@ file: app.py
 line_start: 414
 line_end: 466
 tags: [deck, control, interaction]
-dependencies: ["app:deck_filter_options", available_decks]
+dependencies: ["app:deck_filter_options", "app:available_decks"]
 used_in: ["app:update_card"]
 ```
 ---
@@ -390,7 +390,7 @@ file: flashcards_app/state.py
 line_start: 9
 line_end: 23
 tags: [positions, geometry, persistence]
-dependencies: ["card_position:3d"]
+dependencies: ["models:card_position"]
 used_in: []
 ```
 ---
@@ -411,7 +411,7 @@ file: flashcards_app/state.py
 line_start: 33
 line_end: 50
 tags: [progress, persistence]
-dependencies: ["card_progress:tracking"]
+dependencies: ["models:card_progress"]
 used_in: []
 ```
 ---
@@ -432,7 +432,7 @@ file: flashcards_app/state.py
 line_start: 53
 line_end: 69
 tags: [groups, persistence]
-dependencies: ["card_group:organizer"]
+dependencies: ["models:card_group"]
 used_in: []
 ```
 ---
@@ -453,7 +453,7 @@ file: flashcards_app/state.py
 line_start: 72
 line_end: 88
 tags: [links, persistence]
-dependencies: ["card_link:connection"]
+dependencies: ["models:card_link"]
 used_in: []
 ```
 ---
@@ -475,7 +475,7 @@ file: flashcards_app/state.py
 line_start: 107
 line_end: 128
 tags: [persistence, state, json]
-dependencies: ["card_group:organizer", "card_link:connection", "card_position:3d", "card_progress:tracking"]
+dependencies: ["models:card_group", "models:card_link", "models:card_position", "models:card_progress"]
 used_in: ["app:update_card"]
 ```
 ---
@@ -496,7 +496,7 @@ file: app.py
 line_start: 608
 line_end: 866
 tags: [card, update, state]
-dependencies: ["app:adjacent_card", "app:card_panel", "app:choose_random_card", "app:connection_control", "app:deck_control", "app:deck_filter_options", "app:difficulty_control", "app:group_control", "app:make_figure", "app:position_control", available_decks, "card_group:organizer", "card_link:connection", "geometry:sphere_positions", "parser:load_decks", refresh_deck_state, "state:save_state", visible_cards]
+dependencies: ["app:adjacent_card", "app:card_panel", "app:choose_random_card", "app:connection_control", "app:deck_control", "app:deck_filter_options", "app:difficulty_control", "app:group_control", "app:make_figure", "app:position_control", available_decks, "models:card_group", "models:card_link", "geometry:sphere_positions", "parser:load_decks", refresh_deck_state, "state:save_state", visible_cards]
 used_in: []
 ```
 ---
@@ -522,7 +522,7 @@ file: app.py
 line_start: 287
 line_end: 313
 tags: [difficulty, control, interaction]
-dependencies: ["flashcard:core"]
+dependencies: ["models:flashcard"]
 used_in: ["app:update_card"]
 ```
 ---
@@ -543,7 +543,7 @@ file: app.py
 line_start: 316
 line_end: 346
 tags: [position, control, interaction]
-dependencies: ["flashcard:core"]
+dependencies: ["models:flashcard"]
 used_in: ["app:update_card"]
 ```
 ---
@@ -564,7 +564,7 @@ file: app.py
 line_start: 349
 line_end: 411
 tags: [group, control, interaction]
-dependencies: ["flashcard:core"]
+dependencies: ["models:flashcard"]
 used_in: ["app:update_card"]
 ```
 ---
@@ -585,7 +585,7 @@ file: app.py
 line_start: 469
 line_end: 505
 tags: [connection, control, interaction]
-dependencies: ["flashcard:core"]
+dependencies: ["models:flashcard"]
 used_in: ["app:update_card"]
 ```
 ---
@@ -613,8 +613,8 @@ file: flashcards_app/geometry.py
 line_start: 7
 line_end: 32
 tags: [geometry, 3d, random]
-dependencies: ["card_position:3d"]
-used_in: ["app:update_card", refresh_deck_state]
+dependencies: ["models:card_position"]
+used_in: ["app:update_card", "app:refresh_deck_state"]
 ```
 ---
 
@@ -642,7 +642,7 @@ file: app.py
 line_start: 149
 line_end: 262
 tags: [visualization, 3d, plotly]
-dependencies: ["app:progress_color", "flashcard:core", group_color]
+dependencies: ["app:progress_color", "models:flashcard", "app:group_color"]
 used_in: ["app:update_card"]
 ```
 ---
@@ -665,7 +665,7 @@ file: app.py
 line_start: 105
 line_end: 118
 tags: [color, progress, visualization]
-dependencies: [interpolate_color]
+dependencies: ["app:interpolate_color"]
 used_in: ["app:make_figure"]
 ```
 ---
@@ -705,7 +705,7 @@ file: app.py
 line_start: 265
 line_end: 282
 tags: [ui, panel, card]
-dependencies: ["flashcard:core"]
+dependencies: ["models:flashcard"]
 used_in: ["app:update_card"]
 ```
 ---
@@ -728,7 +728,7 @@ file: app.py
 line_start: 129
 line_end: 136
 tags: [advanced, random, selection]
-dependencies: ["card_progress:tracking", "flashcard:core"]
+dependencies: ["models:card_progress", "models:flashcard"]
 used_in: ["app:update_card"]
 ```
 ---
@@ -749,7 +749,7 @@ file: app.py
 line_start: 139
 line_end: 145
 tags: [advanced, navigation, keyboard]
-dependencies: ["flashcard:core"]
+dependencies: ["models:flashcard"]
 used_in: ["app:update_card"]
 ```
 ---
@@ -762,17 +762,17 @@ Refresh the state of the deck, ensuring all card positions and progress are up-t
 **Algorithm**:
 1. Iterate through all cards in the deck
 2. Update each card's position using `geometry:sphere_positions`
-3. Refresh progress for each card using `card_progress:tracking`
+3. Refresh progress for each card using `models:card_progress`
 4. Ensure deck state consistency
 
 ```yaml
-component_id: refresh_deck_state
+component_id: app:refresh_deck_state
 type: function
 file: app.py
 line_start: 47
 line_end: 67
 tags: []
-dependencies: ["card_progress:tracking", "geometry:sphere_positions"]
+dependencies: ["models:card_progress", "geometry:sphere_positions"]
 used_in: ["app:update_card"]
 ```
 ---
@@ -786,13 +786,13 @@ Get the list of currently visible cards in the deck. This function helps in dete
 3. Return the filtered list of visible cards
 
 ```yaml
-component_id: visible_cards
+component_id: app:visible_cards
 type: function
 file: app.py
 line_start: 70
 line_end: 76
 tags: []
-dependencies: ["flashcard:core"]
+dependencies: ["models:flashcard"]
 used_in: ["app:update_card"]
 ```
 ---
@@ -806,13 +806,13 @@ Interpolate between two colors based on a given ratio. This function generates g
 3. Return the resulting color
 
 ```yaml
-component_id: interpolate_color
+component_id: app:interpolate_color
 type: function
 file: app.py
 line_start: 95
 line_end: 103
 tags: []
-dependencies: [hex_to_rgb, rgb_to_hex]
+dependencies: ["app:hex_to_rgb", "app:rgb_to_hex"]
 used_in: ["app:progress_color"]
 ```
 ---
@@ -826,7 +826,7 @@ Assign a color to a group based on the group identifier. This function is used t
 3. Return the assigned color
 
 ```yaml
-component_id: group_color
+component_id: app:group_color
 type: function
 file: app.py
 line_start: 121
@@ -847,14 +847,14 @@ Convert a hexadecimal color string to an RGB tuple. This function is used to fac
 4. Return the RGB tuple
 
 ```yaml
-component_id: hex_to_rgb
+component_id: app:hex_to_rgb
 type: function
 file: app.py
 line_start: 86
 line_end: 88
 tags: []
 dependencies: []
-used_in: [interpolate_color]
+used_in: ["app:interpolate_color"]
 ```
 ---
 
@@ -868,14 +868,14 @@ Convert an RGB tuple to a hexadecimal color string. This function is used to fac
 4. Return the hexadecimal color string
 
 ```yaml
-component_id: rgb_to_hex
+component_id: app:rgb_to_hex
 type: function
 file: app.py
 line_start: 91
 line_end: 92
 tags: []
 dependencies: []
-used_in: [interpolate_color]
+used_in: ["app:interpolate_color"]
 ```
 ---
 
@@ -883,7 +883,7 @@ used_in: [interpolate_color]
 ## Quality Assurance Markers
 
 ### Index Validation
-**Trigger**: on explicit `validate_index` command
+**Trigger**: on explicit `validate index` command
 **Procedure**:
 1. Cross-reference all `component_id` values with actual code
 2. Verify all `file` paths exist
@@ -899,13 +899,13 @@ used_in: [interpolate_color]
 - `search: file=app.py`
 - `search: dependencies=geometry:sphere_positions`
 - `search: used_in=app:update_card`
-- `locate: component_id=flashcard:core`
+- `locate: component_id=models:flashcard`
 - `locate: file=app.py`
 - `locate: component_id=refresh_deck_state`
 
 ### Navigation Shortcuts
-- Jump to: `component_id:flashcard:core` $\rightarrow$ `flashcards_app/models.py:4`
-- Find used in: `component_id:flashcard:core` $\rightarrow$ all callback outputs
+- Jump to: `component_id:models:flashcard` $\rightarrow$ `flashcards_app/models.py:4`
+- Find used in: `component_id:models:flashcard` $\rightarrow$ all callback outputs
 - Check dependencies: `component_id:state:save_state` $\rightarrow$ geometry, models, Path
 
 ---
