@@ -667,6 +667,7 @@ app.layout = html.Main(
     State("deck-dialog-state", "data"),
     State("deck-dialog-select", "value"),
 )
+# this should be a separate file
 def update_card(
     click_data, panel_clicks, random_clicks, deck, difficulty, save_position_clicks, new_group_clicks,
     create_link_clicks, disconnect_link_clicks, add_group_clicks, remove_group_clicks,

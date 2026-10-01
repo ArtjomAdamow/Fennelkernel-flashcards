@@ -22,7 +22,6 @@ class CardProgress:
     card_id: str
     read: bool = False
     difficulty: int = 1
-
     def __post_init__(self) -> None:
         object.__setattr__(self, "difficulty", max(1, min(100, int(self.difficulty))))
 

@@ -3,8 +3,42 @@
 ## Overview
 This index provides structured access to all application components with human-readable descriptions and anchor links as well as machine-readable metadata for efficient agent navigation.
 
-## YAML schema key representation:
+<Details markdown="1">
+<Summary>
+<font color="green">User Guide for update_index.py script</font>
+</Summary>
+
+The project has a script `update_index.py` to automate index maintenance.
+
+If this is your first time, go for
+
+```bash
+python update_index.py INDEX.md --check --dry-run
+```
+
+Usage:
+```bash
+    python update_index.py INDEX.md              # update in place
+    python update_index.py INDEX.md --dry-run    # only report
+    python update_index.py INDEX.md --check      # exit 1 if index is stale (CI)
+    python update_index.py INDEX.md --root .     # base dir for `file:` paths
+    python update_index.py INDEX.md --fields lines     # only line numbers
+    python update_index.py INDEX.md --new-depth 2      # unindexed: 2 levels deep
+    python update_index.py INDEX.md --new-depth 0      # no unindexed section
+    python update_index.py INDEX.md --scan indexed     # look only in indexed files
+    python update_index.py INDEX.md --ignore helper    # never list this name
+    python update_index.py INDEX.md --exclude-dir tests
+
+Exit codes: 0 ok, 1 stale (--check), 2 unresolved entries, 3 write failed.
+```
+</Details>
+
+<Details markdown="1">
+<Summary>
+YAML schema key representation
+</Summary>
 AI coding assistants use these keys to efficiently locate and reference code definitions without searching through files manually. This saves credits and improves overall development efficiency.
+
 - component_id: The unique identifier or machine name for the specific building block or module.
 - type: Defines the functional category of the resource (e.g., frontend, API, database, script). (e.g., dataclass, function, class)
 - file: The relative or absolute path pointing to the underlying physical source file.
@@ -14,16 +48,41 @@ AI coding assistants use these keys to efficiently locate and reference code def
 - dependencies: A list of upstream requirements or prerequisites needed for this component to compile or run.
 - used_in: A declaration of downstream architecture or parent environments where this component is active.
 
+The line numbers are 1-based and inclusive.
 
-## Agent Maintenance Trigger
-**Agent instruction (when this index is in context):** If a task adds, changes, renames, or removes a project component, watch for explicit "validate index" prompt, then update this index. Follow the **Index Validation** procedure below and fix any reported issues before finishing.
+</Details>
+
+<Details markdown="1">
+<Summary>
+<font color="red">Agent Maintenance Trigger</font>
+</Summary>
+
+**Agent instruction (when this index is in context, never ignore this, if you decided to ignore it, write this decision inside your response):** Never modify this index file. If a task adds, changes, renames, or removes a project component, watch for explicit "validate index" prompt. If given, then read the **Index Validation** procedure below, do not write anything into this file or into the `update_index.py` script. Suggest, where you think it would be an appropriate section, to add a new entry into. Only suggest the **location and tags**, nothing else. Report any issues before finishing. If no "validate index" prompt is given, respond with a question whether the index needs validation.
+
+```yaml
+component_id: this block can be ignored for update_index.py
+file: index line convention
+index_conventions:
+  line_numbers: 1-based, inclusive, blank lines counted
+  line_start: first decorator line (e.g. @dataclass) or def/class line
+  line_end: last line of the body
+```
+
+</Details>
 
 ---
 
+
 ## Core Data Models
 
-### [`Flashcard:`](./flashcards_app/models.py#Flashcard:)
+### [`Flashcard:`](./flashcards_app/models.py#Class&nbsp;Flashcard:)
 Core flashcard entity with question and answer. Represents individual learning cards with unique ID, deck assignment, question text, and answer text.
+
+**Fields**:
+- `id` (str): Unique identifier (format: "deck_name:sequence_number")
+- `deck` (str): Deck name this card belongs to
+- `question` (str): The prompt/question displayed
+- `answer` (str): The answer/reveal text
 
 ```yaml
 component_id: flashcard:core
@@ -33,33 +92,12 @@ line_start: 4
 line_end: 9
 tags: [card, entity, core]
 dependencies: []
-used_in: [app, parser, state, tests]
+used_in: ["app:adjacent_card", "app:card_panel", "app:choose_random_card", "app:connection_control", "app:difficulty_control", "app:group_control", "app:make_figure", "app:position_control", "parser:deck_parser", "parser:load_decks", visible_cards]
 ```
-
-**Fields**:
-- `id` (str): Unique identifier (format: "deck_name:sequence_number")
-- `deck` (str): Deck name this card belongs to
-- `question` (str): The prompt/question displayed
-- `answer` (str): The answer/reveal text
-
-**Related Components**:
-- Used by: `app.py` callbacks, `parser.py` parse_deck(), `state.py` load_progress()
-- Depends on: None (base component)
 ---
 
-### [`CardPosition:`](./flashcards_app/models.py#CardPosition:)
+### [`CardPosition:`](./flashcards_app/models.py#Class&nbspCardPosition:)
 3D coordinates for card placement on sphere. Stores x, y, z coordinates (-1 to 1 range) with status tracking and related card IDs.
-
-```yaml
-component_id: card_position:3d
-type: dataclass
-file: flashcards_app/models.py
-line_start: 12
-line_end: 19
-tags: [position, geometry, 3d]
-dependencies: [flashcard:core]
-used_in: [app, geometry, state]
-```
 
 **Fields**:
 - `card_id` (str): Reference to flashcard ID
@@ -67,48 +105,40 @@ used_in: [app, geometry, state]
 - `status` (str): Position status ("new", "edited", "saved")
 - `related_ids` (List[str]): IDs of related cards
 
-**Related Components**:
-- Used by: `app.py` make_figure(), `geometry.py` sphere_positions()
-- Depends on: flashcard:core
----
-
-### [`CardProgress:`](./flashcards_app/models.py#CardProgress:)
-Learning progress tracking. Tracks read status and difficulty level (1-100) for each card.
-
 ```yaml
-component_id: card_progress:tracking
+component_id: card_position:3d
 type: dataclass
 file: flashcards_app/models.py
-line_start: 22
-line_end: 29
-tags: [progress, learning, difficulty]
-dependencies: [flashcard:core]
-used_in: [app, state]
+line_start: 11
+line_end: 18
+tags: [position, geometry, 3d]
+dependencies: []
+used_in: ["geometry:sphere_positions", "state:load_positions", "state:save_state"]
 ```
+---
+
+### [`CardProgress:`](./flashcards_app/models.py#Class&nbspCardProgress:)
+Learning progress tracking. Tracks read status and difficulty level (1-100) for each card.
 
 **Fields**:
 - `card_id` (str): Reference to flashcard ID
 - `read` (bool): Whether card has been viewed/flipped
 - `difficulty` (int): Progress level (1=review to 100=learned)
 
-**Related Components**:
-- Used by: `app.py` progress_color(), difficulty_control()
-- Depends on: flashcard:core
----
-
-### [`CardGroup:`](./flashcards_app/models.py#CardGroup:)
-Grouping mechanism for organizing flashcards. Organizes cards into visual groups with custom names and colors.
-
 ```yaml
-component_id: card_group:organizer
+component_id: card_progress:tracking
 type: dataclass
 file: flashcards_app/models.py
-line_start: 32
-line_end: 38
-tags: [group, organization, color]
-dependencies: [flashcard:core]
-used_in: [app, state]
+line_start: 20
+line_end: 26
+tags: [progress, learning, difficulty]
+dependencies: []
+used_in: ["app:choose_random_card", refresh_deck_state, "state:load_progress", "state:save_state"]
 ```
+---
+
+### [`CardGroup:`](./flashcards_app/models.py#Class&nbspCardGroup:)
+Grouping mechanism for organizing flashcards. Organizes cards into visual groups with custom names and colors.
 
 **Fields**:
 - `id` (str): Unique group identifier
@@ -116,24 +146,20 @@ used_in: [app, state]
 - `color` (str): Hex color code for visual distinction
 - `card_ids` (List[str]): IDs of cards belonging to this group
 
-**Related Components**:
-- Used by: `app.py` group_control(), deck_filter_options()
-- Depends on: flashcard:core
----
-
-### [`CardLink:`](./flashcards_app/models.py#CardLink:)
-Connection/link between two flashcards. Connects related cards, optionally belonging to a group.
-
 ```yaml
-component_id: card_link:connection
+component_id: card_group:organizer
 type: dataclass
 file: flashcards_app/models.py
-line_start: 40
-line_end: 44
-tags: [connection, link, relationship]
-dependencies: [flashcard:core]
-used_in: [app, state]
+line_start: 28
+line_end: 33
+tags: [group, organization, color]
+dependencies: []
+used_in: ["app:update_card", "state:load_groups", "state:save_state"]
 ```
+---
+
+### [`CardLink:`](./flashcards_app/models.py#Class&nbspCardLink:)
+Connection/link between two flashcards. Connects related cards, optionally belonging to a group.
 
 **Fields**:
 - `id` (str): Unique link identifier
@@ -141,30 +167,42 @@ used_in: [app, state]
 - `target_id` (str): ID of target card
 - `group_id` (Optional[str]): Optional group this link belongs to
 
-**Related Components**:
-- Used by: `app.py` connection_control(), make_figure() (draws lines)
-- Depends on: flashcard:core
+```yaml
+component_id: card_link:connection
+type: dataclass
+file: flashcards_app/models.py
+line_start: 35
+line_end: 39
+tags: [connection, link, relationship]
+dependencies: []
+used_in: ["app:update_card", "state:load_links", "state:save_state"]
+```
 ---
 
 ## Parsing System
 
-### [`parse_deck()`](./flashcards_app/parser.py#parse_deck)
-Extract flashcards from markdown deck files. Parses `<details>`/`<summary>` format markdown to structured Flashcard objects.
+### [`available_decks()`](./app.py#def&nbspavailable_decks)
+Select available decks from the system. Returns a list of deck names. Ignores empty or hidden decks.
+
+**Algorithm**:
+1. Scan the system for available decks
+2. Filter out empty or hidden decks
+3. Return the list of available deck names
 
 ```yaml
-component_id: parser:deck_parser
+component_id: available_decks
 type: function
-file: flashcards_app/parser.py
-line_start: 35
-line_end: 59
-tags: [parsing, markdown, deck]
-dependencies: [flashcard:core, models]
-used_in: [app, tests]
+file: app.py
+line_start: 24
+line_end: 29
+tags: []
+dependencies: []
+used_in: ["app:deck_control", "app:update_card"]
 ```
+---
 
-**Parameters**:
-- `path` (Path): Path to markdown deck file
-- `Returns` (List[Flashcard]): List of parsed flashcards
+### [`parse_deck()`](./flashcards_app/parser.py#def&nbspparse_deck)
+Extract flashcards from markdown deck files. Parses `<details>`/`<summary>` format markdown to structured Flashcard objects.
 
 **Algorithm**:
 1. Read file content
@@ -174,29 +212,59 @@ used_in: [app, tests]
 5. Clean and format both sections
 6. Create Flashcard objects with sequential IDs
 
-**Regex Patterns**:
-- `_DETAILS_PATTERN`: Matches `<details>...</details>` blocks
-- `_SUMMARY_PATTERN`: Matches `<summary>...</summary>` within details
-- `_PLACEHOLDER_PATTERN`: Filters placeholder content like `[...]: `
-
-**Related Components**:
-- Used by: `app.py` AVAILABLE_DECKS, ENABLED_DECKS
-- Depends on: flashcard:core, format_technical_terms()
----
-
-### [`format_technical_terms()`](./flashcards_app/parser.py#format_technical_terms)
-Wrap code-like terms in backticks. Identifies and wraps snake_case and function calls.
-
 ```yaml
-component_id: parser:term_formatting
+component_id: parser:deck_parser
 type: function
 file: flashcards_app/parser.py
-line_start: 15
-line_end: 20
-tags: [formatting, technical_terms, markdown]
-dependencies: []
-used_in: [parser]
+line_start: 47
+line_end: 79
+tags: [parsing, markdown, deck]
+dependencies: [_clean_answer, _clean_question, "flashcard:core"]
+used_in: ["parser:load_decks"]
 ```
+---
+
+### [`_clean_question()`](./flashcards_app/parser.py#def&nbsp_clean_question)
+Cleans and formats the question part of a flashcard. Applies technical term formatting and other necessary transformations.
+
+**Algorithm**:
+1. Apply technical term formatting to the question text
+2. Perform any additional necessary transformations
+
+```yaml
+component_id: _clean_question
+type: function
+file: flashcards_app/parser.py
+line_start: 31
+line_end: 39
+tags: []
+dependencies: ["parser:term_formatting"]
+used_in: ["parser:deck_parser"]
+```
+---
+
+### [`_clean_answer()`](./flashcards_app/parser.py#def&nbsp_clean_answer)
+Cleans and formats the answer part of a flashcard. Applies technical term formatting and other necessary transformations.
+
+**Algorithm**:
+1. Apply technical term formatting to the answer text
+2. Perform any additional necessary transformations
+
+```yaml
+component_id: _clean_answer
+type: function
+file: flashcards_app/parser.py
+line_start: 41
+line_end: 45
+tags: []
+dependencies: ["parser:term_formatting"]
+used_in: ["parser:deck_parser"]
+```
+---
+
+
+### [`format_technical_terms()`](./flashcards_app/parser.py#def&nbspsformat_technical_terms)
+Wrap code-like terms in backticks. Identifies and wraps snake_case and function calls.
 
 **Algorithm**:
 1. Split on existing backtick-wrapped code
@@ -204,31 +272,20 @@ used_in: [parser]
 3. Apply _CODELIKE_PATTERN to wrap terms
 4. Join parts back together
 
-**Code Pattern**: `(?<![`\w])(?:[A-Za-z_][A-Za-z0-9_]*\(\)|[A-Za-z][A-Za-z0-9]*_[A-Za-z0-9_]+)(?![`\w])`
-
-**Related Components**:
-- Used by: `_clean_question()`, `_clean_answer()`
-- Depends on: None
----
-
-### [`load_decks()`](./flashcards_app/parser.py#load_decks)
-Load flashcards from folder with optional filtering. Scans directory for .md files and parses decks.
-
 ```yaml
-component_id: parser:load_decks
+component_id: parser:term_formatting
 type: function
 file: flashcards_app/parser.py
-line_start: 62
-line_end: 70
-tags: [loading, deck, filtering]
-dependencies: [parser:deck_parser, Path]
-used_in: [app, state]
+line_start: 23
+line_end: 29
+tags: [formatting, technical_terms, markdown]
+dependencies: []
+used_in: [_clean_answer, _clean_question]
 ```
+---
 
-**Parameters**:
-- `folder` (Path): Directory containing markdown files
-- `deck_names` (Optional[List[str]]): Filter specific decks
-- `Returns` (List[FlashcardDeck]): List of parsed flashcard decks
+### [`load_decks()`](./flashcards_app/parser.py#def&nbspload_decks)
+Load flashcards from folder with optional filtering. Scans directory for .md files and parses decks.
 
 **Algorithm**:
 1. Get all .md files sorted alphabetically
@@ -237,117 +294,88 @@ used_in: [app, state]
 4. Extend cards list
 5. Return the final list of FlashcardDeck objects
 
-**Related Components**:
-- Used by: `app.py` CARDS loading, `state.py` load_enabled_decks()
-- Depends on: parser:deck_parser
+```yaml
+component_id: parser:load_decks
+type: function
+file: flashcards_app/parser.py
+line_start: 81
+line_end: 95
+tags: [loading, deck, filtering]
+dependencies: ["flashcard:core", "parser:deck_parser"]
+used_in: ["app:update_card"]
+```
 ---
 
 
 ## Deck Management
 
-### [`deck_filter_options()`](./app.py#deck_filter_options)
+### [`deck_filter_options()`](./app.py#def&nbspdeck_filter_options)
 Get deck filter dropdown options. Returns options for None, All, and individual decks.
+
+**Algorithm**:
+1. Prepare options for "None" and "All decks"
+2. Retrieve and sort enabled decks
+3. Generate option entries for each enabled deck
+4. Return the complete list of options
 
 ```yaml
 component_id: app:deck_filter_options
 type: function
 file: app.py
-line_start: 78
-line_end: 82
+line_start: 79
+line_end: 83
 tags: [ui, dropdown, deck]
-dependencies: [app:AVAILABLE_DECKS, ENABLED_DECKS]
-used_in: [app.callback]
+dependencies: []
+used_in: ["app:deck_control", "app:update_card"]
 ```
-
-**Returns**:
-```python
-[
-    {"label": "None", "value": NONE_DECK},
-    {"label": "All decks", "value": "all"},
-    ...deck options from sorted(ENABLED_DECKS)
-]
-```
-
-**Related Components**:
-- Used by: app.callback deck-filter trigger
-- Depends on: AVAILABLE_DECKS, ENABLED_DECKS
 ---
 
-### [`deck_control()`](./app.py#deck_control)
+### [`deck_control()`](./app.py#def&nbspdeck_control)
 Manage deck-based card visibility and interactions. Provides controls for filtering and interacting with card decks.
+
+**Algorithm**:
+1. Render deck filter dropdown
+2. Handle user interactions for deck selection
+3. Update card visibility based on selected deck
 
 ```yaml
 component_id: app:deck_control
 type: function
 file: app.py
-line_start: 128
-line_end: 136
+line_start: 414
+line_end: 466
 tags: [deck, control, interaction]
-dependencies: [models:CardDeck]
-used_in: [app, make_figure]
+dependencies: ["app:deck_filter_options", available_decks]
+used_in: ["app:update_card"]
 ```
-
-**Parameters**:
-- `deck` (str): Deck value to control
-
-**Returns**:
-- `None`
-
-**Related Components**:
-- Used by: make_figure() card rendering, card_panel()
-- Depends on: models:CardDeck
 ---
 
 
 ## State Management
 All state components are persisted in [data/positions.json](./data/positions.json). The location is defined as [STATE_PATH](./app.py#STATE_PATH).
 
-### [load_enabled_decks()](./flashcards_app/state.py#load_enabled_decks)
+### [`load_enabled_decks()`](./flashcards_app/state.py#def&nbspload_enabled_decks)
 Load the list of active flashcard decks. Reads saved preferences from JSON and validates them against available markdown files on disk.
-
-```yaml
-component_id: state:load_enabled_decks
-type: function
-file: flashcards_app/state.py
-line_start: 147
-line_end: 177
-tags: [loading, deck, persistence]
-dependencies: [Path]
-used_in: [app]
-```
-
-**Parameters**:
-- `path` (Path): Path to the state JSON file
-- `available_decks` (List[str]): List of all decks found on disk
-- `Returns` (List[str]): The subset (list) of decks to be enabled
 
 **Algorithm**:
 1. Check if JSON file exists
 2. If not, or if no decks saved: return all `available_decks`
 3. If yes: filter saved decks to ensure they still exist in `available_decks`
 
-**Related Components**: 
-- Used by: `app.py` ENABLED_DECKS initialization
-- Depends on: None
----
-
-### [`load_positions()`](./flashcards_app/state.py#load_positions)
-Load or generate sphere positions. Returns positions from JSON or generates deterministic random positions.
-
 ```yaml
-component_id: state:load_positions
+component_id: state:load_enabled_decks
 type: function
 file: flashcards_app/state.py
-line_start: 8
-line_end: 17
-tags: [positions, geometry, persistence]
-dependencies: [geometry:sphere_positions, Path]
-used_in: [app]
+line_start: 91
+line_end: 104
+tags: [loading, deck, persistence]
+dependencies: []
+used_in: []
 ```
+---
 
-**Parameters**:
-- `path` (Path): Path to the state JSON file
-- `seed` (int): Reproducibility seed (default: 42)
+### [`load_positions()`](./flashcards_app/state.py#def&nbspload_positions)
+Load or generate sphere positions. Returns positions from JSON or generates deterministic random positions.
 
 **Algorithm**:
 1. Check if JSON file exists
@@ -355,32 +383,20 @@ used_in: [app]
 3. If yes: load and merge with generated positions
 4. Return list of CardPosition objects
 
-**Returns**:
-- List[CardPosition]: List of positions for each card
-
-**Related Components**:
-- Used by: `app.py` POSITIONS initialization
-- Depends on: geometry:sphere_positions
----
-
-### [load_progress()](./flashcards_app/state.py#load_progress)
-Load or create card progress. Hydrates JSON data into CardProgress objects or initializes defaults.
-
 ```yaml
-component_id: state:load_progress
+component_id: state:load_positions
 type: function
 file: flashcards_app/state.py
-line_start: 33
-line_end: 62
-tags: [progress, persistence]
-dependencies: [models:CardProgress, Path]
-used_in: [app, app:progress_color]
+line_start: 9
+line_end: 23
+tags: [positions, geometry, persistence]
+dependencies: ["card_position:3d"]
+used_in: []
 ```
+---
 
-**Parameters**:
-- `path` (Path): Path to the state JSON file
-- `card_ids` (List[str]): List of all current card IDs
-- `Returns` (Dict[str, CardProgress]): Mapping of card IDs to their progress
+### [`load_progress()`](./flashcards_app/state.py#def&nbspload_progress)
+Load or create card progress. Hydrates JSON data into CardProgress objects or initializes defaults.
 
 **Algorithm**:
 1. Check if JSON file exists
@@ -388,29 +404,20 @@ used_in: [app, app:progress_color]
 3. If yes: load JSON and map card_ids to CardProgress objects
 4. Fill gaps for missing cards with defaults
 
-**Related Components**: 
-- Used by: `app.py` PROGRESS initialization, `app:progress_color`
-- Depends on: models:CardProgress
----
-
-### [load_groups()](./flashcards_app/state.py#load_groups)
-Load card groups from JSON. Filters out cards that are no longer present in the current deck.
-
 ```yaml
-component_id: state:load_groups
+component_id: state:load_progress
 type: function
 file: flashcards_app/state.py
-line_start: 65
-line_end: 91
-tags: [groups, persistence]
-dependencies: [models:CardGroup, Path]
-used_in: [app, app:make_figure]
+line_start: 33
+line_end: 50
+tags: [progress, persistence]
+dependencies: ["card_progress:tracking"]
+used_in: []
 ```
+---
 
-**Parameters**:
-- `path` (Path): Path to the state JSON file
-- `card_ids` (List[str]): List of all current card IDs
-- `Returns` (List[CardGroup]): List of card groups
+### [`load_groups()`](./flashcards_app/state.py#def&nbspload_groups)
+Load card groups from JSON. Filters out cards that are no longer present in the current deck.
 
 **Algorithm**:
 1. Check if JSON file exists
@@ -418,53 +425,41 @@ used_in: [app, app:make_figure]
 3. Filter card_ids within each group against current valid IDs
 4. Create CardGroup objects
 
-**Related Components**: 
-- Used by: `app.py` GROUPS initialization, `app:make_figure`
-- Depends on: models:CardGroup
----
-
-### [load_links()](./flashcards_app/state.py#load_links)
-Load card connections from JSON. Ensures both source and target cards still exist.
-
 ```yaml
-component_id: state:load_links
+component_id: state:load_groups
 type: function
 file: flashcards_app/state.py
-line_start: 94
-line_end: 120
-tags: [links, persistence]
-dependencies: [models:CardLink, Path]
-used_in: [app, app:make_figure]
+line_start: 53
+line_end: 69
+tags: [groups, persistence]
+dependencies: ["card_group:organizer"]
+used_in: []
 ```
-**Parameters**:
-- `path` (Path): Path to the state JSON file
-- `card_ids` (List[str]): List of all current card IDs
-- `Returns` (List[CardLink]): List of card links
+---
+
+### [`load_links()`](./flashcards_app/state.py#def&nbspload_links)
+Load card connections from JSON. Ensures both source and target cards still exist.
 
 **Algorithm**:
 1. Check if JSON file exists
 2. If yes: iterate through saved links
 3. Validate that both source_id and target_id are in current valid IDs
-4. Create CardLink objects
-
-**Related Components**: 
-- Used by: `app.py` LINKS initialization, `app:make_figure`
-- Depends on: models:CardLink
----
-
-### [`save_state()`](./flashcards_app/state.py#save_state)
-Save all application state to JSON. Persists positions, progress, groups, links, enabled decks.
+4. Create CardLink objects  
 
 ```yaml
-component_id: state:save_state
+component_id: state:load_links
 type: function
 file: flashcards_app/state.py
-line_start: 88
-line_end: 106
-tags: [persistence, state, json]
-dependencies: [dataclasses, Path]
-used_in: [app]
+line_start: 72
+line_end: 88
+tags: [links, persistence]
+dependencies: ["card_link:connection"]
+used_in: []
 ```
+---
+
+### [`save_state()`](./flashcards_app/state.py#def&nbspsave_state)
+Save all application state to JSON. Persists positions, progress, groups, links, enabled decks.
 
 **Algorithm**:
 1. Create parent directory if needed
@@ -473,45 +468,50 @@ used_in: [app]
 4. Include enabled_decks if provided
 5. Write JSON with indent=2
 
-**Returns**:
-- None
-
-**Related Components**:
-- Used by: `app.py` __main__ callback, all callback returns
-- Depends on: all state component loaders
+```yaml
+component_id: state:save_state
+type: function
+file: flashcards_app/state.py
+line_start: 107
+line_end: 128
+tags: [persistence, state, json]
+dependencies: ["card_group:organizer", "card_link:connection", "card_position:3d", "card_progress:tracking"]
+used_in: ["app:update_card"]
+```
 ---
 
-### [`update_card()`](./app.py#update_card)
+### [`update_card()`](./app.py#def&nbspupdate_card)
 Update card information and state. This function handles modifications to card attributes and ensures the application state remains consistent.
+
+**Algorithm**:
+1. Validate input card ID and attributes
+2. Update card attributes in the internal state
+3. Persist changes using `save_state()`
+4. Refresh relevant UI components to reflect updates
 
 ```yaml
 component_id: app:update_card
 type: function
 file: app.py
-line_start: 146
-line_end: 154
+line_start: 608
+line_end: 866
 tags: [card, update, state]
-dependencies: [models:Card]
-used_in: [app, make_figure]
+dependencies: ["app:adjacent_card", "app:card_panel", "app:choose_random_card", "app:connection_control", "app:deck_control", "app:deck_filter_options", "app:difficulty_control", "app:group_control", "app:make_figure", "app:position_control", available_decks, "card_group:organizer", "card_link:connection", "geometry:sphere_positions", "parser:load_decks", refresh_deck_state, "state:save_state", visible_cards]
+used_in: []
 ```
-
-**Parameters**:
-- `card_id` (str): ID of the card to update
-- `attributes` (dict): Dictionary of attributes to update
-
-**Returns**:
-- `None`
-
-**Related Components**:
-- Used by: make_figure() card rendering, card_panel()
-- Depends on: models:Card
 ---
 
 
 ## Control Utilities
 
-### [`difficulty_control()`](./app.py#difficulty_control)
+### [`difficulty_control()`](./app.py#def&nbspdifficulty_control)
 Manage difficulty-based card visibility and interactions. Provides controls for filtering and interacting with cards based on their difficulty level. AKA progress control.
+
+**Algorithm**:
+1. Filter difficulties to visible cards
+2. Separate selected vs regular difficulties
+3. Apply difficulty-based coloring
+4. Apply layout and styling as needed
 
 >Think about it: this sets the color_control, perhaps there is redundance?
 
@@ -519,97 +519,75 @@ Manage difficulty-based card visibility and interactions. Provides controls for 
 component_id: app:difficulty_control
 type: function
 file: app.py
-line_start: 100
-line_end: 104
+line_start: 287
+line_end: 313
 tags: [difficulty, control, interaction]
-dependencies: [models:CardDifficulty]
-used_in: [app, make_figure]
+dependencies: ["flashcard:core"]
+used_in: ["app:update_card"]
 ```
-
-**Parameters**:
-- `difficulty` (str): Difficulty value to control
-
-**Returns**:
-- `None`
-
-**Related Components**:
-- Used by: make_figure() card rendering, card_panel()
-- Depends on: models:CardDifficulty
 ---
 
-### [`position_control()`](./app.py#position_control)
+### [`position_control()`](./app.py#def&nbspposition_control)
 Manage position-based card visibility and interactions. Provides controls for filtering and interacting with card positions.
+
+**Algorithm**:
+1. Filter positions to visible cards
+2. Separate selected vs regular cards
+3. Apply position-based coloring
+4. Apply layout and styling as needed
 
 ```yaml
 component_id: app:position_control
 type: function
 file: app.py
-line_start: 110
-line_end: 118
+line_start: 316
+line_end: 346
 tags: [position, control, interaction]
-dependencies: [models:CardPosition]
-used_in: [app, make_figure]
+dependencies: ["flashcard:core"]
+used_in: ["app:update_card"]
 ```
-
-**Parameters**:
-- `position` (str): Position value to control
-
-**Returns**:
-- `None`
-
-**Related Components**:
-- Used by: make_figure() card rendering, card_panel()
-- Depends on: models:CardPosition
 ---
 
-### [`group_control()`](./app.py#group_control)
+### [`group_control()`](./app.py#def&nbspgroup_control)
 Manage group-based card visibility and interactions. Provides controls for filtering and interacting with card groups.
+
+**Algorithm**:
+1. Filter groups to visible cards
+2. Separate selected vs regular groups
+3. Apply group-based coloring
+4. Apply layout and styling as needed
 
 ```yaml
 component_id: app:group_control
 type: function
 file: app.py
-line_start: 119
-line_end: 127
+line_start: 349
+line_end: 411
 tags: [group, control, interaction]
-dependencies: [models:CardGroup]
-used_in: [app, make_figure]
+dependencies: ["flashcard:core"]
+used_in: ["app:update_card"]
 ```
-
-**Parameters**:
-- `group` (str): Group value to control
-
-**Returns**:
-- `None`
-
-**Related Components**:
-- Used by: make_figure() card rendering, card_panel()
-- Depends on: models:CardGroup
 ---
 
-### [`connection_control()`](./app.py#connection_control)
+### [`connection_control()`](./app.py#def&nbspconnection_control)
 Manage connection-based card visibility and interactions. Provides controls for filtering and interacting with card connections.
+
+**Algorithm**:
+1. Filter connections to visible cards
+2. Separate selected vs regular connections
+3. Add connection lines for LINKS
+4. Apply layout and styling as needed
 
 ```yaml
 component_id: app:connection_control
 type: function
 file: app.py
-line_start: 137
-line_end: 145
+line_start: 469
+line_end: 505
 tags: [connection, control, interaction]
-dependencies: [models:CardConnection]
-used_in: [app, make_figure]
+dependencies: ["flashcard:core"]
+used_in: ["app:update_card"]
 ```
-
-**Parameters**:
-- `connection` (str): Connection value to control
-
-**Returns**:
-- `None`
-
-**Related Components**:
-- Used by: make_figure() card rendering, card_panel()
-- Depends on: models:CardConnection
 ---
 
 
@@ -619,19 +597,8 @@ used_in: [app, make_figure]
 > Think about it: the interactive features are mostly agent coded and not really part of the project, but rather a (very) nice to have. They should be separated into their own file. Also the app should have a non-interactive mode. That way it can evolve without the need to update the interactive "frontend cosmetics". Once the non-interactive part has evolved and is stable, the frontend can be adapted in a heavy agent driven coding session.
 
 
-### [`sphere_positions()`](./flashcards_app/geometry.py#sphere_positions)
+### [`sphere_positions()`](./flashcards_app/geometry.py#def&nbspsphere_positions)
 Generate reproducible random points inside sphere. Creates uniform random distribution within unit sphere.
-
-```yaml
-component_id: geometry:sphere_positions
-type: function
-file: flashcards_app/geometry.py
-line_start: 6
-line_end: 28
-tags: [geometry, 3d, random]
-dependencies: [random, models:CardPosition]
-used_in: [state:load_positions]
-```
 
 **Algorithm**:
 1. Initialize Random with seed
@@ -639,33 +606,25 @@ used_in: [state:load_positions]
 3. Reject if distance_squared > 1 or == 0
 4. Scale by radius and create CardPosition
 
-**Parameters**:
-- `card_ids` (List[str]): Cards to position
-- `seed` (int): Reproducibility seed (default: 42)
-- `radius` (float): Sphere radius (default: 1.0)
-
-**Returns**:
-- List[CardPosition]: List of generated card positions within the sphere
-
-**Related Components**:
-- Used by: `state:load_positions()`, app.py refresh_deck_state()
-- Depends on: random.Random, models:CardPosition
-
+```yaml
+component_id: geometry:sphere_positions
+type: function
+file: flashcards_app/geometry.py
+line_start: 7
+line_end: 32
+tags: [geometry, 3d, random]
+dependencies: ["card_position:3d"]
+used_in: ["app:update_card", refresh_deck_state]
+```
 ---
 
-### [`make_figure()`](./app.py#make_figure)
-Create 3D Plotly figure showing cards on sphere. Renders interactive 3D visualization with progress coloring and connections.
-
-```yaml
-component_id: app:make_figure
-type: function
-file: app.py
-line_start: 147
-line_end: 254
-tags: [visualization, 3d, plotly]
-dependencies: [models, state, geometry]
-used_in: [app.callback]
-```
+### [`make_figure()`](./app.py#def&nbspmake_figure)
+Create 3D Plotly figure showing cards on sphere. Renders interactive 3D visualization.
+- Connection lines between linked cards
+- Progress color coding (unopened $\rightarrow$ review $\rightarrow$ developing $\rightarrow$ learned)
+- Group-based card coloring
+- Selected card highlight
+- Hover tooltips with questions
 
 **Algorithm**:
 1. Filter positions to visible cards
@@ -676,23 +635,28 @@ used_in: [app.callback]
 6. Configure layout with dark theme
 7. Apply camera if provided
 
-**Returns**:
-- Plotly Figure object representing the 3D card visualization
-
-**Visual Elements**:
-- Connection lines between linked cards
-- Progress color coding (unopened $\rightarrow$ review $\rightarrow$ developing $\rightarrow$ learned)
-- Group-based card coloring
-- Selected card highlight
-- Hover tooltips with questions
-
-**Related Components**:
-- Used by: `app.callback` Output("sphere", "figure")
-- Depends on: models, state, geometry, LINKS, PROGRESS, GROUPS
+```yaml
+component_id: app:make_figure
+type: function
+file: app.py
+line_start: 149
+line_end: 262
+tags: [visualization, 3d, plotly]
+dependencies: ["app:progress_color", "flashcard:core", group_color]
+used_in: ["app:update_card"]
+```
 ---
 
-### [`progress_color()`](./app.py#progress_color)
-Get color based on progress value. Interpolates colors from red $\rightarrow$ yellow $\rightarrow$ green based on difficulty.
+### [`progress_color()`](./app.py#def&nbspprogress_color)
+Color Interpolation based on progress value.
+- `<35`: Red $\rightarrow$ Yellow
+- `35-70`: Yellow $\rightarrow$ Green
+- `>70`: Green $\rightarrow$ Green
+
+**Algorithm**:
+1. Determine progress range
+2. Interpolate color based on range
+3. Return resulting color
 
 ```yaml
 component_id: app:progress_color
@@ -701,125 +665,218 @@ file: app.py
 line_start: 105
 line_end: 118
 tags: [color, progress, visualization]
-dependencies: [models:CardProgress, math]
-used_in: [app, make_figure]
+dependencies: [interpolate_color]
+used_in: ["app:make_figure"]
 ```
-
-**Parameters**:
-- `progress` (int): Progress value of the card (0-100)
-
-**Returns**:
-- `str`: Hex color code corresponding to the progress value
-
-**Color Interpolation**:
-- <35: Red (#e76f51) $\rightarrow$ Yellow (#f5b942)
-- 35-70: Yellow $\rightarrow$ Green (#69c6a5)
-- `>70`: Green $\rightarrow$ Green (#69c6a5)
-
-**Related Components**:
-- Used by: make_figure() card rendering, card_panel()
-- Depends on: models:CardProgress
 ---
 
-### [`color_legend()`](./app.py#color_legend)
+### [`color_legend()`](./app.py#def&nbspcolor_legend)
 Display color legend for card progress and groupings. Provides a visual reference for interpreting card colors in the 3D visualization.
+
+**Algorithm**:
+1. Display color legend for progress and groupings
+2. Provide visual reference for interpreting card colors in the 3D visualization
 
 ```yaml
 component_id: app:color_legend
 type: function
 file: app.py
-line_start: 119
-line_end: 127
+line_start: 510
+line_end: 520
 tags: [visualization, color, legend]
-dependencies: [models:CardProgress, models:CardGroup]
-used_in: [app, make_figure]
+dependencies: []
+used_in: []
 ```
-
-**Parameters**:
-- None
-
-**Returns**:
-- `None`
-
-**Related Components**:
-- Used by: make_figure() card rendering, card_panel()
-- Depends on: models:CardProgress, models:CardGroup
 ---
 
-### [`card_panel()`](./app.py#card_panel)
+### [`card_panel()`](./app.py#def&nbspcard_panel)
 Display and manage the card panel interface. Provides controls and information for individual cards. This is the output text box for the Question/Answer. It is intended to split it into separate sections for the question and the answer, allowing users to see both simultaneously.
+
+**Algorithm**:
+1. Retrieve the card by `card_id`
+2. Display card information in the panel
+3. Provide controls for updating card progress and group
+4. Handle user interactions within the panel
 
 ```yaml
 component_id: app:card_panel
 type: function
 file: app.py
-line_start: 155
-line_end: 165
+line_start: 265
+line_end: 282
 tags: [ui, panel, card]
-dependencies: [models:Card, models:CardProgress, models:CardGroup]
-used_in: [app, make_figure]
+dependencies: ["flashcard:core"]
+used_in: ["app:update_card"]
 ```
-
-**Parameters**:
-- `card_id` (str): ID of the card to display in the panel
-
-**Returns**:
-- `None`
-
-**Related Components**:
-- Used by: make_figure() card rendering, app.callback
-- Depends on: models:Card, models:CardProgress, models:CardGroup
 ---
 
 
 ## Interactive Features
 
-### [`choose_random_card()`](./app.py#choose_random_card)
+### [`choose_random_card()`](./app.py#def&nbspchoose_random_card)
 Select random card prefering read cards with low difficulty. Weighted random selection for "Random card" button.
-
-```yaml
-component_id: app:choose_random_card
-type: function
-file: app.py
-line_start: 128
-line_end: 135
-tags: [advanced, random, selection]
-dependencies: [models:Flashcard, models:CardProgress, random]
-used_in: [app.callback]
-```
 
 **Algorithm**:
 1. Filter to read cards if available
 2. Calculate weights: 101 - difficulty
 3. Use rng.choices() with weights
 
-**Related Components**:
-- Used by: app.callback random-card trigger
-- Depends on: models, random module
----
-
-### [`adjacent_card()`](./app.py#adjacent_card)
-Get adjacent card for keyboard navigation. Enables arrow key navigation between cards.
-
 ```yaml
-component_id: app:adjacent_card
+component_id: app:choose_random_card
 type: function
 file: app.py
-line_start: 138
-line_end: 144
-tags: [advanced, navigation, keyboard]
-dependencies: [models:Flashcard]
-used_in: [app.callback]
+line_start: 129
+line_end: 136
+tags: [advanced, random, selection]
+dependencies: ["card_progress:tracking", "flashcard:core"]
+used_in: ["app:update_card"]
 ```
+---
+
+
+### [`adjacent_card()`](./app.py#def&nbspadjacent_card)
+Get adjacent card for keyboard navigation. Enables arrow key navigation between cards.
 
 **Algorithm**:
 1. If selected_id not in cards: return first/last
 2. Find selected index
 3. Return cards[(index + direction) % len(cards)]
 
-**Related Components**:
-- Used by: app.callback keyboard-nav trigger
-- Depends on: models:Flashcard
+```yaml
+component_id: app:adjacent_card
+type: function
+file: app.py
+line_start: 139
+line_end: 145
+tags: [advanced, navigation, keyboard]
+dependencies: ["flashcard:core"]
+used_in: ["app:update_card"]
+```
+---
+
+## Background functionalities
+
+### [`refresh_deck_state()`](./app.py#def&nbsprefresh_deck_state)
+Refresh the state of the deck, ensuring all card positions and progress are up-to-date. This function is typically called after any operation that might alter the deck's structure or the cards' states.
+
+**Algorithm**:
+1. Iterate through all cards in the deck
+2. Update each card's position using `geometry:sphere_positions`
+3. Refresh progress for each card using `card_progress:tracking`
+4. Ensure deck state consistency
+
+```yaml
+component_id: refresh_deck_state
+type: function
+file: app.py
+line_start: 47
+line_end: 67
+tags: []
+dependencies: ["card_progress:tracking", "geometry:sphere_positions"]
+used_in: ["app:update_card"]
+```
+---
+
+### [`visible_cards()`](./app.py#def&nbspvisible_cards)
+Get the list of currently visible cards in the deck. This function helps in determining which cards are currently displayed to the user, useful for rendering and navigation purposes.
+
+**Algorithm**:
+1. Access the deck's card list
+2. Filter cards based on visibility criteria
+3. Return the filtered list of visible cards
+
+```yaml
+component_id: visible_cards
+type: function
+file: app.py
+line_start: 70
+line_end: 76
+tags: []
+dependencies: ["flashcard:core"]
+used_in: ["app:update_card"]
+```
+---
+
+### [`interpolate_color()`](./app.py#def&nbspinterpolate_color)
+Interpolate between two colors based on a given ratio. This function generates gradient effects or dynamically adjusting colors based on progress or other metrics.
+
+**Algorithm**:
+1. Receive two color inputs and a ratio
+2. Calculate the interpolated color by blending the two colors according to the ratio
+3. Return the resulting color
+
+```yaml
+component_id: interpolate_color
+type: function
+file: app.py
+line_start: 95
+line_end: 103
+tags: []
+dependencies: [hex_to_rgb, rgb_to_hex]
+used_in: ["app:progress_color"]
+```
+---
+
+### [`group_color()`](./app.py#def&nbspgroup_color)
+Assign a color to a group based on the group identifier. This function is used to maintain consistent coloring for grouped elements in visualizations.
+
+**Algorithm**:
+1. Receive a group identifier or criteria
+2. Determine the appropriate color for the group
+3. Return the assigned color
+
+```yaml
+component_id: group_color
+type: function
+file: app.py
+line_start: 121
+line_end: 125
+tags: []
+dependencies: []
+used_in: ["app:make_figure"]
+```
+---
+
+### [`hex_to_rgb()`](./app.py#def&nbsphex_to_rgb)
+Convert a hexadecimal color string to an RGB tuple. This function is used to facilitate color interpolation and manipulation.
+
+**Algorithm**:
+1. Receive a hexadecimal color string
+2. Parse the string to extract red, green, and blue components
+3. Convert the components to integer values
+4. Return the RGB tuple
+
+```yaml
+component_id: hex_to_rgb
+type: function
+file: app.py
+line_start: 86
+line_end: 88
+tags: []
+dependencies: []
+used_in: [interpolate_color]
+```
+---
+
+### [`rgb_to_hex()`](./app.py#def&nbsprgb_to_hex)
+Convert an RGB tuple to a hexadecimal color string. This function is used to facilitate color interpolation and manipulation.
+
+**Algorithm**:
+1. Receive an RGB tuple
+2. Convert the red, green, and blue components to hexadecimal format
+3. Concatenate the components into a single hexadecimal string
+4. Return the hexadecimal color string
+
+```yaml
+component_id: rgb_to_hex
+type: function
+file: app.py
+line_start: 91
+line_end: 92
+tags: []
+dependencies: []
+used_in: [interpolate_color]
+```
 ---
 
 
@@ -830,45 +887,39 @@ used_in: [app.callback]
 **Procedure**:
 1. Cross-reference all `component_id` values with actual code
 2. Verify all `file` paths exist
-3. Check all `used_in` references are valid
-4. Validate YAML frontmatter syntax
-5. Search test all component IDs can be located
----
-
-## Update Procedure
-
-### When to Update Index
-1. **Class/Method Renames**: Always update component_id
-2. **New Files Added**: Add new entries with full metadata
-3. **Dependency Changes**: Update dependencies/used_in arrays
-4. **API Changes**: Update function signatures and parameters
-5. **Feature Additions**: Add new component entries
-
-### Update Commands
-- `update_index --component flashcard:core --rename new_flashcard:core`
-- `update_index --add --type dataclass --file flashcards_app/new_module.py`
-- `update_index --validate` - Run QA checks
-- `update_index --search term`
-
+3. Validate all `dependencies` references are correct
+4. Validate all `used_in` references are correct
 ---
 
 ## Search Optimization
 
-### Tag-Based Search
-- **Component Type**: `dataclass`, `function`, `class`
-- **Domain**: `card`, `position`, `progress`, `group`, `connection`, `parsing`, `state`, `visualization`, `ui`, `advanced`
-- **Feature**: `3d`, `random`, `keyboard`, `color`, `filter`, `connection`, `persistance`
-
 ### Example Search Queries
 - `find: type=function, domain=visualization`
-- `search: tag=progress, component_id~app:`
+- `search: component_id~app:`
+- `search: file=app.py`
+- `search: dependencies=geometry:sphere_positions`
+- `search: used_in=app:update_card`
 - `locate: component_id=flashcard:core`
+- `locate: file=app.py`
+- `locate: component_id=refresh_deck_state`
 
 ### Navigation Shortcuts
 - Jump to: `component_id:flashcard:core` $\rightarrow$ `flashcards_app/models.py:4`
-- Find used in: `component_id:make_figure` $\rightarrow$ all callback outputs
+- Find used in: `component_id:flashcard:core` $\rightarrow$ all callback outputs
 - Check dependencies: `component_id:state:save_state` $\rightarrow$ geometry, models, Path
 
 ---
 
 *Index generated and maintained for efficient agent navigation and reduced prompt input.*
+
+The following section is for scripted detection of unindexed components. Agents should ignore this section when navigating the index as context from here on.
+
+
+## Unindexed Components
+<font color="green">If you see any components below, copy them manually into the appropriate section above and fill in their manual metadata. component_id and type are proposals. The ID is the snake_case of the code name (CardPosition becomes card_position), with a file prefix on collisions. type is dataclass, class, function or async_function. If you use other values, adjust them when you move the block.
+
+Name collisions: the same file wins first, then the indexed component. Otherwise the name is skipped with a WARNING. Imports are not resolved, so two identically named unindexed functions can be ambiguous.
+
+--check treats a changed section as stale and exits with 1. If you deliberately don't index something, use --ignore NAME (repeatable). --exclude-dir tests skips a folder while scanning, and --scan indexed looks only in files already in the index.
+
+Once you placed the new components into the appropriate sections above, run the `update_index` script again to regenerate the index. The section below is regenerated by the `update_index` script on each run, from its title line to the end of the file. Don't add your own text or tags below it. They would be overwritten.</font>
