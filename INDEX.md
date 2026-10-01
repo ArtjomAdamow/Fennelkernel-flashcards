@@ -57,7 +57,7 @@ The line numbers are 1-based and inclusive.
 <font color="red">Agent Maintenance Trigger</font>
 </Summary>
 
-**Agent instruction (when this index is in context, never ignore this, if you decided to ignore it, write this decision inside your response):** Never modify this index file. If a task adds, changes, renames, or removes a project component, watch for explicit "validate index" prompt. If given, then read the **Index Validation** procedure below, do not write anything into this file or into the `update_index.py` script. Suggest, where you think it would be an appropriate section, to add a new entry into. Only suggest the **location and tags**, nothing else. Report any issues before finishing. If no "validate index" prompt is given, respond with a question whether the index needs validation.
+**Agent instruction (when this index is in context, never ignore this, if you decided to ignore it, write this decision inside your response):** Never modify this index file. If a task adds, changes, renames, or removes a project component, watch for explicit "validate index" prompt. If given, then read the **Index Validation** procedure below, do not write anything into this file or into the `update_index.py` script. Suggest, where you think it would be an appropriate section, to add a new entry into. Only suggest the **location and yaml key "tags"**, nothing else. Do not propose other YAML keys component_id, type, file, line_start, line_end. Report any issues before finishing. If no "validate index" prompt is given, respond with a question whether the index needs validation.
 
 ```yaml
 component_id: this block can be ignored for update_index.py
@@ -92,7 +92,7 @@ line_start: 4
 line_end: 9
 tags: [card, entity, core]
 dependencies: []
-used_in: ["app:adjacent_card", "app:card_panel", "app:choose_random_card", "app:connection_control", "app:difficulty_control", "app:group_control", "app:make_figure", "app:position_control", "parser:deck_parser", "parser:load_decks", visible_cards]
+used_in: ["app:adjacent_card", "app:card_panel", "app:choose_random_card", "app:connection_control", "app:difficulty_control", "app:group_control", "app:make_figure", "app:position_control", "app:visible_cards", "parser:deck_parser", "parser:load_decks"]
 ```
 ---
 
@@ -480,6 +480,26 @@ used_in: ["app:update_card"]
 ```
 ---
 
+### [`save_positions()`](./flashcards_app/state.py#def&nbspsave_positions)
+Save the positions of all cards to JSON. Ensures that the layout of cards is persisted across sessions.
+
+**Algorithm**:
+1. Create parent directory if needed
+2. Build payload dict with current card positions
+3. Write JSON with indent=2
+
+```yaml
+component_id: state:save_positions
+type: function
+file: flashcards_app/state.py
+line_start: 130
+line_end: 150
+tags: [persistence, state, positions, json]
+dependencies: ["models:card_position"]
+used_in: ["app:update_card"]
+```
+---
+
 ### [`update_card()`](./app.py#def&nbspupdate_card)
 Update card information and state. This function handles modifications to card attributes and ensures the application state remains consistent.
 
@@ -496,7 +516,7 @@ file: app.py
 line_start: 608
 line_end: 866
 tags: [card, update, state]
-dependencies: ["app:adjacent_card", "app:card_panel", "app:choose_random_card", "app:connection_control", "app:deck_control", "app:deck_filter_options", "app:difficulty_control", "app:group_control", "app:make_figure", "app:position_control", available_decks, "models:card_group", "models:card_link", "geometry:sphere_positions", "parser:load_decks", refresh_deck_state, "state:save_state", visible_cards]
+dependencies: ["app:adjacent_card", "app:available_decks", "app:card_panel", "app:choose_random_card", "app:connection_control", "app:deck_control", "app:deck_filter_options", "app:difficulty_control", "app:group_control", "app:make_figure", "app:position_control", "app:refresh_deck_state", "app:visible_cards", "geometry:sphere_positions", "models:card_group", "models:card_link", "parser:load_decks", "state:save_state"]
 used_in: []
 ```
 ---
@@ -755,6 +775,26 @@ used_in: ["app:update_card"]
 ---
 
 ## Background functionalities
+
+### [`boot_id()`](./app.py#def&nbspboot_id)
+Retrieve the unique boot identifier for the application instance. This ID is typically used for tracking sessions or distinguishing between different runs of the application.
+
+**Algorithm**:
+1. Check if a boot ID already exists
+2. If not, generate a new unique boot ID
+3. Return the boot ID
+
+```yaml
+component_id: app:boot_id
+type: function
+file: app.py
+line_start: 40
+line_end: 45
+tags: [utility, session, server, route, boot]
+dependencies: []
+used_in: ["app:update_card"]
+```
+---
 
 ### [`refresh_deck_state()`](./app.py#def&nbsprefresh_deck_state)
 Refresh the state of the deck, ensuring all card positions and progress are up-to-date. This function is typically called after any operation that might alter the deck's structure or the cards' states.
