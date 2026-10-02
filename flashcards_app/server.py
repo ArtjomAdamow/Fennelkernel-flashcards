@@ -1,7 +1,7 @@
 from dash import Dash, dcc, html
 from flask import jsonify
 
-from flashcards_app.runtime import ENABLED_DECKS, GROUPS, LINKS, POSITIONS, PROGRESS, SERVER_BOOT_ID, STATE_PATH
+from flashcards_app.runtime import BASE_DIR, ENABLED_DECKS, GROUPS, LINKS, POSITIONS, PROGRESS, SERVER_BOOT_ID, STATE_PATH
 from flashcards_app.state import save_state
 from flashcards_app.visualization.map import color_legend, make_figure
 from flashcards_app.visualization.panels import (
@@ -9,7 +9,7 @@ from flashcards_app.visualization.panels import (
     group_control, position_control,
 )
 
-app = Dash(__name__)
+app = Dash(__name__, assets_folder=str(BASE_DIR / "assets"))
 app.title = "Spatial Flashcards"
 app.index_string = app.index_string.replace(
     "{%app_entry%}",

@@ -16,6 +16,21 @@ def make_figure(cards: list[Flashcard], selected_id: str | None = None, camera: 
     position_by_id = {position.card_id: position for position in points}
     group_by_id = {group.id: group for group in runtime.GROUPS}
 
+    # Invisible corner anchors: pins Plotly's internal camera data-scale to the fixed axis range,
+    # so camera.js's centering math stays correct regardless of how many cards are filtered/visible.
+    figure.add_trace(
+        go.Scatter3d(
+            x=[-1.15, 1.15],
+            y=[-1.15, 1.15],
+            z=[-1.15, 1.15],
+            mode="markers",
+            marker={"size": 0.001, "opacity": 0},
+            hoverinfo="skip",
+            showlegend=False,
+            name="AnchorBounds",
+        )
+    )
+
     # Draw connection lines between cards
     for link in runtime.LINKS:
         source = position_by_id.get(link.source_id)

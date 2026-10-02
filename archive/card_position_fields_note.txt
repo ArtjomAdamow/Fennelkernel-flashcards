@@ -1,3 +1,0 @@
-CardPosition.status and CardPosition.related_ids (flashcards_app/models.py) are persisted in data/positions.json but never read anywhere in current code.
-
-status was intended as an edit-lifecycle marker ("new" / "edited" / "saved") for manual position edits; related_ids was intended as a planned list of related card IDs attached to a position, distinct from CardLink. Neither has been wired up yet.

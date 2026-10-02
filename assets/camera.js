@@ -100,18 +100,21 @@
     const camera = defaultCamera();
     const eye = camera.eye;
     const scale = dataScale || [1, 1, 1];
-    const scenePoint = {
+    // camera.center/eye are both in gl3d's internal data-scaled space; an invisible
+    // anchor trace (map.py) pins dataScale to a fixed, uniform constant, so this stays
+    // correct regardless of how many cards are currently visible.
+    const scaledPoint = {
       x: point.x * scale[0],
       y: point.y * scale[1],
       z: point.z * scale[2],
     };
     return Object.assign({}, camera, {
       eye: {
-        x: eye.x * distanceFactor,
-        y: eye.y * distanceFactor,
-        z: eye.z * distanceFactor,
+        x: scaledPoint.x + eye.x * distanceFactor,
+        y: scaledPoint.y + eye.y * distanceFactor,
+        z: scaledPoint.z + eye.z * distanceFactor,
       },
-      center: scenePoint,
+      center: scaledPoint,
     });
   }
 

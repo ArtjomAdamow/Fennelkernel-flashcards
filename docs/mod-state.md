@@ -1,4 +1,6 @@
 # Current Mod State
+This is version 1.0 of the project. It represents the initial stable release with core functionality for loading, displaying, and manually organizing flashcards in a three-dimensional space.
+
 
 ## Summary
 
@@ -16,7 +18,9 @@ I use the app to load flashcard decks written in a predefined Markdown format. T
 
 The app reads the deck structure so it can extract and display each question and answer, but it does not interpret their meaning. It does not use the content to decide where cards belong, which cards should be grouped, or which cards should be connected. Those relationships and positions currently come from my manual choices, while the app provides controls to view and save them. In other words, the current mod is a spatial flashcard viewer and manual organization tool, not a content-aware mapping system.
 
+
 ## Current Behavior
+Manual organization and spatial visualization are the primary modes of interaction.
 
 ### Decks and Cards
 
@@ -41,18 +45,25 @@ The app reads the deck structure so it can extract and display each question and
 - Random-card selection prefers read cards and weights selection toward lower progress/difficulty values. If no visible cards are read, it selects from all visible cards.
 - The app saves positions, progress, groups, links, and enabled decks to `data/positions.json`. The Markdown files remain the source for card questions and answers.
 
+
 ## Limitations
 
 - **Random-card selection:** The README says the control selects only flipped cards. In the implementation it prefers cards marked read, but falls back to any visible card if none are marked read.
 - **Position editing:** The README says coordinates can be changed only for flipped cards. The implementation enables position editing for a selected card without checking whether it has been read or flipped.
 - **Camera behavior:** The README says the camera automatically centers on the selected card and rotates around it. The implementation preserves the Plotly camera state supplied by the view; it does not automatically center on the selected card or orbit around it.
 
+
 ## Source Files
 
-- `app.py` — application layout, interactions, selection, progress, position editing, group/link behavior, and Plotly figure construction.
-- `flashcards_app/parser.py` — Markdown deck parsing and question/answer extraction.
-- `flashcards_app/models.py` — card, position, progress, group, and connection data structures.
-- `flashcards_app/geometry.py` — initial sphere-position generation.
-- `flashcards_app/state.py` — loading and saving application state.
-- `assets/keyboard.js` — arrow-key navigation handling.
-- `README.MD` — user-facing run instructions and documented interactions.
+
+See [INDEX.md](./INDEX.md) for a complete list of source files and their descriptions.
+This project also includes a standalone script, `update_index.py` that regenerates INDEX.md.
+
+
+## Roadmap
+
+Workflow Into RAG
+(Map shows currently filtered/unfiltered context as dots)
+parsed / preprocessed docs --> chunks --> Decks: filter by manual (selection) ingestion
+assigning group, color, connection --> embedded --> Groups: similarity search, vectors
+display question and answer --> context --> Card text: only answer is needed 

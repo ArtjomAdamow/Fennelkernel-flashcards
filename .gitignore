@@ -3,12 +3,8 @@ __pycache__/
 .venv/
 
 image/presentations/1787319510739.png
-archive/presentations.md
-archive/temp.md
-archive/temp*.md
+archive/*.md
 archive/update_index*.py
-
-docs/prompts.md
 
 data/positions.json
 
