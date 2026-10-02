@@ -1,8 +1,9 @@
-﻿# Flashcard Application - Component Index
+# Flashcard Application
+Components Index
 
 ## Overview
 
-This index provides structured access to all application components with human-readable descriptions and anchor links as well as machine-readable metadata for efficient agent navigation.
+Agents: jump directly to the Agent Maintenance Trigger section for instructions without reading any text before it. Users: This index provides structured access to all application components with human-readable descriptions and anchor links as well as machine-readable metadata for efficient agent navigation.
 
 <Details markdown="1">
 <Summary><font color="green">User Guide for update_index.py script</font></Summary>
@@ -53,10 +54,12 @@ The line numbers are 1-based and inclusive.
 <Details markdown="1">
 <Summary><font color="red">Agent Maintenance Trigger</font></Summary>
 
-**Agent instruction (when this index is in context, never ignore this, if you decided to ignore it, write this decision inside your response):** Never modify this index file. If a task adds, changes, renames, or removes a project component, watch for explicit "validate index" prompt. If given, then read the **Index Validation** procedure below, do not write anything into this file or into the `update_index.py` script. Suggest, where you think it would be an appropriate section, to add a new entry into. Only suggest the **location and yaml key "tags"**, nothing else. Do not propose other YAML keys component_id, type, file, line_start, line_end. Report any issues before finishing. If no "validate index" prompt is given, respond with a question whether the index needs validation.
+**Agent instruction (when this index is in context, never ignore this, if you decided to ignore it, write this decision inside your response):** Never modify this index file.
+
+Before any changes to the project are done, first find the prompted component in the index. Only read anchor links and YAML tags. Do not take any other text beyond this instruction into content.
 
 ```yaml
-component_id: this block can be ignored for update_index.py
+component_id: convention:example
 file: index line convention
 index_conventions:
   line_numbers: 1-based, inclusive, blank lines counted
@@ -64,16 +67,27 @@ index_conventions:
   line_end: last line of the body
 ```
 
+If a task adds, changes, renames, or removes a project component, watch for explicit "validate index" prompt. If "validate index" prompt not given, respond with a question whether the index needs validation and from here jump to the relevant component in the Index section. Only If "validate index" prompt given:  
+
+1. Cross-reference all `component_id` values with actual code going by the anchor links in the index.
+2. Verify all `file` paths exist.
+3. Do NOT verify any other yaml keys except for `component_id` and `file`.
+4. For new components suggest, where you think it would be an appropriate section, to add a new entry into. Only suggest the **location and yaml key "tags"**, nothing else. Do not propose other YAML keys component_id, type, file, line_start, line_end.
+5. Report any issues before finishing.
+
 </Details>
 
-## Core Data Models
+
+## Index
+
+### Core Data Models
 
 The core data models define the primary entities used throughout the flashcards application, including flashcards, card positions, and card progress.
 
 <Details markdown="1">
 <Summary><sd
 
-### [`Flashcard:`](./flashcards_app/models.py#Class Flashcard:)
+#### [`Flashcard:`](./flashcards_app/models.py#Class Flashcard:)
 
 </Summary>
 Core flashcard entity with question and answer. Represents individual learning cards with unique ID, deck assignment, question text, and answer text.
@@ -102,7 +116,7 @@ used_in: ["cards:adjacent_card", "cards:choose_random_card", "cards:pick_adjacen
 <Details markdown="1">
 <Summary><sd
 
-### [`CardPosition:`](./flashcards_app/models.py#Class&nbspCardPosition:)
+#### [`CardPosition:`](./flashcards_app/models.py#Class&nbspCardPosition:)
 
 </Summary>
 3D coordinates for card placement on sphere. Stores x, y, z coordinates (-1 to 1 range) with status tracking and related card IDs.
@@ -131,7 +145,7 @@ used_in: ["geometry:sphere_positions", "state:load_positions", "state:save_state
 <Details markdown="1">
 <Summary><sd
 
-### [`CardProgress:`](./flashcards_app/models.py#Class&nbspCardProgress:)
+#### [`CardProgress:`](./flashcards_app/models.py#Class&nbspCardProgress:)
 
 </Summary>
 Learning progress tracking. Tracks read status and difficulty level (1-100) for each card.
@@ -159,7 +173,7 @@ used_in: ["cards:choose_random_card", "runtime:refresh_deck_state", "state:load_
 <Details markdown="1">
 <Summary><sd
 
-### [`CardGroup:`](./flashcards_app/models.py#Class&nbspCardGroup:)
+#### [`CardGroup:`](./flashcards_app/models.py#Class&nbspCardGroup:)
 
 </Summary>
 Grouping mechanism for organizing flashcards. Organizes cards into visual groups with custom names and colors.
@@ -188,7 +202,7 @@ used_in: ["groups:create_group", "state:load_groups", "state:save_state"]
 <Details markdown="1">
 <Summary><sd
 
-### [`CardLink:`](./flashcards_app/models.py#Class&nbspCardLink:)
+#### [`CardLink:`](./flashcards_app/models.py#Class&nbspCardLink:)
 
 </Summary>
 Connection/link between two flashcards. Connects related cards, optionally belonging to a group.
@@ -214,14 +228,14 @@ used_in: ["connections:create_link", "state:load_links", "state:save_state"]
 </Details>
 ---
 
-## Parsing System
+### Parsing System
 
 The parsing system is responsible for extracting structured data from markdown deck files. It identifies specified blocks and converts them into objects.
 
 <Details markdown="1">
 <Summary><sd
 
-### [`parse_deck()`](./flashcards_app/parser.py#def&nbspparse_deck)
+#### [`parse_deck()`](./flashcards_app/parser.py#def&nbspparse_deck)
 
 </Summary>
 Extract flashcards from markdown deck files. Parses format markdown to structured Flashcard objects.
@@ -252,7 +266,7 @@ used_in: ["parser:load_decks"]
 <Details markdown="1">
 <Summary><sd
 
-### [`_clean_question()`](./flashcards_app/parser.py#def _clean_question)
+#### [`_clean_question()`](./flashcards_app/parser.py#def _clean_question)
 
 </Summary>
 Cleans and formats the question part of a flashcard. Applies technical term formatting and other necessary transformations.
@@ -279,7 +293,7 @@ used_in: ["parser:deck_parser"]
 <Details markdown="1">
 <Summary><sd
 
-### [`_clean_answer()`](./flashcards_app/parser.py#def _clean_answer)
+#### [`_clean_answer()`](./flashcards_app/parser.py#def _clean_answer)
 
 </Summary>
 Cleans and formats the answer part of a flashcard. Applies technical term formatting and other necessary transformations.
@@ -306,7 +320,7 @@ used_in: ["parser:deck_parser"]
 <Details markdown="1">
 <Summary><sd
 
-### [`format_technical_terms()`](./flashcards_app/parser.py#def&nbsps;format_technical_terms)
+#### [`format_technical_terms()`](./flashcards_app/parser.py#def&nbsps;format_technical_terms)
 
 </Summary>
 Wrap code-like terms in backticks. Identifies and wraps snake_case and function calls.
@@ -335,7 +349,7 @@ used_in: ["parser:_clean_answer", "parser:_clean_question" ]
 <Details markdown="1">
 <Summary><sd
 
-### [`load_decks()`](./flashcards_app/parser.py#def&nbspload_decks)
+#### [`load_decks()`](./flashcards_app/parser.py#def&nbspload_decks)
 
 </Summary>
 Load flashcards from folder with optional filtering. Scans directory for .md files and parses decks.
@@ -362,14 +376,14 @@ used_in: ["decks:add_enabled_deck", "decks:remove_enabled_deck"]
 </Details>
 ---
 
-## State Management
+### State Management
 
 All state components are persisted in [data/positions.json](./data/positions.json). The location is defined as [STATE_PATH](./flashcards_app/runtime.py#STATE_PATH).
 
 <Details markdown="1">
 <Summary><sd
 
-### [`load_enabled_decks()`](./flashcards_app/state.py#def&nbspload_enabled_decks)
+#### [`load_enabled_decks()`](./flashcards_app/state.py#def&nbspload_enabled_decks)
 
 </Summary>
 Load the list of active flashcard decks. Reads saved preferences from JSON and validates them against available markdown files on disk.
@@ -397,7 +411,7 @@ used_in: []
 <Details markdown="1">
 <Summary><sd
 
-### [`load_positions()`](./flashcards_app/state.py#def&nbspload_positions)
+#### [`load_positions()`](./flashcards_app/state.py#def&nbspload_positions)
 
 </Summary>
 Load or generate sphere positions. Returns positions from JSON or generates deterministic random positions.
@@ -426,7 +440,7 @@ used_in: []
 <Details markdown="1">
 <Summary><sd
 
-### [`load_progress()`](./flashcards_app/state.py#def&nbspload_progress)
+#### [`load_progress()`](./flashcards_app/state.py#def&nbspload_progress)
 
 </Summary>
 Load or create card progress. Hydrates JSON data into CardProgress objects or initializes defaults.
@@ -455,7 +469,7 @@ used_in: []
 <Details markdown="1">
 <Summary><sd
 
-### [`load_groups()`](./flashcards_app/state.py#def&nbspload_groups)
+#### [`load_groups()`](./flashcards_app/state.py#def&nbspload_groups)
 
 </Summary>
 Load card groups from JSON. Filters out cards that are no longer present in the current deck.
@@ -484,7 +498,7 @@ used_in: []
 <Details markdown="1">
 <Summary><sd
 
-### [`load_links()`](./flashcards_app/state.py#def&nbspload_links)
+#### [`load_links()`](./flashcards_app/state.py#def&nbspload_links)
 
 </Summary>
 Load card connections from JSON. Ensures both source and target cards still exist.
@@ -513,7 +527,7 @@ used_in: []
 <Details markdown="1">
 <Summary><sd
 
-### [`save_state()`](./flashcards_app/state.py#def&nbspsave_state)
+#### [`save_state()`](./flashcards_app/state.py#def&nbspsave_state)
 
 </Summary>
 Save all application state to JSON. Persists positions, progress, groups, links, enabled decks.
@@ -540,14 +554,14 @@ used_in: ["callbacks:update_card", "server:main"]
 </Details>
 ---
 
-## Visualization of control elements (panels)
+### Visualization of control elements (panels)
 
 This section provides an overview and detailed descriptions of the various control elements (panels) used in the flashcards application. Each panel corresponds to a specific user interface component that allows interaction with flashcards.
 
 <Details markdown="1">
 <Summary><sd
 
-### [`deck_control()`](./flashcards_app/visualization/panels.py#def&nbspdeck_control)
+#### [`deck_control()`](./flashcards_app/visualization/panels.py#def&nbspdeck_control)
 
 </Summary>
 The `deck_control()` function generates the user interface control for selecting the deck of a flashcard.
@@ -576,7 +590,7 @@ used_in: ["callbacks:update_card"]
 <Details markdown="1">
 <Summary><sd
 
-### [`card_panel()`](./flashcards_app/visualization/panels.py#def&nbspcard_panel)
+#### [`card_panel()`](./flashcards_app/visualization/panels.py#def&nbspcard_panel)
 
 </Summary>
 The `card_panel()` function generates the user interface panel for displaying and interacting with a flashcard.
@@ -605,7 +619,7 @@ used_in: ["callbacks:update_card"]
 <Details markdown="1">
 <Summary><sd
 
-### [`difficulty_control()`](./flashcards_app/visualization/panels.py#def&nbspdifficulty_control)
+#### [`difficulty_control()`](./flashcards_app/visualization/panels.py#def&nbspdifficulty_control)
 
 </Summary>
 The `difficulty_control()` function generates the user interface control for selecting the difficulty level of a flashcard.
@@ -634,7 +648,7 @@ used_in: ["callbacks:update_card"]
 <Details markdown="1">
 <Summary><sd
 
-### [`position_control()`](./flashcards_app/visualization/panels.py#def&nbspposition_control)
+#### [`position_control()`](./flashcards_app/visualization/panels.py#def&nbspposition_control)
 
 </Summary>
 The `position_control()` function generates the user interface control for selecting the position of a flashcard.
@@ -663,7 +677,7 @@ used_in: ["callbacks:update_card"]
 <Details markdown="1">
 <Summary><sd
 
-### [`group_control()`](./flashcards_app/visualization/panels.py#def&nbspgroup_control)
+#### [`group_control()`](./flashcards_app/visualization/panels.py#def&nbspgroup_control)
 
 </Summary>
 The `group_control()` function generates the user interface control for selecting the group of a flashcard.
@@ -692,7 +706,7 @@ used_in: ["callbacks:update_card"]
 <Details markdown="1">
 <Summary><sd
 
-### [`connection_control()`](./flashcards_app/visualization/panels.py#def&nbspconnection_control)
+#### [`connection_control()`](./flashcards_app/visualization/panels.py#def&nbspconnection_control)
 
 </Summary>
 The `connection_control()` function generates the user interface control for selecting the connection of a flashcard.
@@ -718,7 +732,7 @@ used_in: ["callbacks:update_card"]
 </Details>
 ---
 
-## Visualization on 3D Sphere
+### Visualization on 3D Sphere
 
 The visualization on a 3D sphere helps users to understand the spatial relationships between flashcards, providing an intuitive way to explore the deck.
 
@@ -730,7 +744,7 @@ The app uses an **extensive callback system for interactivity**.
 <Details markdown="1">
 <Summary><sd
 
-### [`sphere_positions()`](./flashcards_app/geometry.py#def&nbspsphere_positions)
+#### [`sphere_positions()`](./flashcards_app/geometry.py#def&nbspsphere_positions)
 
 </Summary>
 Generate reproducible random points inside sphere. Creates uniform random distribution within unit sphere.
@@ -759,7 +773,7 @@ used_in: ["runtime:refresh_deck_state", "runtime:reset_all_state", "state:load_p
 <Details markdown="1">
 <Summary><sd
 
-### [`make_figure()`](./flashcards_app/visualization/map.py#def&nbspmake_figure)
+#### [`make_figure()`](./flashcards_app/visualization/map.py#def&nbspmake_figure)
 
 </Summary>
 The `make_figure()` function generates a visual representation of the flashcards on a map, using colors to indicate progress and group membership.
@@ -788,7 +802,7 @@ used_in: ["callbacks:update_card"]
 <Details markdown="1">
 <Summary><sd
 
-### [`hex_to_rgb()`](./flashcards_app/visualization/colors.py#def&nbsphex_to_rgb)
+#### [`hex_to_rgb()`](./flashcards_app/visualization/colors.py#def&nbsphex_to_rgb)
 
 </Summary>
 The `hex_to_rgb()` function converts a hexadecimal color string to an RGB tuple.
@@ -817,7 +831,7 @@ used_in: ["colors:interpolate_color"]
 <Details markdown="1">
 <Summary><sd
 
-### [`rgb_to_hex()`](./flashcards_app/visualization/colors.py#def&nbsprgb_to_hex)
+#### [`rgb_to_hex()`](./flashcards_app/visualization/colors.py#def&nbsprgb_to_hex)
 
 </Summary>
 The `rgb_to_hex()` function converts an RGB tuple to a hexadecimal color string.
@@ -846,7 +860,7 @@ used_in: ["colors:interpolate_color"]
 <Details markdown="1">
 <Summary><sd
 
-### [`interpolate_color()`](./flashcards_app/visualization/colors.py#def&nbspinterpolate_color)
+#### [`interpolate_color()`](./flashcards_app/visualization/colors.py#def&nbspinterpolate_color)
 
 </Summary>
 The `interpolate_color()` function calculates an intermediate color between two given colors based on a specified ratio.
@@ -875,7 +889,7 @@ used_in: ["colors:progress_color"]
 <Details markdown="1">
 <Summary><sd
 
-### [`progress_color()`](./flashcards_app/visualization/colors.py#def&nbspprogress_color)
+#### [`progress_color()`](./flashcards_app/visualization/colors.py#def&nbspprogress_color)
 
 </Summary>
 The `progress_color()` function determines the color representing the progress based on a given ratio.
@@ -903,7 +917,7 @@ used_in: ["map:make_figure"]
 <Details markdown="1">
 <Summary><sd
 
-### [`group_color()`](./flashcards_app/visualization/colors.py#def&nbspgroup_color)
+#### [`group_color()`](./flashcards_app/visualization/colors.py#def&nbspgroup_color)
 
 </Summary>
 The `group_color()` function determines the color associated with a specific group.
@@ -928,20 +942,20 @@ used_in: ["map:make_figure"]
 </Details>
 ---
 
-## Interactive Features
+### Interactive Features
 
 The following section deals with interactive features that allow users to interact with the flashcards in various ways.
 
 > The interactive features are planned as controls for tuning the model's behavior within the DS project. Without the model they provide a manual interface for navigating and managing flashcards.
 
-## Decks
+### Decks
 
 Selecting decks allows users to choose which decks they want to enable and interact with within the flashcards application. **This is the 1st and lowest level of detalisation**.
 
 <Details markdown="1">
 <Summary><sd
 
-### [`add_enabled_deck()`](./flashcards_app/services/decks.py#def&nbspadd_enabled_deck)
+#### [`add_enabled_deck()`](./flashcards_app/services/decks.py#def&nbspadd_enabled_deck)
 
 </Summary>
 The `add_enabled_deck()` function adds a deck to the list of enabled decks.
@@ -969,7 +983,7 @@ used_in: ["callbacks:update_card"]
 <Details markdown="1">
 <Summary><sd
 
-### [`remove_enabled_deck()`](./flashcards_app/services/decks.py#def&nbspremove_enabled_deck)
+#### [`remove_enabled_deck()`](./flashcards_app/services/decks.py#def&nbspremove_enabled_deck)
 
 </Summary>
 The `remove_enabled_deck()` function removes a deck from the list of enabled decks.
@@ -997,7 +1011,7 @@ used_in: ["callbacks:update_card"]
 <Details markdown="1">
 <Summary><sd
 
-### [`deck_filter_options()`](./flashcards_app/services/decks.py#def&nbspdeck_filter_options)
+#### [`deck_filter_options()`](./flashcards_app/services/decks.py#def&nbspdeck_filter_options)
 
 </Summary>
 The `deck_filter_options()` function retrieves the available filter options for decks.
@@ -1021,14 +1035,14 @@ used_in: ["callbacks:update_card", "panels:deck_control"]
 </Details>
 ---
 
-## Positions
+### Positions
 
 The position of a flashcard within the sphere determines its vectorization. The spatial arrangement of flashcards shows the relative importance and relationships between different cards. It allows to establish a structured understanding of how individual flashcards relate to each other within the broader context of the knowledge sphere. **This is the 2nd level of detalisation**.
 
 <Details markdown="1">
 <Summary><sd
 
-### [`set_position()`](./flashcards_app/services/positions.py#def&nbspset_position)
+#### [`set_position()`](./flashcards_app/services/positions.py#def&nbspset_position)
 
 </Summary>
 The `set_position()` function sets the position of a flashcard within a group.
@@ -1052,14 +1066,14 @@ used_in: ["callbacks:update_card"]
 </Details>
 ---
 
-## Groups
+### Groups
 
 Grouping flashcards into collections shows the relationships between different cards and allows users to organize their study material more effectively. **Together with connections this is the 3rd and intermediate level of detalisation**.
 
 <Details markdown="1">
 <Summary><sd
 
-### [`add_to_group()`](./flashcards_app/services/groups.py#def&nbspadd_to_group)
+#### [`add_to_group()`](./flashcards_app/services/groups.py#def&nbspadd_to_group)
 
 </Summary>
 The `add_to_group()` function adds a flashcard to a specified group.
@@ -1086,7 +1100,7 @@ used_in: []
 <Details markdown="1">
 <Summary><sd
 
-### [`add_to_group()`](./flashcards_app/services/groups.py#def&nbspadd_to_group)
+#### [`add_to_group()`](./flashcards_app/services/groups.py#def&nbspadd_to_group)
 
 </Summary>
 The `add_to_group()` function adds a flashcard to a specified group.
@@ -1113,7 +1127,7 @@ used_in: ["callbacks:update_card"]
 <Details markdown="1">
 <Summary><sd
 
-### [`remove_from_group()`](./flashcards_app/services/groups.py#def&nbspremove_from_group)
+#### [`remove_from_group()`](./flashcards_app/services/groups.py#def&nbspremove_from_group)
 
 </Summary>
 The `remove_from_group()` function removes a flashcard from a specified group.
@@ -1140,7 +1154,7 @@ used_in: ["callbacks:update_card"]
 <Details markdown="1">
 <Summary><sd
 
-### [`delete_group()`](./flashcards_app/services/groups.py#def&nbspdelete_group)
+#### [`delete_group()`](./flashcards_app/services/groups.py#def&nbspdelete_group)
 
 </Summary>
 The `delete_group()` function deletes a specified group.
@@ -1167,7 +1181,7 @@ used_in: ["callbacks:update_card"]
 <Details markdown="1">
 <Summary><sd
 
-### [`create_group()`](./flashcards_app/services/groups.py#def&nbspcreate_group)
+#### [`create_group()`](./flashcards_app/services/groups.py#def&nbspcreate_group)
 
 </Summary>
 The `create_group()` function creates a new flashcard group.
@@ -1191,14 +1205,14 @@ used_in: ["callbacks:update_card"]
 </Details>
 ---
 
-## Connections
+### Connections
 
 Connecting cards allows users to establish fixed relationships between different flashcards, enhancing the study experience by linking related concepts. **Together with grouping, this is the 3rd and intermediate level of detalisation**.
 
 <Details markdown="1">
 <Summary><sd
 
-### [`disconnect_link()`](./flashcards_app/services/connections.py#def&nbspdisconnect_link)
+#### [`disconnect_link()`](./flashcards_app/services/connections.py#def&nbspdisconnect_link)
 
 </Summary>
 The `disconnect_link()` function removes an existing link between two flashcards.
@@ -1225,7 +1239,7 @@ used_in: ["callbacks:update_card"]
 <Details markdown="1">
 <Summary><sd
 
-### [`create_link()`](./flashcards_app/services/connections.py#def&nbspcreate_link)
+#### [`create_link()`](./flashcards_app/services/connections.py#def&nbspcreate_link)
 
 </Summary>
 The `create_link()` function establishes a new link between two flashcards.
@@ -1249,14 +1263,14 @@ used_in: ["callbacks:update_card"]
 </Details>
 ---
 
-## Cards
+### Cards
 
 This last section covers navigating and selecting cards, revealing answers and tracking progress. It deals with the actual inner quality of the request. **This is the 4th and highest level of detalisation**.
 
 <Details markdown="1">
 <Summary><sd
 
-### [`choose_random_card()`](./flashcards_app/services/cards.py#def&nbspchoose_random_card)
+#### [`choose_random_card()`](./flashcards_app/services/cards.py#def&nbspchoose_random_card)
 
 </Summary>
 The `choose_random_card()` function selects a random card from the available flashcards.
@@ -1284,7 +1298,7 @@ used_in: ["cards:pick_random"]
 <Details markdown="1">
 <Summary><sd
 
-### [`pick_random()`](./flashcards_app/services/cards.py#def&nbsppick_random)
+#### [`pick_random()`](./flashcards_app/services/cards.py#def&nbsppick_random)
 
 </Summary>
 The `pick_random()` function selects a random flashcard using the `choose_random_card()` function and returns it.
@@ -1311,7 +1325,7 @@ used_in: ["callbacks:update_card"]
 <Details markdown="1">
 <Summary><sd
 
-### [`adjacent_card()`](./flashcards_app/services/cards.py#def&nbspadjacent_card)
+#### [`adjacent_card()`](./flashcards_app/services/cards.py#def&nbspadjacent_card)
 
 </Summary>
 The `adjacent_card()` function retrieves the card adjacent to the currently selected card, either the previous or next one based on the specified direction.
@@ -1339,7 +1353,7 @@ used_in: ["cards:pick_adjacent"]
 <Details markdown="1">
 <Summary><sd
 
-### [`pick_adjacent()`](./flashcards_app/services/cards.py#def&nbsppick_adjacent)
+#### [`pick_adjacent()`](./flashcards_app/services/cards.py#def&nbsppick_adjacent)
 
 </Summary>
 The `pick_adjacent()` function retrieves the flashcard adjacent to the currently selected one using the `adjacent_card()` function and returns it.
@@ -1366,7 +1380,7 @@ used_in: ["callbacks:update_card"]
 <Details markdown="1">
 <Summary><sd
 
-### [`select_from_click()`](./flashcards_app/services/cards.py#def&nbspselect_from_click)
+#### [`select_from_click()`](./flashcards_app/services/cards.py#def&nbspselect_from_click)
 
 </Summary>
 The `select_from_click()` function selects a flashcard based on a user's click input and returns it.
@@ -1393,7 +1407,7 @@ used_in: ["callbacks:update_card"]
 <Details markdown="1">
 <Summary><sd
 
-### [`toggle_reveal()`](./flashcards_app/services/cards.py#def&nbsptoggle_reveal)
+#### [`toggle_reveal()`](./flashcards_app/services/cards.py#def&nbsptoggle_reveal)
 
 </Summary>
 The `toggle_reveal()` function toggles the reveal state of the currently selected flashcard.
@@ -1420,7 +1434,7 @@ used_in: ["callbacks:update_card"]
 <Details markdown="1">
 <Summary><sd
 
-### [`set_difficulty()`](./flashcards_app/services/progress.py#def&nbspset_difficulty)
+#### [`set_difficulty()`](./flashcards_app/services/progress.py#def&nbspset_difficulty)
 
 </Summary>
 Despite its name, the `set_difficulty()` function sets the learning progress of a flashcard. Given a time scale, slow progress indicates a higher difficulty.
@@ -1446,14 +1460,14 @@ used_in: ["callbacks:update_card"]
 </Details>
 ---
 
-## Background functionalities
+### Background functionalities
 
 These background functionalities manage the overall state and visibility of decks and cards within the application. Functions are moved to this section if they primarily deal with maintaining or updating the application's state rather than direct user interactions.
 
 <Details markdown="1">
 <Summary><sd
 
-### [`refresh_deck_state()`](./flashcards_app/runtime.py#def&nbsprefresh_deck_state)
+#### [`refresh_deck_state()`](./flashcards_app/runtime.py#def&nbsprefresh_deck_state)
 
 </Summary>
 The `refresh_deck_state()` function updates the state of the deck, ensuring that the visibility and order of cards are consistent with the current application state.
@@ -1480,7 +1494,7 @@ used_in: ["decks:add_enabled_deck", "decks:remove_enabled_deck"]
 <Details markdown="1">
 <Summary><sd
 
-### [`available_decks()`](./flashcards_app/runtime.py#def&nbspavailable_decks)
+#### [`available_decks()`](./flashcards_app/runtime.py#def&nbspavailable_decks)
 
 </Summary>
 The `available_decks()` function retrieves the list of decks that are currently available in the application.
@@ -1507,7 +1521,7 @@ used_in: ["decks:add_enabled_deck", "panels:deck_control"]
 <Details markdown="1">
 <Summary><sd
 
-### [`visible_cards()`](./flashcards_app/runtime.py#def&nbspvisible_cards)
+#### [`visible_cards()`](./flashcards_app/runtime.py#def&nbspvisible_cards)
 
 </Summary>
 The `visible_cards()` function retrieves the list of cards that are currently visible to the user.
@@ -1535,7 +1549,7 @@ used_in: ["callbacks:update_card"]
 <Details markdown="1">
 <Summary><sd
 
-### [`reset_all_state()`](./flashcards_app/runtime.py#def&nbspreset_all_state)
+#### [`reset_all_state()`](./flashcards_app/runtime.py#def&nbspreset_all_state)
 
 </Summary>
 The `reset_all_state()` function resets the entire application state, clearing all current data and returning the application to its initial state.
@@ -1563,7 +1577,7 @@ used_in: ["callbacks:update_card"]
 <Details markdown="1">
 <Summary><sd
 
-### [`update_card()`](./flashcards_app/callbacks.py#def&nbspupdate_card)
+#### [`update_card()`](./flashcards_app/callbacks.py#def&nbspupdate_card)
 
 </Summary>
 The `update_card()` function handles the logic for updating a card's state based on user interactions and application events.
@@ -1592,7 +1606,7 @@ used_in: []
 <Details markdown="1">
 <Summary><sd
 
-### [`boot_id()`](./flashcards_app/server.py#def&nbspboot_id)
+#### [`boot_id()`](./flashcards_app/server.py#def&nbspboot_id)
 
 </Summary>
 The `boot_id()` function retrieves the unique boot identifier for the application instance.
@@ -1619,7 +1633,7 @@ used_in: []
 <Details markdown="1">
 <Summary><sd
 
-### [`main()`](./flashcards_app/server.py#def&nbspmain)
+#### [`main()`](./flashcards_app/server.py#def&nbspmain)
 
 </Summary>
 The `main()` function serves as the entry point for the application, initializing necessary components and starting the application's main loop.
@@ -1645,53 +1659,18 @@ used_in: []
 </Details>
 ---
 
-## Quality Assurance Markers
+<font color="red">Agents instructions: do not read the following section.</font>
 
-### Index Validation
 
-**Trigger**: on explicit `validate index` command
-**Procedure**:
-
-1. Cross-reference all `component_id` values with actual code
-2. Verify all `file` paths exist
-3. Validate all `dependencies` references are correct
-4. Validate all `used_in` references are correct
-
----
-
-## Search Optimization
-
-### Example Search Queries
-
-- `find: type=function, domain=visualization`
-- `search: component_id~app:`
-- `search: file=app.py`
-- `search: dependencies=geometry:sphere_positions`
-- `search: used_in=app:update_card`
-- `locate: component_id=models:flashcard`
-- `locate: file=app.py`
-- `locate: component_id=refresh_deck_state`
-
-### Navigation Shortcuts
-
-- Jump to: `component_id:models:flashcard` $\rightarrow$ `flashcards_app/models.py:4`
-- Find used in: `component_id:models:flashcard` $\rightarrow$ all callback outputs
-- Check dependencies: `component_id:state:save_state` $\rightarrow$ geometry, models, Path
-
----
-
-*Index generated and maintained for efficient agent navigation and reduced prompt input.*
-
-The following section is for scripted detection of unindexed components. Agents should ignore this section when navigating the index as context from here on.
 
 ## Unindexed Components
 
-<font color="green"></font>If you see any components below, copy them manually into the appropriate section above and fill in their manual metadata. component_id and type are proposals. The ID is the snake_case of the code name (CardPosition becomes card_position), with a file prefix on collisions. type is dataclass, class, function or async_function. If you use other values, adjust them when you move the block.
+<font color="green">If you see any components below, copy them manually into the appropriate section above and fill in their manual metadata. component_id and type are proposals. The ID is the snake_case of the code name (CardPosition becomes card_position), with a file prefix on collisions. type is dataclass, class, function or async_function. If you use other values, adjust them when you move the block.
 
 Name collisions: the same file wins first, then the indexed component. Otherwise the name is skipped with a WARNING. Imports are not resolved, so two identically named unindexed functions can be ambiguous.
 
 --check treats a changed section as stale and exits with 1. If you deliberately don't index something, use --ignore NAME (repeatable). --exclude-dir tests skips a folder while scanning, and --scan indexed looks only in files already in the index.
 
-Once you placed the new components into the appropriate sections above, run the `update_index` script again to regenerate the index. The section below is regenerated on each run, from its title line to the end of the file. Don't add your own text or tags below it. They would be overwritten.
+Once you placed the new components into the appropriate sections above, run the `update_index` script again to regenerate the index. The section below is regenerated on each run, from its title line to the end of the file. Don't add your own text or tags below it. They would be overwritten. </font>
 
 **End of file**
