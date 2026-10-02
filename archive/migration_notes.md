@@ -1,0 +1,2 @@
+Create archive/card_position_fields_note.txt (plain text, not .md) documenting that CardPosition.status and CardPosition.related_ids (models.py:17-18) are persisted in positions.json but never read anywhere in current code — status was meant as an edit-lifecycle marker ("new"/"edited"/"saved"), related_ids was meant as a planned list of related card IDs for a position (distinct from CardLink). No code or data migration now, per your decision.
+

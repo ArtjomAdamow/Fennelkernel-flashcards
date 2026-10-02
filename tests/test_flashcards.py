@@ -42,13 +42,14 @@ def test_positions_are_deterministic_and_inside_sphere():
 def test_positions_round_trip(tmp_path):
     path = tmp_path / "positions.json"
     original = sphere_positions(["one", "two"], seed=3)
-    save_state(path, original)
+    save_state(path, original, {})
     restored = load_positions(path, ["one", "two"], seed=99)
     assert restored == original
 
 
 def test_app_builds_a_nonempty_3d_figure():
-    from app import CARDS, make_figure
+    from flashcards_app.runtime import CARDS
+    from flashcards_app.visualization.map import make_figure
 
     figure = make_figure(CARDS)
     marker_traces = [trace for trace in figure.data if trace.mode == "markers"]
@@ -58,7 +59,8 @@ def test_app_builds_a_nonempty_3d_figure():
 
 
 def test_selected_card_has_dedicated_highlight_traces():
-    from app import CARDS, make_figure
+    from flashcards_app.runtime import CARDS
+    from flashcards_app.visualization.map import make_figure
 
     selected_id = CARDS[0].id
     figure = make_figure(CARDS, selected_id=selected_id)
@@ -71,7 +73,8 @@ def test_selected_card_has_dedicated_highlight_traces():
 
 
 def test_figure_uses_only_cards_allowed_by_focus_filter():
-    from app import CARDS, make_figure
+    from flashcards_app.runtime import CARDS
+    from flashcards_app.visualization.map import make_figure
 
     focused_cards = CARDS[:3]
     figure = make_figure(focused_cards)
@@ -94,7 +97,7 @@ def test_progress_round_trip_is_bounded(tmp_path):
 
 
 def test_random_card_prefers_read_cards_and_low_difficulty():
-    from app import choose_random_card
+    from flashcards_app.services.cards import choose_random_card
 
     cards = [Flashcard("new", "deck", "new", "answer"), Flashcard("review", "deck", "review", "answer")]
     progress = {
@@ -108,7 +111,7 @@ def test_random_card_prefers_read_cards_and_low_difficulty():
 
 
 def test_deck_and_group_actions_are_single_rows():
-    from app import deck_control, group_control
+    from flashcards_app.visualization.panels import deck_control, group_control
 
     def nodes(component):
         node = component.to_plotly_json()

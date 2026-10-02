@@ -53,15 +53,26 @@ first decorator line (e.g. @dataclass), line_end the last line of the body.
 
 Dependency analysis (static, heuristic):
   * a name counts if it is used (Load) inside the component and is not
-    bound locally there (parameter, assignment, import ...): base classes,
+    bound locally there (parameter, assignment ...): base classes,
     annotations (also string annotations), calls, decorators
-  * `module.Name` counts only for classes (attribute access)
-  * methods / nested classes ("Class.method") are indexed for line numbers,
-    but are not tracked as dependency targets
-  * a component's own name and indexed components nested in it are ignored
+  * imports of project modules are resolved statically (nothing is run):
+        import pkg.mod / import pkg.mod as m / from pkg import mod [as m]
+        from pkg.mod import name [as n] / relative imports (from . import x)
+        names re-exported through a package's __init__.py
+    so `runtime.available_decks()` (with `from flashcards_app import runtime`),
+    `m.func()`, `m.Class` and a bare imported name are linked exactly, for
+    functions and classes alike. `module.Class.method` is linked as well when
+    that method is indexed. Names imported from modules that are not part of
+    the project (flask, os, ...) never match a project component.
+  * without import information (same-file references, star imports) the
+    heuristic is: a bare name matches by name; an attribute name matches
+    classes only
+  * methods / nested classes ("Class.method") are indexed for line numbers;
+    they are dependency targets only via an explicit import-resolved reference
+  * a component's own name is ignored, and so are components nested in it
+    or enclosing it (a method does not depend on its own class)
   * several candidates with one name: same file wins, then the indexed one;
     otherwise the name is skipped and reported
-  * imports are not resolved
 
 Entries in dependencies / used_in are the `component_id` (fallback: code
 name). Use --ref name to always use the code name.
@@ -212,38 +223,56 @@ def find_symbol(symbols: dict, name: str, kind: str | None):
     return None
 
 
-def referenced_names(node: ast.AST) -> tuple[set[str], set[str]]:
-    """(plain names used, attribute names used) inside a class/function node.
+@dataclass
+class RefInfo:
+    names: set          # names read (Load) and not bound locally
+    chains: list        # maximal attribute chains rooted at a name: ("runtime", "available_decks")
+    loose_attrs: set    # attribute names of chains not rooted at a plain name, e.g. f().x
+    bound: set          # names bound inside the component (assignments, parameters, ...)
+    imports: list       # import statements inside the component
 
-    Names that are bound locally (parameters, assignments, imports, ...) are
-    removed from the plain names, so a local variable never counts as a
-    reference to a project function of the same name.
-    """
-    names: set[str] = set()
-    attrs: set[str] = set()
-    bound: set[str] = set()
-    annotations = []
-    for n in ast.walk(node):
-        if isinstance(n, ast.Name):
-            if isinstance(n.ctx, ast.Load):
-                names.add(n.id)
+
+def _chains(nodes) -> tuple[list, set]:
+    nodes = list(nodes)
+    inner = {id(n.value) for n in nodes
+             if isinstance(n, ast.Attribute) and isinstance(n.value, ast.Attribute)}
+    chains, loose = [], set()
+    for n in nodes:
+        if isinstance(n, ast.Attribute) and id(n) not in inner:
+            parts, cur = [], n
+            while isinstance(cur, ast.Attribute):
+                parts.append(cur.attr)
+                cur = cur.value
+            if isinstance(cur, ast.Name):
+                chains.append(tuple([cur.id] + parts[::-1]))
             else:
-                bound.add(n.id)
+                loose.update(parts)
+    return chains, loose
+
+
+def reference_info(node: ast.AST) -> RefInfo:
+    """What a class/function node refers to (names, attribute chains, imports)."""
+    walk = list(ast.walk(node))
+    names: set[str] = set()
+    bound: set[str] = set()
+    annotations, imports = [], []
+    for n in walk:
+        if isinstance(n, ast.Name):
+            (names if isinstance(n.ctx, ast.Load) else bound).add(n.id)
         elif isinstance(n, ast.arg):
             bound.add(n.arg)
             if n.annotation is not None:
                 annotations.append(n.annotation)
-        elif isinstance(n, ast.alias):
-            bound.add((n.asname or n.name).split(".")[0])
+        elif isinstance(n, (ast.Import, ast.ImportFrom)):
+            imports.append(n)
         elif isinstance(n, ast.ExceptHandler) and n.name:
             bound.add(n.name)
-        elif isinstance(n, ast.Attribute):
-            attrs.add(n.attr)
         elif isinstance(n, ast.AnnAssign):
             annotations.append(n.annotation)
         elif isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.returns is not None:
             annotations.append(n.returns)
     names -= bound
+    chains, loose = _chains(walk)
     for ann in annotations:  # string annotations: "Flashcard", "models.Flashcard"
         for c in ast.walk(ann):
             if isinstance(c, ast.Constant) and isinstance(c.value, str):
@@ -251,12 +280,12 @@ def referenced_names(node: ast.AST) -> tuple[set[str], set[str]]:
                     sub = ast.parse(c.value.strip(), mode="eval")
                 except SyntaxError:
                     continue
-                for x in ast.walk(sub):
-                    if isinstance(x, ast.Name):
-                        names.add(x.id)
-                    elif isinstance(x, ast.Attribute):
-                        attrs.add(x.attr)
-    return names, attrs
+                sub_nodes = list(ast.walk(sub))
+                names.update(x.id for x in sub_nodes if isinstance(x, ast.Name))
+                ch, lo = _chains(sub_nodes)
+                chains += ch
+                loose |= lo
+    return RefInfo(names, chains, loose, bound, imports)
 
 
 def decorator_name(d: ast.AST) -> str:
@@ -306,6 +335,145 @@ def iter_py_files(root: Path, exclude: set[str]):
 
 
 # ---------------------------------------------------------------------- model
+class ImportResolver:
+    """Resolves imports between project modules statically (nothing is imported/run).
+
+    A binding is ("mod", stem) for a module/package, ("from", stem, name) for
+    `from <stem> import name`, or ("ext",) for anything outside the project.
+    `stem` is a path without suffix: <stem>.py or <stem>/__init__.py.
+    """
+
+    def __init__(self, root: Path, md_dir: Path, cache: dict):
+        self.root = root
+        self.bases = list(dict.fromkeys([root, md_dir]))
+        self.cache = cache                      # file -> symbols (shared)
+        self._imports: dict[Path, dict] = {}
+        self._module_files: dict[Path, Path | None] = {}
+
+    # -- files and symbols
+    def module_file(self, stem: Path) -> Path | None:
+        if stem not in self._module_files:
+            py, init = stem.with_name(stem.name + ".py"), stem / "__init__.py"
+            self._module_files[stem] = (py.resolve() if py.is_file()
+                                        else init.resolve() if init.is_file() else None)
+        return self._module_files[stem]
+
+    def module_exists(self, stem: Path) -> bool:
+        return self.module_file(stem) is not None or stem.is_dir()
+
+    def symbols_of(self, py: Path) -> dict:
+        if py not in self.cache:
+            try:
+                self.cache[py] = collect_symbols(py)
+            except (SyntaxError, UnicodeDecodeError, OSError):
+                self.cache[py] = {}
+        return self.cache[py]
+
+    # -- import bindings
+    def _search_bases(self, py: Path) -> list[Path]:
+        ups = []
+        for parent in py.parents:                # importing file's folders, up to the root
+            ups.append(parent)
+            if parent == self.root:
+                break
+        return list(dict.fromkeys([*ups, *self.bases]))
+
+    def _absolute_stem(self, parts: list[str], py: Path) -> Path | None:
+        for base in self._search_bases(py):
+            stem = base.joinpath(*parts)
+            if self.module_exists(stem):
+                return stem
+        return None
+
+    def bindings(self, nodes, py: Path) -> dict[str, tuple]:
+        out: dict[str, tuple] = {}
+        for st in nodes:
+            if isinstance(st, ast.Import):
+                for al in st.names:
+                    parts = al.name.split(".")
+                    if al.asname:
+                        stem = self._absolute_stem(parts, py)
+                        out[al.asname] = ("mod", stem) if stem else ("ext",)
+                    else:                        # `import a.b.c` binds the name `a`
+                        stem = self._absolute_stem(parts[:1], py)
+                        out[parts[0]] = ("mod", stem) if stem else ("ext",)
+            else:
+                if st.level:                     # relative import
+                    base = py.parent
+                    for _ in range(st.level - 1):
+                        base = base.parent
+                    stem = base.joinpath(*(st.module.split(".") if st.module else []))
+                    stem = stem if self.module_exists(stem) else None
+                else:
+                    stem = self._absolute_stem(st.module.split("."), py) if st.module else None
+                for al in st.names:
+                    if al.name != "*":
+                        out[al.asname or al.name] = ("from", stem, al.name) if stem else ("ext",)
+        return out
+
+    @staticmethod
+    def _toplevel_imports(body):
+        container = (ast.If, ast.Try, ast.With, getattr(ast, "TryStar", ast.Try))
+        for st in body:
+            if isinstance(st, (ast.Import, ast.ImportFrom)):
+                yield st
+            elif isinstance(st, container):      # TYPE_CHECKING blocks, try/except ImportError
+                parts = [st.body, getattr(st, "orelse", []), getattr(st, "finalbody", [])]
+                parts += [h.body for h in getattr(st, "handlers", [])]
+                for sub in parts:
+                    yield from ImportResolver._toplevel_imports(sub)
+
+    def imports_of(self, py: Path) -> dict[str, tuple]:
+        if py not in self._imports:
+            self._imports[py] = {}               # guards against import cycles
+            try:
+                tree = ast.parse(py.read_text(encoding="utf-8"))
+            except (SyntaxError, UnicodeDecodeError, OSError):
+                return self._imports[py]
+            self._imports[py] = self.bindings(list(self._toplevel_imports(tree.body)), py)
+        return self._imports[py]
+
+    def imports_for(self, py: Path, local_nodes: list) -> dict[str, tuple]:
+        base = self.imports_of(py)
+        return {**base, **self.bindings(local_nodes, py)} if local_nodes else base
+
+    # -- resolution
+    def resolve_symbol(self, stem: Path, name: str, depth: int = 0):
+        f = self.module_file(stem)
+        if f is None or depth > 4:
+            return None
+        if name in self.symbols_of(f):
+            return (f, name)
+        binding = self.imports_of(f).get(name)   # re-export through __init__.py
+        if binding and binding[0] == "from":
+            return self.resolve_symbol(binding[1], binding[2], depth + 1)
+        return None
+
+    def resolve_chain(self, stem: Path, parts: list[str], depth: int = 0) -> list[tuple]:
+        """(file, qualified name) targets for <stem>.<parts[0]>.<parts[1]>..."""
+        if not parts or depth > 8:
+            return []
+        hit = self.resolve_symbol(stem, parts[0])
+        if hit:
+            f, qual = hit
+            out, symbols = [hit], self.symbols_of(f)
+            for part in parts[1:]:               # Class.method, if that exists
+                qual = f"{qual}.{part}"
+                if qual not in symbols:
+                    break
+                out.append((f, qual))
+            return out
+        sub = stem / parts[0]
+        return self.resolve_chain(sub, parts[1:], depth + 1) if self.module_exists(sub) else []
+
+    def resolve_binding(self, binding: tuple, rest: list[str]) -> list[tuple]:
+        if binding[0] == "mod":
+            return self.resolve_chain(binding[1], rest)
+        if binding[0] == "from":
+            return self.resolve_chain(binding[1], [binding[2], *rest])
+        return []                                # external module
+
+
 @dataclass
 class Options:
     fields: set
@@ -430,7 +598,7 @@ def assign_new_refs(active: list[Entry], entries: list[Entry], ref_mode: str) ->
         e.ref = cid if ref_mode == "id" else e.sym[4]
 
 
-def build_graph(entries, pool, new_depth, warnings, ref_mode, reverse=True) -> list[Entry]:
+def build_graph(entries, pool, new_depth, warnings, ref_mode, reverse=True, resolver=None) -> list[Entry]:
     """Fill deps / used_in. Returns the unindexed components to list."""
     live = [e for e in entries if e.sym is not None]
 
@@ -445,21 +613,26 @@ def build_graph(entries, pool, new_depth, warnings, ref_mode, reverse=True) -> l
         if "." not in e.sym[4]:              # methods / nested: not a target
             by_name.setdefault(e.sym[4], []).append(e)
 
-    refs_cache: dict[int, tuple] = {}
+    entry_by_key = {(e.py, e.sym[4]): e for e in live + pool}
+    infos: dict[int, RefInfo] = {}
     warned: set[str] = set()
 
-    def refs_of(e: Entry):
+    def info_of(e: Entry) -> RefInfo:
         key = id(e.sym[3])
-        if key not in refs_cache:
-            refs_cache[key] = referenced_names(e.sym[3])
-        return refs_cache[key]
+        if key not in infos:
+            infos[key] = reference_info(e.sym[3])
+        return infos[key]
 
     def contained(t: Entry, s: Entry) -> bool:
         return t.py == s.py and s.sym[0] <= t.sym[0] and t.sym[1] <= s.sym[1]
 
+    def related(t: Entry, s: Entry) -> bool:
+        """Same component, or one is nested in the other (e.g. method and its class)."""
+        return contained(t, s) or contained(s, t)
+
     def pick(name: str, src: Entry, classes_only: bool) -> list[Entry]:
         cands = [t for t in by_name.get(name, [])
-                 if (not classes_only or t.sym[2] == "class") and not contained(t, src)]
+                 if (not classes_only or t.sym[2] == "class") and not related(t, src)]
         if len(cands) <= 1:
             return cands
         for narrowed in ([t for t in cands if t.py == src.py],      # same file wins
@@ -471,10 +644,30 @@ def build_graph(entries, pool, new_depth, warnings, ref_mode, reverse=True) -> l
             warnings.append(f"ambiguous name {name!r} exists in several files - skipped")
         return []
 
+    def via_import(src: Entry, binding: tuple, rest: list[str]) -> list[Entry]:
+        found = []
+        for key in resolver.resolve_binding(binding, rest):
+            t = entry_by_key.get(key)
+            if t is not None and not related(t, src):
+                found.append(t)
+        return found
+
     def targets_of(src: Entry) -> list[Entry]:
-        names, attrs = refs_of(src)
-        found = [t for n in names for t in pick(n, src, False)]
-        found += [t for a in attrs for t in pick(a, src, True)]
+        info = info_of(src)
+        imports = resolver.imports_for(src.py, info.imports) if resolver else {}
+        found: list[Entry] = []
+        for n in info.names:                       # bare names
+            b = imports.get(n)
+            found += pick(n, src, False) if b is None else via_import(src, b, [])
+        for chain in info.chains:                  # module_alias.func(), Class.method, ...
+            b = None if chain[0] in info.bound else imports.get(chain[0])
+            if b is None:                          # no import information: classes only
+                for a in chain[1:]:
+                    found += pick(a, src, True)
+            else:
+                found += via_import(src, b, list(chain[1:]))
+        for a in info.loose_attrs:
+            found += pick(a, src, True)
         return found
 
     # reverse map: who depends on whom (only unindexed components as dependents)
@@ -626,7 +819,9 @@ def sync(md_path: Path, root: Path, opts: Options) -> Result:
     if graph_on:
         pool = (discover_unindexed(entries, cache, root, opts, warnings)
                 if opts.new_depth >= 1 else [])
-        new = build_graph(entries, pool, opts.new_depth, warnings, opts.ref_mode, opts.reverse)
+        resolver = ImportResolver(root, md_path.parent, cache)
+        new = build_graph(entries, pool, opts.new_depth, warnings, opts.ref_mode,
+                          opts.reverse, resolver)
 
     out, pos, report = [], 0, []
     for e in entries:
