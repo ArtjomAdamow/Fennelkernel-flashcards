@@ -1,8 +1,9 @@
-﻿# Flashcard Application - Component Index
+﻿# Flashcard Application
+Components Index
 
 ## Overview
 
-This index provides structured access to all application components with human-readable descriptions and anchor links as well as machine-readable metadata for efficient agent navigation.
+Agents: jump directly to the Agent Maintenance Trigger section for instructions without reading any text before it. Users: This index provides structured access to all application components with human-readable descriptions and anchor links as well as machine-readable metadata for efficient agent navigation.
 
 <Details markdown="1">
 <Summary><font color="green">User Guide for update_index.py script</font></Summary>
@@ -55,10 +56,10 @@ The line numbers are 1-based and inclusive.
 
 **Agent instruction (when this index is in context, never ignore this, if you decided to ignore it, write this decision inside your response):** Never modify this index file.
 
-Before any changes to the project are done, you can see for the prompted component the YAML tags to navigate and identify relevant components in the index.
+Before any changes to the project are done, first find the prompted component in the index. Only read anchor links and YAML tags. Do not take any other text beyond this instruction into content.
 
 ```yaml
-component_id: this block can be ignored for update_index.py
+component_id: convention:example
 file: index line convention
 index_conventions:
   line_numbers: 1-based, inclusive, blank lines counted
@@ -66,7 +67,7 @@ index_conventions:
   line_end: last line of the body
 ```
 
-If a task adds, changes, renames, or removes a project component, watch for explicit "validate index" prompt. If "validate index" prompt not given, respond with a question whether the index needs validation and from here jump to the Index section. Only If "validate index" prompt given:  
+If a task adds, changes, renames, or removes a project component, watch for explicit "validate index" prompt. If "validate index" prompt not given, respond with a question whether the index needs validation and from here jump to the relevant component in the Index section. Only If "validate index" prompt given:  
 
 1. Cross-reference all `component_id` values with actual code going by the anchor links in the index.
 2. Verify all `file` paths exist.
