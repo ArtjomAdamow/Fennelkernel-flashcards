@@ -2,9 +2,7 @@ __pycache__/
 .pytest_cache/
 .venv/
 
-image/presentations/1787319510739.png
-archive/*.md
-archive/update_index*.py
+archive/*.*
 
 data/positions.json
 
