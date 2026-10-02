@@ -22,14 +22,6 @@ def load_positions(path: Path, card_ids: List[str], seed: int = 42) -> List[Card
     # Use stored positions if available, otherwise use generated ones
     return [stored.get(position.card_id, position) for position in generated]
 
-
-def save_positions(path: Path, positions: List[CardPosition]) -> None:
-
-    path.parent.mkdir(parents=True, exist_ok=True)
-    payload = {"version": 1, "positions": [asdict(position) for position in positions]}
-    path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-
-
 def load_progress(path: Path, card_ids: List[str]) -> Dict[str, CardProgress]:
     if not path.exists():
         # Create default progress if file doesn't exist

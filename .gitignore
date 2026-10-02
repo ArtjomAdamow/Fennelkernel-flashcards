@@ -1,5 +1,13 @@
 __pycache__/
 .pytest_cache/
 .venv/
+
+image/presentations/1787319510739.png
+archive/*.md
+archive/update_index*.py
+
 data/positions.json
-prompts.md
+
+INDEX_bak_*.md
+INDEX.md
+update_index.py

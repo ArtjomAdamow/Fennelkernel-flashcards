@@ -54,3 +54,11 @@ First use `"Add"` button in the DECK section to load flashcards. Select `"All"` 
 ```powershell
 uv run pytest
 ```
+
+### Notes
+
+Dash resolves assets_folder relative to wherever Dash(__name__) is instantiated — moving that call into a submodule silently breaks static assets with no error, so it needs an explicit assets_folder when the app isn't created at the project root.
+
+### License
+
+This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
