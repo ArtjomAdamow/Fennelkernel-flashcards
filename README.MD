@@ -29,6 +29,11 @@ uv run python app.py
 
 Open the local URL printed by Dash.
 
+In VS Code, select `.venv\Scripts\python.exe` as the Python interpreter.
+`uv sync` installs dependencies into this project environment; a bare `pip`
+command may install into a different Python installation. The YAML package
+is named `PyYAML`, but it is imported with `import yaml`.
+
 ### Quick start:
 
 First use `"Add"` button in the DECK section to load flashcards. Select `"All"` or `"Focus"` to show only a specific deck. Select your first flashcard-dot on the 3D-map. Click on the question in the text box to flip to the answer.

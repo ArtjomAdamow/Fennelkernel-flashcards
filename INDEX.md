@@ -1,65 +1,93 @@
-﻿# Flashcard Application
-Components Index
+﻿# Index Application
+This file is a part of a scripted index application. Some sections of this file are generated automatically by the `update_index.py` script. Keep this in mind when editing.
+![1791146802961](image/INDEX/1791146802961.png)
 
 ## Overview
 
-Agents: jump directly to the Agent Maintenance Trigger section for instructions without reading any text before it. Users: This index provides structured access to all application components with human-readable descriptions and anchor links as well as machine-readable metadata for efficient agent navigation.
-
 <Details markdown="1">
-<Summary><font color="green">User Guide for update_index.py script</font></Summary>
+<Summary><font color= #3b82f6>Quick start</font></Summary>
 
-The project has a script `update_index.py` to automate index maintenance.
+### [Links representing components also directly select referenced code](#L91-92 "The  line numbers and the component_id in the headers are also used by the script to locate sections in the `agent_index.yaml` file, so do not modify them manually.")
 
-If this is your first time, go for
-
-```bash
-python update_index.py INDEX.md --check --dry-run
-```
-
-Usage:
-
-```bash
-    python update_index.py INDEX.md              # update in place
-    python update_index.py INDEX.md --dry-run    # only report
-    python update_index.py INDEX.md --check      # exit 1 if index is stale (CI)
-    python update_index.py INDEX.md --root .     # base dir for `file:` paths
-    python update_index.py INDEX.md --fields lines     # only line numbers
-    python update_index.py INDEX.md --new-depth 2      # unindexed: 2 levels deep
-    python update_index.py INDEX.md --new-depth 0      # no unindexed section
-    python update_index.py INDEX.md --scan indexed     # look only in indexed files
-    python update_index.py INDEX.md --ignore helper    # never list this name
-    python update_index.py INDEX.md --exclude-dir tests
-
-Exit codes: 0 ok, 1 stale (--check), 2 unresolved entries, 3 write failed.
-```
-
-</Details>
-
-<Details markdown="1">
-<Summary>YAML schema key representation</Summary>
-AI coding assistants use these keys to efficiently locate and reference code definitions without searching through files manually. This saves credits and improves overall development efficiency.
-
-- component_id: The unique identifier or machine name for the specific building block or module.
-- type: Defines the functional category of the resource (e.g., frontend, API, database, script). (e.g., dataclass, function, class)
-- file: The relative or absolute path pointing to the underlying physical source file.
-- line_start: The starting line number of the component definition in the source file.
-- line_end: The ending line number of the component definition in the source file.
-- tags: Metadata labels used by compilers and registries for filtering, sorting, or grouping.
-- dependencies: A list of upstream requirements or prerequisites needed for this component to compile or run.
-- used_in: A declaration of downstream architecture or parent environments where this component is active.
-
-The line numbers are 1-based and inclusive.
-</Details>
-
-<Details markdown="1">
-<Summary><font color="red">Agent Maintenance Trigger</font></Summary>
-
-**Agent instruction (when this index is in context, never ignore this, if you decided to ignore it, write this decision inside your response):** Never modify this index file.
-
-Before any changes to the project are done, first find the prompted component in the index. Only read anchor links and YAML tags. Do not take any other text beyond this instruction into content.
+The arrow next to the link reveals the details about the component. The description is provided by the user.
 
 ```yaml
-component_id: convention:example
+tags: [your, cross, reference]
+```
+
+The indexing script `update_index.py` scans the project files, updates this index file and creates a corresponding `agent_index.yaml` file, which contains only structured metadata for AI agents.  The `tags` will be passed to the YAML file.
+
+To run the script:
+
+```bash
+python update_index.py
+```
+
+The script also generates mermaid diagrams inside this index file based on the `used_in` and `used_in_transitive` keys from the YAML file. Each section has it's own diagram. Here the legend:
+
+```mermaid
+graph LR
+    %% arrow A --> B: B uses A; dashed = component of another section
+linkStyle default stroke: #3b82f6, color: #3b82f6
+    %% dashed arrow A -.-> B: transitive relation (data flow through module-level variables)
+    A["Component A, current section"]
+    B["Component B, current section, uses component A directly"]
+    X["Component X, outside current section, uses component A directly"]:::ext
+    M["Component M, outside current section, used by component A directly"]:::ext
+    C["Component C, current section, used by component A transitively"]
+    N["Component N, outside current section, used by component A transitively"]:::ext
+    Y["Component Y, outside this section, uses component A transitively"]:::ext
+    
+    A --> B
+    A --> X
+    M --> A
+    C -.-> A
+    N -.-> A
+    A -.-> Y
+    
+    classDef ext stroke:#3b82f6,stroke-dasharray: 4 3
+    linkStyle default stroke: #3b82f6, color: #3b82f6
+    classDef default fill:inherit, stroke: #3b82f6, color:inherit;
+```
+
+
+</Details>
+
+<Details markdown="1">
+<Summary>YAML</Summary>
+
+The `agent_index.yaml` file is created automatically. It contains the following keys:
+
+- `component_id`: The unique identifier or machine name for the specific building block or module.
+- `type`: Defines the functional category of the resource (currently supported: dataclass, function, alias.function)
+- `file`: The relative path pointing to the underlying physical source file.
+- `line_start`: The starting line number of the component definition in the source file. `1-based, inclusive`, blank lines counted (e.g., decorators like @dataclass are included)
+- `line_end`: The ending line number of the component definition in the source file. This is different from the line end inside the anchor links in this index file, which are written in the format `line_end+1` to ensure proper code selection.
+- `tags`: <font color= "#3b82f6"> This is a user key that is not attended by the indexing script and the only key included in both the MARKDOWN-index and the YAML- index files. Use `tags` for custom metadata and cross-references.</font>
+- `used_in`: A declaration of downstream architecture or parent environments where a component is active. This key holds only direct references to other components that utilize this one.
+- `used_in_transitive`: This key has one entry per component. It is always present, as [] when empty. It has a substructure for each component that lists all downstream components that transitively use this one.
+- `flows_to`: Describes the data flow from component `component_id` down to the receiver component `used_in_transitive`. The first entry is the file path of the provider, a chain of variables is listed in between, and the last entry is the variable that calls the receiver component. If the flow crosses files, the next file path is inserted before its variables. When multiple paths exist, the shortest one is written.
+
+Both keys `used_in` and `used_in_transitive` are only included in the YAML file, but the script uses the information contained in them to populate the <font color="#3b82f6">mermaid diagrams</font> in this index file.
+
+</Details>
+
+<Details markdown="1">
+<Summary><font color= "#bf9a67">Agent instructions</font></Summary>
+
+**Important:** Never touch this index file or the `update_index.py` script. Reference if prompted, but do not modify the `agent_index.yaml`. Do not treat this file as content -> now report to the user how you did even get to this point and STOP reading here.
+
+**Users:** If you want to let an agent verify the `agent_index.yaml`, give the following agent instructions:
+
+```
+Cross-reference all `component_id` and `type` values with actual code in the project files. Navigate by `file`, `line_start`, `line_end`, `used_in`, `used_in_transitive` and`flows_to`. Do NOT verify any other yaml keys except for `component_id` and `file` even if they do not match the actual code. Report ambiguous references and list new components with `file`, `line_start` and a 2-4 word suggestion for the yaml key "tags". Make no further suggestions regarding any other yaml keys.
+```
+
+The script will handle the rest of the indexing and diagram generation automatically. The regular agent instructions for index reference are already specified in `agent_index.yaml`:
+
+The YAML block below is kept for consistency.
+
+```yaml
 file: index line convention
 index_conventions:
   line_numbers: 1-based, inclusive, blank lines counted
@@ -67,27 +95,89 @@ index_conventions:
   line_end: last line of the body
 ```
 
-If a task adds, changes, renames, or removes a project component, watch for explicit "validate index" prompt. If "validate index" prompt not given, respond with a question whether the index needs validation and from here jump to the relevant component in the Index section. Only If "validate index" prompt given:  
-
-1. Cross-reference all `component_id` values with actual code going by the anchor links in the index.
-2. Verify all `file` paths exist.
-3. Do NOT verify any other yaml keys except for `component_id` and `file`.
-4. For new components suggest, where you think it would be an appropriate section, to add a new entry into. Only suggest the **location and yaml key "tags"**, nothing else. Do not propose other YAML keys component_id, type, file, line_start, line_end.
-5. Report any issues before finishing.
-
 </Details>
+
+<font color="#3b82f6">********************************************************</font>
 
 
 ## Index
 
+
 ### Core Data Models
 
+<!-- diagram:start (generated by update_index.py - do not edit) -->
+```mermaid
+graph LR
+    %% arrow A --> B: B uses A; dashed = component of another section
+    %% dashed arrow A -.-> B: transitive relation (data flow through module-level variables)
+    n_models_flashcard["models:flashcard"]
+    n_models_card_position["models:card_position"]
+    n_models_card_progress["models:card_progress"]
+    n_models_card_group["models:card_group"]
+    n_models_card_link["models:card_link"]
+    n_cards_adjacent_card["cards:adjacent_card"]:::ext
+    n_cards_choose_random_card["cards:choose_random_card"]:::ext
+    n_cards_pick_adjacent["cards:pick_adjacent"]:::ext
+    n_cards_pick_random["cards:pick_random"]:::ext
+    n_connections_create_link["connections:create_link"]:::ext
+    n_geometry_sphere_positions["geometry:sphere_positions"]:::ext
+    n_groups_create_group["groups:create_group"]:::ext
+    n_map_make_figure["map:make_figure"]:::ext
+    n_panels_card_panel["panels:card_panel"]:::ext
+    n_panels_connection_control["panels:connection_control"]:::ext
+    n_panels_difficulty_control["panels:difficulty_control"]:::ext
+    n_panels_group_control["panels:group_control"]:::ext
+    n_panels_position_control["panels:position_control"]:::ext
+    n_parser_deck_parser["parser:deck_parser"]:::ext
+    n_parser_load_decks["parser:load_decks"]:::ext
+    n_runtime_refresh_deck_state["runtime:refresh_deck_state"]:::ext
+    n_runtime_visible_cards["runtime:visible_cards"]:::ext
+    n_state_load_groups["state:load_groups"]:::ext
+    n_state_load_links["state:load_links"]:::ext
+    n_state_load_positions["state:load_positions"]:::ext
+    n_state_load_progress["state:load_progress"]:::ext
+    n_state_save_state["state:save_state"]:::ext
+    n_models_card_group --> n_groups_create_group
+    n_models_card_group --> n_state_load_groups
+    n_models_card_group --> n_state_save_state
+    n_models_card_link --> n_connections_create_link
+    n_models_card_link --> n_state_load_links
+    n_models_card_link --> n_state_save_state
+    n_models_card_position --> n_geometry_sphere_positions
+    n_models_card_position --> n_state_load_positions
+    n_models_card_position --> n_state_save_state
+    n_models_card_progress --> n_cards_choose_random_card
+    n_models_card_progress --> n_runtime_refresh_deck_state
+    n_models_card_progress --> n_state_load_progress
+    n_models_card_progress --> n_state_save_state
+    n_models_flashcard --> n_cards_adjacent_card
+    n_models_flashcard --> n_cards_choose_random_card
+    n_models_flashcard --> n_cards_pick_adjacent
+    n_models_flashcard --> n_cards_pick_random
+    n_models_flashcard --> n_map_make_figure
+    n_models_flashcard --> n_panels_card_panel
+    n_models_flashcard --> n_panels_connection_control
+    n_models_flashcard --> n_panels_difficulty_control
+    n_models_flashcard --> n_panels_group_control
+    n_models_flashcard --> n_panels_position_control
+    n_models_flashcard --> n_parser_deck_parser
+    n_models_flashcard --> n_parser_load_decks
+    n_models_flashcard --> n_runtime_visible_cards
+    classDef ext stroke:#3b82f6,stroke-dasharray: 4 3
+    linkStyle default stroke: #3b82f6, color: #3b82f6
+    classDef default fill:inherit, stroke: #3b82f6, color:inherit;
+```
+<!-- diagram:end -->
+
 The core data models define the primary entities used throughout the flashcards application, including flashcards, card positions, and card progress.
+
+
+
 
 <Details markdown="1">
 <Summary><sd
 
-#### [`Flashcard:`](./flashcards_app/models.py#Class Flashcard:)
+#### [Flashcard](./flashcards_app/models.py#L4-10 "models:flashcard")
 
 </Summary>
 Core flashcard entity with question and answer. Represents individual learning cards with unique ID, deck assignment, question text, and answer text.
@@ -100,23 +190,16 @@ Core flashcard entity with question and answer. Represents individual learning c
 - `answer` (str): The answer/reveal text
 
 ```yaml
-component_id: models:flashcard
-type: dataclass
-file: flashcards_app/models.py
-line_start: 4
-line_end: 9
 tags: [card, entity, core]
-dependencies: []
-used_in: ["cards:adjacent_card", "cards:choose_random_card", "cards:pick_adjacent", "cards:pick_random", "map:make_figure", "panels:card_panel", "panels:connection_control", "panels:difficulty_control", "panels:group_control", "panels:position_control", "parser:deck_parser", "parser:load_decks", "runtime:visible_cards"]
 ```
 
 </Details>
----
+
 
 <Details markdown="1">
 <Summary><sd
 
-#### [`CardPosition:`](./flashcards_app/models.py#Class&nbspCardPosition:)
+#### [Card position](./flashcards_app/models.py#L11-19 "models:card_position")
 
 </Summary>
 3D coordinates for card placement on sphere. Stores x, y, z coordinates (-1 to 1 range) with status tracking and related card IDs.
@@ -129,23 +212,16 @@ used_in: ["cards:adjacent_card", "cards:choose_random_card", "cards:pick_adjacen
 - `related_ids` (List[str]): IDs of related cards
 
 ```yaml
-component_id: models:card_position
-type: dataclass
-file: flashcards_app/models.py
-line_start: 11
-line_end: 18
 tags: [position, geometry, 3d]
-dependencies: []
-used_in: ["geometry:sphere_positions", "state:load_positions", "state:save_state"]
 ```
 
 </Details>
----
+
 
 <Details markdown="1">
 <Summary><sd
 
-#### [`CardProgress:`](./flashcards_app/models.py#Class&nbspCardProgress:)
+#### [Card progress](./flashcards_app/models.py#L20-27 "models:card_progress")
 
 </Summary>
 Learning progress tracking. Tracks read status and difficulty level (1-100) for each card.
@@ -157,23 +233,16 @@ Learning progress tracking. Tracks read status and difficulty level (1-100) for 
 - `difficulty` (int): Progress level (1=review to 100=learned)
 
 ```yaml
-component_id: models:card_progress
-type: dataclass
-file: flashcards_app/models.py
-line_start: 20
-line_end: 26
 tags: [tracking, progress, learning, difficulty]
-dependencies: []
-used_in: ["cards:choose_random_card", "runtime:refresh_deck_state", "state:load_progress", "state:save_state"]
 ```
 
 </Details>
----
+
 
 <Details markdown="1">
 <Summary><sd
 
-#### [`CardGroup:`](./flashcards_app/models.py#Class&nbspCardGroup:)
+#### [Card group](./flashcards_app/models.py#L28-34 "models:card_group")
 
 </Summary>
 Grouping mechanism for organizing flashcards. Organizes cards into visual groups with custom names and colors.
@@ -186,23 +255,16 @@ Grouping mechanism for organizing flashcards. Organizes cards into visual groups
 - `card_ids` (List[str]): IDs of cards belonging to this group
 
 ```yaml
-component_id: models:card_group
-type: dataclass
-file: flashcards_app/models.py
-line_start: 28
-line_end: 33
 tags: [group, organizer, color]
-dependencies: []
-used_in: ["groups:create_group", "state:load_groups", "state:save_state"]
 ```
 
 </Details>
----
+
 
 <Details markdown="1">
 <Summary><sd
 
-#### [`CardLink:`](./flashcards_app/models.py#Class&nbspCardLink:)
+#### [Card link](./flashcards_app/models.py#L35-40 "models:card_link")
 
 </Summary>
 Connection/link between two flashcards. Connects related cards, optionally belonging to a group.
@@ -215,27 +277,105 @@ Connection/link between two flashcards. Connects related cards, optionally belon
 - `group_id` (Optional[str]): Optional group this link belongs to
 
 ```yaml
-component_id: models:card_link
-type: dataclass
-file: flashcards_app/models.py
-line_start: 35
-line_end: 39
 tags: [connection, link, relationship]
-dependencies: []
-used_in: ["connections:create_link", "state:load_links", "state:save_state"]
 ```
 
 </Details>
----
 
-### Parsing System
+<font color="#3b82f6">********************************************************</font>
 
-The parsing system is responsible for extracting structured data from markdown deck files. It identifies specified blocks and converts them into objects.
+### Content ingestion
+
+<!-- diagram:start (generated by update_index.py - do not edit) -->
+```mermaid
+graph LR
+    %% arrow A --> B: B uses A; dashed = component of another section
+    %% dashed arrow A -.-> B: transitive relation (data flow through module-level variables)
+    n_parser_deck_parser["parser:deck_parser"]
+    n_parser__clean_question["parser:_clean_question"]
+    n_parser__clean_answer["parser:_clean_answer"]
+    n_parser_term_formatting["parser:term_formatting"]
+    n_parser_load_decks["parser:load_decks"]
+    n_callbacks_update_card["callbacks:update_card"]:::ext
+    n_cards_pick_random["cards:pick_random"]:::ext
+    n_cards_toggle_reveal["cards:toggle_reveal"]:::ext
+    n_colors_group_color["colors:group_color"]:::ext
+    n_colors_progress_color["colors:progress_color"]:::ext
+    n_connections_create_link["connections:create_link"]:::ext
+    n_connections_disconnect_link["connections:disconnect_link"]:::ext
+    n_decks_add_enabled_deck["decks:add_enabled_deck"]:::ext
+    n_decks_remove_enabled_deck["decks:remove_enabled_deck"]:::ext
+    n_groups_add_to_group["groups:add_to_group"]:::ext
+    n_groups_create_group["groups:create_group"]:::ext
+    n_groups_delete_group["groups:delete_group"]:::ext
+    n_groups_remove_from_group["groups:remove_from_group"]:::ext
+    n_map_make_figure["map:make_figure"]:::ext
+    n_models_flashcard["models:flashcard"]:::ext
+    n_panels_connection_control["panels:connection_control"]:::ext
+    n_panels_difficulty_control["panels:difficulty_control"]:::ext
+    n_panels_group_control["panels:group_control"]:::ext
+    n_panels_position_control["panels:position_control"]:::ext
+    n_positions_set_position["positions:set_position"]:::ext
+    n_progress_set_difficulty["progress:set_difficulty"]:::ext
+    n_runtime_available_decks["runtime:available_decks"]:::ext
+    n_runtime_refresh_deck_state["runtime:refresh_deck_state"]:::ext
+    n_runtime_reset_all_state["runtime:reset_all_state"]:::ext
+    n_runtime_visible_cards["runtime:visible_cards"]:::ext
+    n_server_main["server:main"]:::ext
+    n_state_load_enabled_decks["state:load_enabled_decks"]:::ext
+    n_state_load_groups["state:load_groups"]:::ext
+    n_state_load_links["state:load_links"]:::ext
+    n_state_load_positions["state:load_positions"]:::ext
+    n_state_load_progress["state:load_progress"]:::ext
+    n_models_flashcard --> n_parser_deck_parser
+    n_models_flashcard --> n_parser_load_decks
+    n_parser__clean_answer --> n_parser_deck_parser
+    n_parser__clean_question --> n_parser_deck_parser
+    n_parser_deck_parser --> n_parser_load_decks
+    n_parser_load_decks --> n_decks_add_enabled_deck
+    n_parser_load_decks --> n_decks_remove_enabled_deck
+    n_parser_term_formatting --> n_parser__clean_answer
+    n_parser_term_formatting --> n_parser__clean_question
+    n_parser_load_decks -.-> n_callbacks_update_card
+    n_parser_load_decks -.-> n_cards_pick_random
+    n_parser_load_decks -.-> n_cards_toggle_reveal
+    n_parser_load_decks -.-> n_colors_group_color
+    n_parser_load_decks -.-> n_colors_progress_color
+    n_parser_load_decks -.-> n_connections_create_link
+    n_parser_load_decks -.-> n_connections_disconnect_link
+    n_parser_load_decks -.-> n_groups_add_to_group
+    n_parser_load_decks -.-> n_groups_create_group
+    n_parser_load_decks -.-> n_groups_delete_group
+    n_parser_load_decks -.-> n_groups_remove_from_group
+    n_parser_load_decks -.-> n_map_make_figure
+    n_parser_load_decks -.-> n_panels_connection_control
+    n_parser_load_decks -.-> n_panels_difficulty_control
+    n_parser_load_decks -.-> n_panels_group_control
+    n_parser_load_decks -.-> n_panels_position_control
+    n_parser_load_decks -.-> n_positions_set_position
+    n_parser_load_decks -.-> n_progress_set_difficulty
+    n_parser_load_decks -.-> n_runtime_refresh_deck_state
+    n_parser_load_decks -.-> n_runtime_reset_all_state
+    n_parser_load_decks -.-> n_runtime_visible_cards
+    n_parser_load_decks -.-> n_server_main
+    n_parser_load_decks -.-> n_state_load_groups
+    n_parser_load_decks -.-> n_state_load_links
+    n_parser_load_decks -.-> n_state_load_positions
+    n_parser_load_decks -.-> n_state_load_progress
+    n_runtime_available_decks -.-> n_parser_load_decks
+    n_state_load_enabled_decks -.-> n_parser_load_decks
+    classDef ext stroke:#3b82f6,stroke-dasharray: 4 3
+    linkStyle default stroke: #3b82f6, color: #3b82f6
+    classDef default fill:inherit, stroke: #3b82f6, color:inherit;
+```
+<!-- diagram:end -->
+
+The content ingestion system is responsible for extracting structured data from markdown deck files. It identifies specified blocks and converts them into objects.
 
 <Details markdown="1">
 <Summary><sd
 
-#### [`parse_deck()`](./flashcards_app/parser.py#def&nbspparse_deck)
+#### [Parse deck](./flashcards_app/parser.py#L47-80 "parser:deck_parser")
 
 </Summary>
 Extract flashcards from markdown deck files. Parses format markdown to structured Flashcard objects.
@@ -250,23 +390,16 @@ Extract flashcards from markdown deck files. Parses format markdown to structure
 6. Create Flashcard objects with sequential IDs
 
 ```yaml
-component_id: parser:deck_parser
-type: function
-file: flashcards_app/parser.py
-line_start: 47
-line_end: 79
 tags: [parsing, markdown, deck]
-dependencies: ["parser:_clean_answer", "parser:_clean_question", "models:flashcard"]
-used_in: ["parser:load_decks"]
 ```
 
 </Details>
----
+
 
 <Details markdown="1">
 <Summary><sd
 
-#### [`_clean_question()`](./flashcards_app/parser.py#def _clean_question)
+#### [Clean question](./flashcards_app/parser.py#L31-40 "parser:_clean_question")
 
 </Summary>
 Cleans and formats the question part of a flashcard. Applies technical term formatting and other necessary transformations.
@@ -277,23 +410,16 @@ Cleans and formats the question part of a flashcard. Applies technical term form
 2. Perform any additional necessary transformations
 
 ```yaml
-component_id: parser:_clean_question
-type: function
-file: flashcards_app/parser.py
-line_start: 31
-line_end: 39
 tags: []
-dependencies: ["parser:term_formatting"]
-used_in: ["parser:deck_parser"]
 ```
 
 </Details>
----
+
 
 <Details markdown="1">
 <Summary><sd
 
-#### [`_clean_answer()`](./flashcards_app/parser.py#def _clean_answer)
+#### [Clean answer](./flashcards_app/parser.py#L41-46 "parser:_clean_answer")
 
 </Summary>
 Cleans and formats the answer part of a flashcard. Applies technical term formatting and other necessary transformations.
@@ -304,23 +430,16 @@ Cleans and formats the answer part of a flashcard. Applies technical term format
 2. Perform any additional necessary transformations
 
 ```yaml
-component_id: parser:_clean_answer
-type: function
-file: flashcards_app/parser.py
-line_start: 41
-line_end: 45
 tags: []
-dependencies: ["parser:term_formatting"]
-used_in: ["parser:deck_parser"]
 ```
 
 </Details>
----
+
 
 <Details markdown="1">
 <Summary><sd
 
-#### [`format_technical_terms()`](./flashcards_app/parser.py#def&nbsps;format_technical_terms)
+#### [Format technical terms](./flashcards_app/parser.py#L23-30 "parser:term_formatting")
 
 </Summary>
 Wrap code-like terms in backticks. Identifies and wraps snake_case and function calls.
@@ -333,23 +452,16 @@ Wrap code-like terms in backticks. Identifies and wraps snake_case and function 
 4. Join parts back together
 
 ```yaml
-component_id: parser:term_formatting
-type: function
-file: flashcards_app/parser.py
-line_start: 23
-line_end: 29
 tags: [formatting, technical_terms, markdown]
-dependencies: []
-used_in: ["parser:_clean_answer", "parser:_clean_question" ]
 ```
 
 </Details>
----
+
 
 <Details markdown="1">
 <Summary><sd
 
-#### [`load_decks()`](./flashcards_app/parser.py#def&nbspload_decks)
+#### [Load decks](./flashcards_app/parser.py#L81-96 "parser:load_decks")
 
 </Summary>
 Load flashcards from folder with optional filtering. Scans directory for .md files and parses decks.
@@ -363,27 +475,212 @@ Load flashcards from folder with optional filtering. Scans directory for .md fil
 5. Return the final list of FlashcardDeck objects
 
 ```yaml
-component_id: parser:load_decks
-type: function
-file: flashcards_app/parser.py
-line_start: 81
-line_end: 95
 tags: [loading, deck, filtering]
-dependencies: ["models:flashcard", "parser:deck_parser"]
-used_in: ["decks:add_enabled_deck", "decks:remove_enabled_deck"]
 ```
 
 </Details>
----
 
-### State Management
+<font color="#3b82f6">********************************************************</font>
+
+
+### State persistence
+
+<!-- diagram:start (generated by update_index.py - do not edit) -->
+```mermaid
+graph LR
+    %% arrow A --> B: B uses A; dashed = component of another section
+    %% dashed arrow A -.-> B: transitive relation (data flow through module-level variables)
+    n_runtime_refresh_deck_state["runtime:refresh_deck_state"]
+    n_runtime_reset_all_state["runtime:reset_all_state"]
+    n_state_load_enabled_decks["state:load_enabled_decks"]
+    n_state_load_positions["state:load_positions"]
+    n_state_load_progress["state:load_progress"]
+    n_state_load_groups["state:load_groups"]
+    n_state_load_links["state:load_links"]
+    n_state_save_state["state:save_state"]
+    n_callbacks_update_card["callbacks:update_card"]:::ext
+    n_cards_pick_random["cards:pick_random"]:::ext
+    n_cards_toggle_reveal["cards:toggle_reveal"]:::ext
+    n_colors_group_color["colors:group_color"]:::ext
+    n_colors_progress_color["colors:progress_color"]:::ext
+    n_connections_create_link["connections:create_link"]:::ext
+    n_connections_disconnect_link["connections:disconnect_link"]:::ext
+    n_decks_add_enabled_deck["decks:add_enabled_deck"]:::ext
+    n_decks_deck_filter_options["decks:deck_filter_options"]:::ext
+    n_decks_remove_enabled_deck["decks:remove_enabled_deck"]:::ext
+    n_geometry_sphere_positions["geometry:sphere_positions"]:::ext
+    n_groups_add_to_group["groups:add_to_group"]:::ext
+    n_groups_create_group["groups:create_group"]:::ext
+    n_groups_delete_group["groups:delete_group"]:::ext
+    n_groups_remove_from_group["groups:remove_from_group"]:::ext
+    n_map_make_figure["map:make_figure"]:::ext
+    n_models_card_group["models:card_group"]:::ext
+    n_models_card_link["models:card_link"]:::ext
+    n_models_card_position["models:card_position"]:::ext
+    n_models_card_progress["models:card_progress"]:::ext
+    n_panels_connection_control["panels:connection_control"]:::ext
+    n_panels_deck_control["panels:deck_control"]:::ext
+    n_panels_difficulty_control["panels:difficulty_control"]:::ext
+    n_panels_group_control["panels:group_control"]:::ext
+    n_panels_position_control["panels:position_control"]:::ext
+    n_parser_load_decks["parser:load_decks"]:::ext
+    n_positions_set_position["positions:set_position"]:::ext
+    n_progress_set_difficulty["progress:set_difficulty"]:::ext
+    n_runtime_available_decks["runtime:available_decks"]:::ext
+    n_runtime_visible_cards["runtime:visible_cards"]:::ext
+    n_server_main["server:main"]:::ext
+    n_geometry_sphere_positions --> n_runtime_refresh_deck_state
+    n_geometry_sphere_positions --> n_runtime_reset_all_state
+    n_geometry_sphere_positions --> n_state_load_positions
+    n_models_card_group --> n_state_load_groups
+    n_models_card_group --> n_state_save_state
+    n_models_card_link --> n_state_load_links
+    n_models_card_link --> n_state_save_state
+    n_models_card_position --> n_state_load_positions
+    n_models_card_position --> n_state_save_state
+    n_models_card_progress --> n_runtime_refresh_deck_state
+    n_models_card_progress --> n_state_load_progress
+    n_models_card_progress --> n_state_save_state
+    n_runtime_refresh_deck_state --> n_decks_add_enabled_deck
+    n_runtime_refresh_deck_state --> n_decks_remove_enabled_deck
+    n_runtime_reset_all_state --> n_callbacks_update_card
+    n_state_save_state --> n_callbacks_update_card
+    n_state_save_state --> n_server_main
+    n_parser_load_decks -.-> n_runtime_refresh_deck_state
+    n_parser_load_decks -.-> n_runtime_reset_all_state
+    n_parser_load_decks -.-> n_state_load_groups
+    n_parser_load_decks -.-> n_state_load_links
+    n_parser_load_decks -.-> n_state_load_positions
+    n_parser_load_decks -.-> n_state_load_progress
+    n_runtime_available_decks -.-> n_runtime_refresh_deck_state
+    n_runtime_available_decks -.-> n_runtime_reset_all_state
+    n_runtime_available_decks -.-> n_state_load_enabled_decks
+    n_runtime_available_decks -.-> n_state_load_groups
+    n_runtime_available_decks -.-> n_state_load_links
+    n_runtime_available_decks -.-> n_state_load_positions
+    n_runtime_available_decks -.-> n_state_load_progress
+    n_state_load_enabled_decks -.-> n_callbacks_update_card
+    n_state_load_enabled_decks -.-> n_cards_pick_random
+    n_state_load_enabled_decks -.-> n_cards_toggle_reveal
+    n_state_load_enabled_decks -.-> n_colors_group_color
+    n_state_load_enabled_decks -.-> n_colors_progress_color
+    n_state_load_enabled_decks -.-> n_connections_create_link
+    n_state_load_enabled_decks -.-> n_connections_disconnect_link
+    n_state_load_enabled_decks -.-> n_decks_add_enabled_deck
+    n_state_load_enabled_decks -.-> n_decks_deck_filter_options
+    n_state_load_enabled_decks -.-> n_decks_remove_enabled_deck
+    n_state_load_enabled_decks -.-> n_groups_add_to_group
+    n_state_load_enabled_decks -.-> n_groups_create_group
+    n_state_load_enabled_decks -.-> n_groups_delete_group
+    n_state_load_enabled_decks -.-> n_groups_remove_from_group
+    n_state_load_enabled_decks -.-> n_map_make_figure
+    n_state_load_enabled_decks -.-> n_panels_connection_control
+    n_state_load_enabled_decks -.-> n_panels_deck_control
+    n_state_load_enabled_decks -.-> n_panels_difficulty_control
+    n_state_load_enabled_decks -.-> n_panels_group_control
+    n_state_load_enabled_decks -.-> n_panels_position_control
+    n_state_load_enabled_decks -.-> n_parser_load_decks
+    n_state_load_enabled_decks -.-> n_positions_set_position
+    n_state_load_enabled_decks -.-> n_progress_set_difficulty
+    n_state_load_enabled_decks -.-> n_runtime_refresh_deck_state
+    n_state_load_enabled_decks -.-> n_runtime_reset_all_state
+    n_state_load_enabled_decks -.-> n_runtime_visible_cards
+    n_state_load_enabled_decks -.-> n_server_main
+    n_state_load_enabled_decks -.-> n_state_load_groups
+    n_state_load_enabled_decks -.-> n_state_load_links
+    n_state_load_enabled_decks -.-> n_state_load_positions
+    n_state_load_enabled_decks -.-> n_state_load_progress
+    n_state_load_groups -.-> n_callbacks_update_card
+    n_state_load_groups -.-> n_colors_group_color
+    n_state_load_groups -.-> n_groups_add_to_group
+    n_state_load_groups -.-> n_groups_create_group
+    n_state_load_groups -.-> n_groups_delete_group
+    n_state_load_groups -.-> n_groups_remove_from_group
+    n_state_load_groups -.-> n_map_make_figure
+    n_state_load_groups -.-> n_panels_connection_control
+    n_state_load_groups -.-> n_panels_group_control
+    n_state_load_groups -.-> n_runtime_refresh_deck_state
+    n_state_load_groups -.-> n_runtime_reset_all_state
+    n_state_load_groups -.-> n_runtime_visible_cards
+    n_state_load_groups -.-> n_server_main
+    n_state_load_links -.-> n_callbacks_update_card
+    n_state_load_links -.-> n_connections_create_link
+    n_state_load_links -.-> n_connections_disconnect_link
+    n_state_load_links -.-> n_groups_delete_group
+    n_state_load_links -.-> n_map_make_figure
+    n_state_load_links -.-> n_runtime_refresh_deck_state
+    n_state_load_links -.-> n_runtime_reset_all_state
+    n_state_load_links -.-> n_server_main
+    n_state_load_positions -.-> n_callbacks_update_card
+    n_state_load_positions -.-> n_map_make_figure
+    n_state_load_positions -.-> n_panels_position_control
+    n_state_load_positions -.-> n_positions_set_position
+    n_state_load_positions -.-> n_runtime_refresh_deck_state
+    n_state_load_positions -.-> n_runtime_reset_all_state
+    n_state_load_positions -.-> n_server_main
+    n_state_load_progress -.-> n_callbacks_update_card
+    n_state_load_progress -.-> n_cards_pick_random
+    n_state_load_progress -.-> n_cards_toggle_reveal
+    n_state_load_progress -.-> n_colors_progress_color
+    n_state_load_progress -.-> n_panels_difficulty_control
+    n_state_load_progress -.-> n_progress_set_difficulty
+    n_state_load_progress -.-> n_runtime_refresh_deck_state
+    n_state_load_progress -.-> n_runtime_reset_all_state
+    n_state_load_progress -.-> n_server_main
+    classDef ext stroke:#3b82f6,stroke-dasharray: 4 3
+    linkStyle default stroke: #3b82f6, color: #3b82f6
+    classDef default fill:inherit, stroke: #3b82f6, color:inherit;
+```
+<!-- diagram:end -->
 
 All state components are persisted in [data/positions.json](./data/positions.json). The location is defined as [STATE_PATH](./flashcards_app/runtime.py#STATE_PATH).
+
 
 <Details markdown="1">
 <Summary><sd
 
-#### [`load_enabled_decks()`](./flashcards_app/state.py#def&nbspload_enabled_decks)
+#### [Refresh deck state](./flashcards_app/runtime.py#L43-64 "runtime:refresh_deck_state")
+
+</Summary>
+The `refresh_deck_state()` function updates the state of the deck, ensuring that the visibility and order of cards are consistent with the current application state.
+
+**Algorithm**:
+
+1. Retrieve the current state of the deck
+2. Update the visibility and order of cards based on the current application state
+
+```yaml
+tags: []
+```
+
+</Details>
+
+
+<Details markdown="1">
+<Summary><sd
+
+#### [Reset all state](./flashcards_app/runtime.py#L75-84 "runtime:reset_all_state")
+
+</Summary>
+The `reset_all_state()` function resets the entire application state, clearing all current data and returning the application to its initial state.
+
+**Algorithm**:
+
+1. Clear all current application data
+2. Reset all state variables to their initial values
+3. Ensure the application is in its initial state
+
+```yaml
+tags: []
+```
+
+</Details>
+
+
+<Details markdown="1">
+<Summary><sd
+
+#### [Load enabled decks](./flashcards_app/state.py#L83-97 "state:load_enabled_decks")
 
 </Summary>
 Load the list of active flashcard decks. Reads saved preferences from JSON and validates them against available markdown files on disk.
@@ -395,23 +692,16 @@ Load the list of active flashcard decks. Reads saved preferences from JSON and v
 3. If yes: filter saved decks to ensure they still exist in `available_decks`
 
 ```yaml
-component_id: state:load_enabled_decks
-type: function
-file: flashcards_app/state.py
-line_start: 83
-line_end: 96
 tags: [loading, deck, persistence]
-dependencies: []
-used_in: []
 ```
 
 </Details>
----
+
 
 <Details markdown="1">
 <Summary><sd
 
-#### [`load_positions()`](./flashcards_app/state.py#def&nbspload_positions)
+#### [Load positions](./flashcards_app/state.py#L9-24 "state:load_positions")
 
 </Summary>
 Load or generate sphere positions. Returns positions from JSON or generates deterministic random positions.
@@ -424,23 +714,16 @@ Load or generate sphere positions. Returns positions from JSON or generates dete
 4. Return list of CardPosition objects
 
 ```yaml
-component_id: state:load_positions
-type: function
-file: flashcards_app/state.py
-line_start: 9
-line_end: 23
 tags: [positions, geometry, persistence]
-dependencies: ["geometry:sphere_positions", "models:card_position"]
-used_in: []
 ```
 
 </Details>
----
+
 
 <Details markdown="1">
 <Summary><sd
 
-#### [`load_progress()`](./flashcards_app/state.py#def&nbspload_progress)
+#### [Load progress](./flashcards_app/state.py#L25-43 "state:load_progress")
 
 </Summary>
 Load or create card progress. Hydrates JSON data into CardProgress objects or initializes defaults.
@@ -453,23 +736,16 @@ Load or create card progress. Hydrates JSON data into CardProgress objects or in
 4. Fill gaps for missing cards with defaults
 
 ```yaml
-component_id: state:load_progress
-type: function
-file: flashcards_app/state.py
-line_start: 25
-line_end: 42
 tags: [progress, persistence]
-dependencies: ["models:card_progress"]
-used_in: []
 ```
 
 </Details>
----
+
 
 <Details markdown="1">
 <Summary><sd
 
-#### [`load_groups()`](./flashcards_app/state.py#def&nbspload_groups)
+#### [Load groups](./flashcards_app/state.py#L45-62 "state:load_groups")
 
 </Summary>
 Load card groups from JSON. Filters out cards that are no longer present in the current deck.
@@ -482,23 +758,16 @@ Load card groups from JSON. Filters out cards that are no longer present in the 
 4. Create CardGroup objects
 
 ```yaml
-component_id: state:load_groups
-type: function
-file: flashcards_app/state.py
-line_start: 45
-line_end: 61
 tags: [groups, persistence]
-dependencies: ["models:card_group"]
-used_in: []
 ```
 
 </Details>
----
+
 
 <Details markdown="1">
 <Summary><sd
 
-#### [`load_links()`](./flashcards_app/state.py#def&nbspload_links)
+#### [Load links](./flashcards_app/state.py#L64-81 "state:load_links")
 
 </Summary>
 Load card connections from JSON. Ensures both source and target cards still exist.
@@ -511,23 +780,16 @@ Load card connections from JSON. Ensures both source and target cards still exis
 4. Create CardLink objects
 
 ```yaml
-component_id: state:load_links
-type: function
-file: flashcards_app/state.py
-line_start: 64
-line_end: 80
 tags: [links, persistence]
-dependencies: ["models:card_link"]
-used_in: []
 ```
 
 </Details>
----
+
 
 <Details markdown="1">
 <Summary><sd
 
-#### [`save_state()`](./flashcards_app/state.py#def&nbspsave_state)
+#### [Save state](./flashcards_app/state.py#L99-121 "state:save_state")
 
 </Summary>
 Save all application state to JSON. Persists positions, progress, groups, links, enabled decks.
@@ -541,508 +803,153 @@ Save all application state to JSON. Persists positions, progress, groups, links,
 5. Write JSON with indent=2
 
 ```yaml
-component_id: state:save_state
-type: function
-file: flashcards_app/state.py
-line_start: 99
-line_end: 120
 tags: [persistence, state, json]
-dependencies: ["models:card_group", "models:card_link", "models:card_position", "models:card_progress"]
-used_in: ["callbacks:update_card", "server:main"]
 ```
 
 </Details>
----
 
-### Visualization of control elements (panels)
+<font color="#3b82f6">********************************************************</font>
 
-This section provides an overview and detailed descriptions of the various control elements (panels) used in the flashcards application. Each panel corresponds to a specific user interface component that allows interaction with flashcards.
 
-<Details markdown="1">
-<Summary><sd
+### Domain Actions
 
-#### [`deck_control()`](./flashcards_app/visualization/panels.py#def&nbspdeck_control)
-
-</Summary>
-The `deck_control()` function generates the user interface control for selecting the deck of a flashcard.
-
-**Algorithm**:
-
-1. Retrieve the current deck of the flashcard
-2. Create the control layout with options for different decks
-3. Handle user interactions to update the deck
-4. Return the constructed control
-
-```yaml
-component_id: panels:deck_control
-type: function
-file: flashcards_app/visualization/panels.py
-line_start: 156
-line_end: 208
-tags: []
-dependencies: ["decks:deck_filter_options", "runtime:available_decks"]
-used_in: ["callbacks:update_card"]
+<!-- diagram:start (generated by update_index.py - do not edit) -->
+```mermaid
+graph LR
+    %% arrow A --> B: B uses A; dashed = component of another section
+    %% dashed arrow A -.-> B: transitive relation (data flow through module-level variables)
+    n_positions_set_position["positions:set_position"]
+    n_groups_add_to_group["groups:add_to_group"]
+    n_groups_remove_from_group["groups:remove_from_group"]
+    n_groups_delete_group["groups:delete_group"]
+    n_groups_create_group["groups:create_group"]
+    n_connections_disconnect_link["connections:disconnect_link"]
+    n_connections_create_link["connections:create_link"]
+    n_progress_set_difficulty["progress:set_difficulty"]
+    n_callbacks_update_card["callbacks:update_card"]
+    n_cards_pick_adjacent["cards:pick_adjacent"]:::ext
+    n_cards_pick_random["cards:pick_random"]:::ext
+    n_cards_select_from_click["cards:select_from_click"]:::ext
+    n_cards_toggle_reveal["cards:toggle_reveal"]:::ext
+    n_decks_add_enabled_deck["decks:add_enabled_deck"]:::ext
+    n_decks_deck_filter_options["decks:deck_filter_options"]:::ext
+    n_decks_remove_enabled_deck["decks:remove_enabled_deck"]:::ext
+    n_map_make_figure["map:make_figure"]:::ext
+    n_models_card_group["models:card_group"]:::ext
+    n_models_card_link["models:card_link"]:::ext
+    n_panels_card_panel["panels:card_panel"]:::ext
+    n_panels_connection_control["panels:connection_control"]:::ext
+    n_panels_deck_control["panels:deck_control"]:::ext
+    n_panels_difficulty_control["panels:difficulty_control"]:::ext
+    n_panels_group_control["panels:group_control"]:::ext
+    n_panels_position_control["panels:position_control"]:::ext
+    n_parser_load_decks["parser:load_decks"]:::ext
+    n_runtime_available_decks["runtime:available_decks"]:::ext
+    n_runtime_reset_all_state["runtime:reset_all_state"]:::ext
+    n_runtime_visible_cards["runtime:visible_cards"]:::ext
+    n_state_load_enabled_decks["state:load_enabled_decks"]:::ext
+    n_state_load_groups["state:load_groups"]:::ext
+    n_state_load_links["state:load_links"]:::ext
+    n_state_load_positions["state:load_positions"]:::ext
+    n_state_load_progress["state:load_progress"]:::ext
+    n_state_save_state["state:save_state"]:::ext
+    n_cards_pick_adjacent --> n_callbacks_update_card
+    n_cards_pick_random --> n_callbacks_update_card
+    n_cards_select_from_click --> n_callbacks_update_card
+    n_cards_toggle_reveal --> n_callbacks_update_card
+    n_connections_create_link --> n_callbacks_update_card
+    n_connections_disconnect_link --> n_callbacks_update_card
+    n_decks_add_enabled_deck --> n_callbacks_update_card
+    n_decks_deck_filter_options --> n_callbacks_update_card
+    n_decks_remove_enabled_deck --> n_callbacks_update_card
+    n_groups_add_to_group --> n_callbacks_update_card
+    n_groups_create_group --> n_callbacks_update_card
+    n_groups_delete_group --> n_callbacks_update_card
+    n_groups_remove_from_group --> n_callbacks_update_card
+    n_map_make_figure --> n_callbacks_update_card
+    n_models_card_group --> n_groups_create_group
+    n_models_card_link --> n_connections_create_link
+    n_panels_card_panel --> n_callbacks_update_card
+    n_panels_connection_control --> n_callbacks_update_card
+    n_panels_deck_control --> n_callbacks_update_card
+    n_panels_difficulty_control --> n_callbacks_update_card
+    n_panels_group_control --> n_callbacks_update_card
+    n_panels_position_control --> n_callbacks_update_card
+    n_positions_set_position --> n_callbacks_update_card
+    n_progress_set_difficulty --> n_callbacks_update_card
+    n_runtime_reset_all_state --> n_callbacks_update_card
+    n_runtime_visible_cards --> n_callbacks_update_card
+    n_state_save_state --> n_callbacks_update_card
+    n_parser_load_decks -.-> n_callbacks_update_card
+    n_parser_load_decks -.-> n_connections_create_link
+    n_parser_load_decks -.-> n_connections_disconnect_link
+    n_parser_load_decks -.-> n_groups_add_to_group
+    n_parser_load_decks -.-> n_groups_create_group
+    n_parser_load_decks -.-> n_groups_delete_group
+    n_parser_load_decks -.-> n_groups_remove_from_group
+    n_parser_load_decks -.-> n_positions_set_position
+    n_parser_load_decks -.-> n_progress_set_difficulty
+    n_runtime_available_decks -.-> n_callbacks_update_card
+    n_runtime_available_decks -.-> n_connections_create_link
+    n_runtime_available_decks -.-> n_connections_disconnect_link
+    n_runtime_available_decks -.-> n_groups_add_to_group
+    n_runtime_available_decks -.-> n_groups_create_group
+    n_runtime_available_decks -.-> n_groups_delete_group
+    n_runtime_available_decks -.-> n_groups_remove_from_group
+    n_runtime_available_decks -.-> n_positions_set_position
+    n_runtime_available_decks -.-> n_progress_set_difficulty
+    n_state_load_enabled_decks -.-> n_callbacks_update_card
+    n_state_load_enabled_decks -.-> n_connections_create_link
+    n_state_load_enabled_decks -.-> n_connections_disconnect_link
+    n_state_load_enabled_decks -.-> n_groups_add_to_group
+    n_state_load_enabled_decks -.-> n_groups_create_group
+    n_state_load_enabled_decks -.-> n_groups_delete_group
+    n_state_load_enabled_decks -.-> n_groups_remove_from_group
+    n_state_load_enabled_decks -.-> n_positions_set_position
+    n_state_load_enabled_decks -.-> n_progress_set_difficulty
+    n_state_load_groups -.-> n_callbacks_update_card
+    n_state_load_groups -.-> n_groups_add_to_group
+    n_state_load_groups -.-> n_groups_create_group
+    n_state_load_groups -.-> n_groups_delete_group
+    n_state_load_groups -.-> n_groups_remove_from_group
+    n_state_load_links -.-> n_callbacks_update_card
+    n_state_load_links -.-> n_connections_create_link
+    n_state_load_links -.-> n_connections_disconnect_link
+    n_state_load_links -.-> n_groups_delete_group
+    n_state_load_positions -.-> n_callbacks_update_card
+    n_state_load_positions -.-> n_positions_set_position
+    n_state_load_progress -.-> n_callbacks_update_card
+    n_state_load_progress -.-> n_progress_set_difficulty
+    classDef ext stroke:#3b82f6,stroke-dasharray: 4 3
+    linkStyle default stroke: #3b82f6, color: #3b82f6
+    classDef default fill:inherit, stroke: #3b82f6, color:inherit;
 ```
+<!-- diagram:end -->
 
-</Details>
----
 
-<Details markdown="1">
-<Summary><sd
+> The interactive features are planned as controls for tuning the model's behavior within the DS project. Without the model they provide a manual interface for navigating and reflecting flashcards relationships.
 
-#### [`card_panel()`](./flashcards_app/visualization/panels.py#def&nbspcard_panel)
-
-</Summary>
-The `card_panel()` function generates the user interface panel for displaying and interacting with a flashcard.
-
-**Algorithm**:
-
-1. Retrieve the flashcard data
-2. Create the panel layout with the flashcard content
-3. Include controls for interacting with the flashcard (e.g., reveal answer, navigate)
-4. Return the constructed panel
-
-```yaml
-component_id: panels:card_panel
-type: function
-file: flashcards_app/visualization/panels.py
-line_start: 9
-line_end: 26
-tags: []
-dependencies: ["models:flashcard"]
-used_in: ["callbacks:update_card"]
-```
-
-</Details>
----
-
-<Details markdown="1">
-<Summary><sd
-
-#### [`difficulty_control()`](./flashcards_app/visualization/panels.py#def&nbspdifficulty_control)
-
-</Summary>
-The `difficulty_control()` function generates the user interface control for selecting the difficulty level of a flashcard.
-
-**Algorithm**:
-
-1. Retrieve the current difficulty level of the flashcard
-2. Create the control layout with options for different difficulty levels
-3. Handle user interactions to update the difficulty level
-4. Return the constructed control
-
-```yaml
-component_id: panels:difficulty_control
-type: function
-file: flashcards_app/visualization/panels.py
-line_start: 29
-line_end: 55
-tags: []
-dependencies: ["models:flashcard"]
-used_in: ["callbacks:update_card"]
-```
-
-</Details>
----
-
-<Details markdown="1">
-<Summary><sd
-
-#### [`position_control()`](./flashcards_app/visualization/panels.py#def&nbspposition_control)
-
-</Summary>
-The `position_control()` function generates the user interface control for selecting the position of a flashcard.
-
-**Algorithm**:
-
-1. Retrieve the current position of the flashcard
-2. Create the control layout with options for different positions
-3. Handle user interactions to update the position
-4. Return the constructed control
-
-```yaml
-component_id: panels:position_control
-type: function
-file: flashcards_app/visualization/panels.py
-line_start: 58
-line_end: 88
-tags: []
-dependencies: ["models:flashcard"]
-used_in: ["callbacks:update_card"]
-```
-
-</Details>
----
-
-<Details markdown="1">
-<Summary><sd
-
-#### [`group_control()`](./flashcards_app/visualization/panels.py#def&nbspgroup_control)
-
-</Summary>
-The `group_control()` function generates the user interface control for selecting the group of a flashcard.
-
-**Algorithm**:
-
-1. Retrieve the current group of the flashcard
-2. Create the control layout with options for different groups
-3. Handle user interactions to update the group
-4. Return the constructed control
-
-```yaml
-component_id: panels:group_control
-type: function
-file: flashcards_app/visualization/panels.py
-line_start: 91
-line_end: 153
-tags: []
-dependencies: ["models:flashcard"]
-used_in: ["callbacks:update_card"]
-```
-
-</Details>
----
-
-<Details markdown="1">
-<Summary><sd
-
-#### [`connection_control()`](./flashcards_app/visualization/panels.py#def&nbspconnection_control)
-
-</Summary>
-The `connection_control()` function generates the user interface control for selecting the connection of a flashcard.
-
-**Algorithm**:
-
-1. Retrieve the current connection of the flashcard
-2. Create the control layout with options for different connections
-3. Handle user interactions to update the connection
-4. Return the constructed control
-
-```yaml
-component_id: panels:connection_control
-type: function
-file: flashcards_app/visualization/panels.py
-line_start: 211
-line_end: 247
-tags: []
-dependencies: ["models:flashcard"]
-used_in: ["callbacks:update_card"]
-```
-
-</Details>
----
-
-### Visualization on 3D Sphere
-
-The visualization on a 3D sphere helps users to understand the spatial relationships between flashcards, providing an intuitive way to explore the deck.
-
-For new decks it generates reproducible random points inside a sphere. It ensues that all points stay inside the unit sphere. Framework: Dash (Plotly) with Flask for boot-id endpoint Visualization: Plotly 3D Scatter plots showing cards on a sphere.
-
-The app uses an **extensive callback system for interactivity**.
-
-
-<Details markdown="1">
-<Summary><sd
-
-#### [`sphere_positions()`](./flashcards_app/geometry.py#def&nbspsphere_positions)
-
-</Summary>
-Generate reproducible random points inside sphere. Creates uniform random distribution within unit sphere.
-
-**Algorithm**:
-
-1. Initialize Random with seed
-2. For each card_id: generate random x,y,z in [-1,1]
-3. Reject if distance_squared > 1 or == 0
-4. Scale by radius and create CardPosition
-
-```yaml
-component_id: geometry:sphere_positions
-type: function
-file: flashcards_app/geometry.py
-line_start: 7
-line_end: 32
-tags: [geometry, 3d, random]
-dependencies: ["models:card_position"]
-used_in: ["runtime:refresh_deck_state", "runtime:reset_all_state", "state:load_positions"]
-```
-
-</Details>
----
-
-<Details markdown="1">
-<Summary><sd
-
-#### [`make_figure()`](./flashcards_app/visualization/map.py#def&nbspmake_figure)
-
-</Summary>
-The `make_figure()` function generates a visual representation of the flashcards on a map, using colors to indicate progress and group membership.
-
-**Algorithm**:
-
-1. Initialize figure and axes
-2. For each flashcard: determine color based on progress and group
-3. Plot flashcard on map
-4. Return the generated figure
-
-```yaml
-component_id: map:make_figure
-type: function
-file: flashcards_app/visualization/map.py
-line_start: 9
-line_end: 122
-tags: []
-dependencies: ["colors:group_color", "colors:progress_color", "models:flashcard"]
-used_in: ["callbacks:update_card"]
-```
-
-</Details>
----
-
-<Details markdown="1">
-<Summary><sd
-
-#### [`hex_to_rgb()`](./flashcards_app/visualization/colors.py#def&nbsphex_to_rgb)
-
-</Summary>
-The `hex_to_rgb()` function converts a hexadecimal color string to an RGB tuple.
-
-**Algorithm**:
-
-1. Remove the leading '#' from the hex string if present
-2. Convert the hex string to an integer
-3. Extract the red, green, and blue components
-4. Return the RGB tuple
-
-```yaml
-component_id: colors:hex_to_rgb
-type: function
-file: flashcards_app/visualization/colors.py
-line_start: 4
-line_end: 6
-tags: []
-dependencies: []
-used_in: ["colors:interpolate_color"]
-```
-
-</Details>
----
-
-<Details markdown="1">
-<Summary><sd
-
-#### [`rgb_to_hex()`](./flashcards_app/visualization/colors.py#def&nbsprgb_to_hex)
-
-</Summary>
-The `rgb_to_hex()` function converts an RGB tuple to a hexadecimal color string.
-
-**Algorithm**:
-
-1. Extract the red, green, and blue components from the RGB tuple
-2. Convert each component to a two-digit hexadecimal string
-3. Concatenate the hexadecimal strings with a leading '#'
-4. Return the hexadecimal color string
-
-```yaml
-component_id: colors:rgb_to_hex
-type: function
-file: flashcards_app/visualization/colors.py
-line_start: 9
-line_end: 10
-tags: []
-dependencies: []
-used_in: ["colors:interpolate_color"]
-```
-
-</Details>
----
-
-<Details markdown="1">
-<Summary><sd
-
-#### [`interpolate_color()`](./flashcards_app/visualization/colors.py#def&nbspinterpolate_color)
-
-</Summary>
-The `interpolate_color()` function calculates an intermediate color between two given colors based on a specified ratio.
-
-**Algorithm**:
-
-1. Convert the start and end colors from hex to RGB
-2. Interpolate each RGB component based on the ratio
-3. Convert the interpolated RGB color back to hex
-4. Return the resulting color
-
-```yaml
-component_id: colors:interpolate_color
-type: function
-file: flashcards_app/visualization/colors.py
-line_start: 13
-line_end: 21
-tags: []
-dependencies: ["colors:hex_to_rgb", "colors:rgb_to_hex"]
-used_in: ["colors:progress_color"]
-```
-
-</Details>
----
-
-<Details markdown="1">
-<Summary><sd
-
-#### [`progress_color()`](./flashcards_app/visualization/colors.py#def&nbspprogress_color)
-
-</Summary>
-The `progress_color()` function determines the color representing the progress based on a given ratio.
-
-**Algorithm**:
-
-1. Define the start and end colors for the progress
-2. Use the `interpolate_color()` function to calculate the intermediate color based on the ratio
-3. Return the resulting color
-
-```yaml
-component_id: colors:progress_color
-type: function
-file: flashcards_app/visualization/colors.py
-line_start: 24
-line_end: 37
-tags: []
-dependencies: ["colors:interpolate_color"]
-used_in: ["map:make_figure"]
-```
-
-</Details>
----
-
-<Details markdown="1">
-<Summary><sd
-
-#### [`group_color()`](./flashcards_app/visualization/colors.py#def&nbspgroup_color)
-
-</Summary>
-The `group_color()` function determines the color associated with a specific group.
-
-**Algorithm**:
-
-1. Define a mapping of groups to colors
-2. Look up the color for the given group
-3. Return the corresponding color
-
-```yaml
-component_id: colors:group_color
-type: function
-file: flashcards_app/visualization/colors.py
-line_start: 40
-line_end: 44
-tags: []
-dependencies: []
-used_in: ["map:make_figure"]
-```
-
-</Details>
----
-
-### Interactive Features
-
-The following section deals with interactive features that allow users to interact with the flashcards in various ways.
-
-> The interactive features are planned as controls for tuning the model's behavior within the DS project. Without the model they provide a manual interface for navigating and managing flashcards.
-
-### Decks
-
+-- Decks --
 Selecting decks allows users to choose which decks they want to enable and interact with within the flashcards application. **This is the 1st and lowest level of detalisation**.
 
-<Details markdown="1">
-<Summary><sd
-
-#### [`add_enabled_deck()`](./flashcards_app/services/decks.py#def&nbspadd_enabled_deck)
-
-</Summary>
-The `add_enabled_deck()` function adds a deck to the list of enabled decks.
-
-**Algorithm**:
-
-1. Load the current list of enabled decks
-2. Add the specified deck to the list
-3. Refresh the deck state to reflect the changes
-
-```yaml
-component_id: decks:add_enabled_deck
-type: function
-file: flashcards_app/services/decks.py
-line_start: 12
-line_end: 17
-tags: []
-dependencies: ["parser:load_decks", "runtime:available_decks", "runtime:refresh_deck_state"]
-used_in: ["callbacks:update_card"]
-```
-
-</Details>
----
-
-<Details markdown="1">
-<Summary><sd
-
-#### [`remove_enabled_deck()`](./flashcards_app/services/decks.py#def&nbspremove_enabled_deck)
-
-</Summary>
-The `remove_enabled_deck()` function removes a deck from the list of enabled decks.
-
-**Algorithm**:
-
-1. Load the current list of enabled decks
-2. Remove the specified deck from the list
-3. Refresh the deck state to reflect the changes
-
-```yaml
-component_id: decks:remove_enabled_deck
-type: function
-file: flashcards_app/services/decks.py
-line_start: 20
-line_end: 26
-tags: []
-dependencies: ["parser:load_decks", "runtime:refresh_deck_state"]
-used_in: ["callbacks:update_card"]
-```
-
-</Details>
----
-
-<Details markdown="1">
-<Summary><sd
-
-#### [`deck_filter_options()`](./flashcards_app/services/decks.py#def&nbspdeck_filter_options)
-
-</Summary>
-The `deck_filter_options()` function retrieves the available filter options for decks.
-
-**Algorithm**:
-
-1. Retrieve the list of available filter options for decks
-2. Return the list of available filter options
-
-```yaml
-component_id: decks:deck_filter_options
-type: function
-file: flashcards_app/services/decks.py
-line_start: 5
-line_end: 9
-tags: []
-dependencies: []
-used_in: ["callbacks:update_card", "panels:deck_control"]
-```
-
-</Details>
----
-
-### Positions
-
+-- Positions --
 The position of a flashcard within the sphere determines its vectorization. The spatial arrangement of flashcards shows the relative importance and relationships between different cards. It allows to establish a structured understanding of how individual flashcards relate to each other within the broader context of the knowledge sphere. **This is the 2nd level of detalisation**.
 
+
+-- Groups --
+Grouping flashcards into collections shows the relationships between different cards and allows users to organize their study material more effectively. **Together with connections this is the 3rd and intermediate level of detalisation**.
+
+-- Connections --
+Connecting cards allows users to establish fixed relationships between different flashcards, enhancing the study experience by linking related concepts. **Together with grouping, this is the 3rd and intermediate level of detalisation**.
+
+-- Cards --
+This last section covers navigating and selecting cards, revealing answers and tracking progress. It deals with the actual inner quality of the request. **This is the 4th and highest level of detalisation**.
+
+
 <Details markdown="1">
 <Summary><sd
 
-#### [`set_position()`](./flashcards_app/services/positions.py#def&nbspset_position)
+#### [Set position](./flashcards_app/services/positions.py#L4-9 "positions:set_position")
 
 </Summary>
 The `set_position()` function sets the position of a flashcard within a group.
@@ -1053,27 +960,16 @@ The `set_position()` function sets the position of a flashcard within a group.
 2. Update the flashcard's position
 
 ```yaml
-component_id: positions:set_position
-type: function
-file: flashcards_app/services/positions.py
-line_start: 4
-line_end: 8
 tags: []
-dependencies: []
-used_in: ["callbacks:update_card"]
 ```
 
 </Details>
----
 
-### Groups
-
-Grouping flashcards into collections shows the relationships between different cards and allows users to organize their study material more effectively. **Together with connections this is the 3rd and intermediate level of detalisation**.
 
 <Details markdown="1">
 <Summary><sd
 
-#### [`add_to_group()`](./flashcards_app/services/groups.py#def&nbspadd_to_group)
+#### [Add to group](./flashcards_app/services/groups.py#L10-14 "groups:add_to_group")
 
 </Summary>
 The `add_to_group()` function adds a flashcard to a specified group.
@@ -1084,50 +980,16 @@ The `add_to_group()` function adds a flashcard to a specified group.
 2. Add the flashcard to the group
 
 ```yaml
-component_id: groups:add_to_group
-type: function
-file: flashcards_app/services/groups.py
-line_start: 10
-line_end: 13
 tags: []
-dependencies: []
-used_in: []
 ```
 
 </Details>
----
+
 
 <Details markdown="1">
 <Summary><sd
 
-#### [`add_to_group()`](./flashcards_app/services/groups.py#def&nbspadd_to_group)
-
-</Summary>
-The `add_to_group()` function adds a flashcard to a specified group.
-
-**Algorithm**:
-
-1. Identify the flashcard and the target group
-2. Add the flashcard to the group
-
-```yaml
-component_id: groups:add_to_group
-type: function
-file: flashcards_app/services/groups.py
-line_start: 10
-line_end: 13
-tags: []
-dependencies: []
-used_in: ["callbacks:update_card"]
-```
-
-</Details>
----
-
-<Details markdown="1">
-<Summary><sd
-
-#### [`remove_from_group()`](./flashcards_app/services/groups.py#def&nbspremove_from_group)
+#### [Remove from group](./flashcards_app/services/groups.py#L16-20 "groups:remove_from_group")
 
 </Summary>
 The `remove_from_group()` function removes a flashcard from a specified group.
@@ -1138,23 +1000,16 @@ The `remove_from_group()` function removes a flashcard from a specified group.
 2. Remove the flashcard from the group
 
 ```yaml
-component_id: groups:remove_from_group
-type: function
-file: flashcards_app/services/groups.py
-line_start: 16
-line_end: 19
 tags: []
-dependencies: []
-used_in: ["callbacks:update_card"]
 ```
 
 </Details>
----
+
 
 <Details markdown="1">
 <Summary><sd
 
-#### [`delete_group()`](./flashcards_app/services/groups.py#def&nbspdelete_group)
+#### [Delete group](./flashcards_app/services/groups.py#L22-25 "groups:delete_group")
 
 </Summary>
 The `delete_group()` function deletes a specified group.
@@ -1165,23 +1020,16 @@ The `delete_group()` function deletes a specified group.
 2. Delete the group
 
 ```yaml
-component_id: groups:delete_group
-type: function
-file: flashcards_app/services/groups.py
-line_start: 22
-line_end: 24
 tags: []
-dependencies: []
-used_in: ["callbacks:update_card"]
 ```
 
 </Details>
----
+
 
 <Details markdown="1">
 <Summary><sd
 
-#### [`create_group()`](./flashcards_app/services/groups.py#def&nbspcreate_group)
+#### [Create group](./flashcards_app/services/groups.py#L5-8 "groups:create_group")
 
 </Summary>
 The `create_group()` function creates a new flashcard group.
@@ -1192,27 +1040,15 @@ The `create_group()` function creates a new flashcard group.
 2. Save the new group
 
 ```yaml
-component_id: groups:create_group
-type: function
-file: flashcards_app/services/groups.py
-line_start: 5
-line_end: 7
 tags: []
-dependencies: ["models:card_group"]
-used_in: ["callbacks:update_card"]
 ```
 
 </Details>
----
-
-### Connections
-
-Connecting cards allows users to establish fixed relationships between different flashcards, enhancing the study experience by linking related concepts. **Together with grouping, this is the 3rd and intermediate level of detalisation**.
 
 <Details markdown="1">
 <Summary><sd
 
-#### [`disconnect_link()`](./flashcards_app/services/connections.py#def&nbspdisconnect_link)
+#### [Disconnect link](./flashcards_app/services/connections.py#L15-23 "connections:disconnect_link")
 
 </Summary>
 The `disconnect_link()` function removes an existing link between two flashcards.
@@ -1223,23 +1059,16 @@ The `disconnect_link()` function removes an existing link between two flashcards
 2. Remove the link
 
 ```yaml
-component_id: connections:disconnect_link
-type: function
-file: flashcards_app/services/connections.py
-line_start: 15
-line_end: 22
 tags: []
-dependencies: []
-used_in: ["callbacks:update_card"]
 ```
 
 </Details>
----
+
 
 <Details markdown="1">
 <Summary><sd
 
-#### [`create_link()`](./flashcards_app/services/connections.py#def&nbspcreate_link)
+#### [Create link](./flashcards_app/services/connections.py#L5-13 "connections:create_link")
 
 </Summary>
 The `create_link()` function establishes a new link between two flashcards.
@@ -1250,191 +1079,16 @@ The `create_link()` function establishes a new link between two flashcards.
 2. Create a link between the specified flashcards
 
 ```yaml
-component_id: connections:create_link
-type: function
-file: flashcards_app/services/connections.py
-line_start: 5
-line_end: 12
 tags: []
-dependencies: ["models:card_link"]
-used_in: ["callbacks:update_card"]
 ```
 
 </Details>
----
 
-### Cards
-
-This last section covers navigating and selecting cards, revealing answers and tracking progress. It deals with the actual inner quality of the request. **This is the 4th and highest level of detalisation**.
 
 <Details markdown="1">
 <Summary><sd
 
-#### [`choose_random_card()`](./flashcards_app/services/cards.py#def&nbspchoose_random_card)
-
-</Summary>
-The `choose_random_card()` function selects a random card from the available flashcards.
-
-**Algorithm**:
-
-1. Retrieve the list of all flashcards
-2. Randomly select one card from the list
-3. Return the selected card
-
-```yaml
-component_id: cards:choose_random_card
-type: function
-file: flashcards_app/services/cards.py
-line_start: 5
-line_end: 12
-tags: []
-dependencies: ["models:card_progress", "models:flashcard"]
-used_in: ["cards:pick_random"] 
-```
-
-</Details>
----
-
-<Details markdown="1">
-<Summary><sd
-
-#### [`pick_random()`](./flashcards_app/services/cards.py#def&nbsppick_random)
-
-</Summary>
-The `pick_random()` function selects a random flashcard using the `choose_random_card()` function and returns it.
-
-**Algorithm**:
-
-1. Call the `choose_random_card()` function to select a random card
-2. Return the selected card
-
-```yaml
-component_id: cards:pick_random
-type: function
-file: flashcards_app/services/cards.py
-line_start: 37
-line_end: 39
-tags: []
-dependencies: ["cards:choose_random_card", "models:flashcard"]
-used_in: ["callbacks:update_card"]
-```
-
-</Details>
----
-
-<Details markdown="1">
-<Summary><sd
-
-#### [`adjacent_card()`](./flashcards_app/services/cards.py#def&nbspadjacent_card)
-
-</Summary>
-The `adjacent_card()` function retrieves the card adjacent to the currently selected card, either the previous or next one based on the specified direction.
-
-**Algorithm**:
-
-1. Determine the current card's position in the list of flashcards
-2. Calculate the position of the adjacent card based on the direction
-3. Return the adjacent card
-
-```yaml
-component_id: cards:adjacent_card
-type: function
-file: flashcards_app/services/cards.py
-line_start: 15
-line_end: 21
-tags: []
-dependencies: ["models:flashcard"]
-used_in: ["cards:pick_adjacent"]
-```
-
-</Details>
----
-
-<Details markdown="1">
-<Summary><sd
-
-#### [`pick_adjacent()`](./flashcards_app/services/cards.py#def&nbsppick_adjacent)
-
-</Summary>
-The `pick_adjacent()` function retrieves the flashcard adjacent to the currently selected one using the `adjacent_card()` function and returns it.
-
-**Algorithm**:
-
-1. Call the `adjacent_card()` function to get the adjacent card
-2. Return the adjacent card
-
-```yaml
-component_id: cards:pick_adjacent
-type: function
-file: flashcards_app/services/cards.py
-line_start: 42
-line_end: 44
-tags: []
-dependencies: ["cards:adjacent_card", "models:flashcard"]
-used_in: ["callbacks:update_card"]
-```
-
-</Details>
----
-
-<Details markdown="1">
-<Summary><sd
-
-#### [`select_from_click()`](./flashcards_app/services/cards.py#def&nbspselect_from_click)
-
-</Summary>
-The `select_from_click()` function selects a flashcard based on a user's click input and returns it.
-
-**Algorithm**:
-
-1. Determine which card was clicked based on the input
-2. Return the selected card
-
-```yaml
-component_id: cards:select_from_click
-type: function
-file: flashcards_app/services/cards.py
-line_start: 24
-line_end: 27
-tags: []
-dependencies: []
-used_in: ["callbacks:update_card"]
-```
-
-</Details>
----
-
-<Details markdown="1">
-<Summary><sd
-
-#### [`toggle_reveal()`](./flashcards_app/services/cards.py#def&nbsptoggle_reveal)
-
-</Summary>
-The `toggle_reveal()` function toggles the reveal state of the currently selected flashcard.
-
-**Algorithm**:
-
-1. Check the current reveal state of the flashcard
-2. Toggle the reveal state
-
-```yaml
-component_id: cards:toggle_reveal
-type: function
-file: flashcards_app/services/cards.py
-line_start: 30
-line_end: 34
-tags: []
-dependencies: []
-used_in: ["callbacks:update_card"]
-```
-
-</Details>
----
-
-<Details markdown="1">
-<Summary><sd
-
-#### [`set_difficulty()`](./flashcards_app/services/progress.py#def&nbspset_difficulty)
+#### [Set difficulty](./flashcards_app/services/progress.py#L4-6 "progress:set_difficulty")
 
 </Summary>
 Despite its name, the `set_difficulty()` function sets the learning progress of a flashcard. Given a time scale, slow progress indicates a higher difficulty.
@@ -1447,54 +1101,164 @@ Despite its name, the `set_difficulty()` function sets the learning progress of 
 2. Update the flashcard's difficulty level
 
 ```yaml
-component_id: progress:set_difficulty
-type: function
-file: flashcards_app/services/progress.py
-line_start: 4
-line_end: 5
 tags: []
-dependencies: []
-used_in: ["callbacks:update_card"]
 ```
 
 </Details>
----
 
-### Background functionalities
-
-These background functionalities manage the overall state and visibility of decks and cards within the application. Functions are moved to this section if they primarily deal with maintaining or updating the application's state rather than direct user interactions.
 
 <Details markdown="1">
 <Summary><sd
 
-#### [`refresh_deck_state()`](./flashcards_app/runtime.py#def&nbsprefresh_deck_state)
+#### [Update card](./flashcards_app/callbacks.py#L24-234 "callbacks:update_card")
 
 </Summary>
-The `refresh_deck_state()` function updates the state of the deck, ensuring that the visibility and order of cards are consistent with the current application state.
+
+The app uses an **extensive callback system for interactivity**. The function handles the logic for updating a card's state based on user interactions and application events.
 
 **Algorithm**:
 
-1. Retrieve the current state of the deck
-2. Update the visibility and order of cards based on the current application state
+1. Identify the card to be updated based on user input or application events
+2. Apply the necessary updates to the card's state
+3. Trigger any dependent updates or callbacks
+4. Ensure the application state remains consistent
 
 ```yaml
-component_id: runtime:refresh_deck_state
-type: function
-file: flashcards_app/runtime.py
-line_start: 43
-line_end: 63
 tags: []
-dependencies: ["geometry:sphere_positions", "models:card_progress"]
-used_in: ["decks:add_enabled_deck", "decks:remove_enabled_deck"]
 ```
 
 </Details>
----
+
+<font color="#3b82f6">********************************************************</font>
+
+
+### Derived state
+
+<!-- diagram:start (generated by update_index.py - do not edit) -->
+```mermaid
+graph LR
+    %% arrow A --> B: B uses A; dashed = component of another section
+    %% dashed arrow A -.-> B: transitive relation (data flow through module-level variables)
+    n_geometry_sphere_positions["geometry:sphere_positions"]
+    n_runtime_available_decks["runtime:available_decks"]
+    n_runtime_visible_cards["runtime:visible_cards"]
+    n_decks_add_enabled_deck["decks:add_enabled_deck"]
+    n_decks_remove_enabled_deck["decks:remove_enabled_deck"]
+    n_callbacks_update_card["callbacks:update_card"]:::ext
+    n_cards_pick_random["cards:pick_random"]:::ext
+    n_cards_toggle_reveal["cards:toggle_reveal"]:::ext
+    n_colors_group_color["colors:group_color"]:::ext
+    n_colors_progress_color["colors:progress_color"]:::ext
+    n_connections_create_link["connections:create_link"]:::ext
+    n_connections_disconnect_link["connections:disconnect_link"]:::ext
+    n_decks_deck_filter_options["decks:deck_filter_options"]:::ext
+    n_groups_add_to_group["groups:add_to_group"]:::ext
+    n_groups_create_group["groups:create_group"]:::ext
+    n_groups_delete_group["groups:delete_group"]:::ext
+    n_groups_remove_from_group["groups:remove_from_group"]:::ext
+    n_map_make_figure["map:make_figure"]:::ext
+    n_models_card_position["models:card_position"]:::ext
+    n_models_flashcard["models:flashcard"]:::ext
+    n_panels_connection_control["panels:connection_control"]:::ext
+    n_panels_deck_control["panels:deck_control"]:::ext
+    n_panels_difficulty_control["panels:difficulty_control"]:::ext
+    n_panels_group_control["panels:group_control"]:::ext
+    n_panels_position_control["panels:position_control"]:::ext
+    n_parser_load_decks["parser:load_decks"]:::ext
+    n_positions_set_position["positions:set_position"]:::ext
+    n_progress_set_difficulty["progress:set_difficulty"]:::ext
+    n_runtime_refresh_deck_state["runtime:refresh_deck_state"]:::ext
+    n_runtime_reset_all_state["runtime:reset_all_state"]:::ext
+    n_server_main["server:main"]:::ext
+    n_state_load_enabled_decks["state:load_enabled_decks"]:::ext
+    n_state_load_groups["state:load_groups"]:::ext
+    n_state_load_links["state:load_links"]:::ext
+    n_state_load_positions["state:load_positions"]:::ext
+    n_state_load_progress["state:load_progress"]:::ext
+    n_decks_add_enabled_deck --> n_callbacks_update_card
+    n_decks_remove_enabled_deck --> n_callbacks_update_card
+    n_geometry_sphere_positions --> n_runtime_refresh_deck_state
+    n_geometry_sphere_positions --> n_runtime_reset_all_state
+    n_geometry_sphere_positions --> n_state_load_positions
+    n_models_card_position --> n_geometry_sphere_positions
+    n_models_flashcard --> n_runtime_visible_cards
+    n_parser_load_decks --> n_decks_add_enabled_deck
+    n_parser_load_decks --> n_decks_remove_enabled_deck
+    n_runtime_available_decks --> n_decks_add_enabled_deck
+    n_runtime_available_decks --> n_panels_deck_control
+    n_runtime_refresh_deck_state --> n_decks_add_enabled_deck
+    n_runtime_refresh_deck_state --> n_decks_remove_enabled_deck
+    n_runtime_visible_cards --> n_callbacks_update_card
+    n_parser_load_decks -.-> n_runtime_visible_cards
+    n_runtime_available_decks -.-> n_callbacks_update_card
+    n_runtime_available_decks -.-> n_cards_pick_random
+    n_runtime_available_decks -.-> n_cards_toggle_reveal
+    n_runtime_available_decks -.-> n_colors_group_color
+    n_runtime_available_decks -.-> n_colors_progress_color
+    n_runtime_available_decks -.-> n_connections_create_link
+    n_runtime_available_decks -.-> n_connections_disconnect_link
+    n_runtime_available_decks -.-> n_decks_deck_filter_options
+    n_runtime_available_decks -.-> n_decks_remove_enabled_deck
+    n_runtime_available_decks -.-> n_groups_add_to_group
+    n_runtime_available_decks -.-> n_groups_create_group
+    n_runtime_available_decks -.-> n_groups_delete_group
+    n_runtime_available_decks -.-> n_groups_remove_from_group
+    n_runtime_available_decks -.-> n_map_make_figure
+    n_runtime_available_decks -.-> n_panels_connection_control
+    n_runtime_available_decks -.-> n_panels_difficulty_control
+    n_runtime_available_decks -.-> n_panels_group_control
+    n_runtime_available_decks -.-> n_panels_position_control
+    n_runtime_available_decks -.-> n_parser_load_decks
+    n_runtime_available_decks -.-> n_positions_set_position
+    n_runtime_available_decks -.-> n_progress_set_difficulty
+    n_runtime_available_decks -.-> n_runtime_refresh_deck_state
+    n_runtime_available_decks -.-> n_runtime_reset_all_state
+    n_runtime_available_decks -.-> n_runtime_visible_cards
+    n_runtime_available_decks -.-> n_server_main
+    n_runtime_available_decks -.-> n_state_load_enabled_decks
+    n_runtime_available_decks -.-> n_state_load_groups
+    n_runtime_available_decks -.-> n_state_load_links
+    n_runtime_available_decks -.-> n_state_load_positions
+    n_runtime_available_decks -.-> n_state_load_progress
+    n_state_load_enabled_decks -.-> n_decks_add_enabled_deck
+    n_state_load_enabled_decks -.-> n_decks_remove_enabled_deck
+    n_state_load_enabled_decks -.-> n_runtime_visible_cards
+    n_state_load_groups -.-> n_runtime_visible_cards
+    classDef ext stroke:#3b82f6,stroke-dasharray: 4 3
+    linkStyle default stroke: #3b82f6, color: #3b82f6
+    classDef default fill:inherit, stroke: #3b82f6, color:inherit;
+```
+<!-- diagram:end -->
+
+These components select information that is computed based on the current state, such as sphere positions, decks, cards.
+
 
 <Details markdown="1">
 <Summary><sd
 
-#### [`available_decks()`](./flashcards_app/runtime.py#def&nbspavailable_decks)
+#### [Sphere positions](./flashcards_app/geometry.py#L7-33 "geometry:sphere_positions")
+
+</Summary>
+Generate reproducible random points inside sphere. Creates uniform random distribution within unit sphere.
+
+**Algorithm**:
+
+1. Initialize Random with seed
+2. For each card_id: generate random x,y,z in [-1,1]
+3. Reject if distance_squared > 1 or == 0
+4. Scale by radius and create CardPosition
+
+```yaml
+tags: [geometry, 3d, random]
+```
+
+</Details>
+
+
+<Details markdown="1">
+<Summary><sd
+
+#### [Available decks](./flashcards_app/runtime.py#L20-26 "runtime:available_decks")
 
 </Summary>
 The `available_decks()` function retrieves the list of decks that are currently available in the application.
@@ -1505,23 +1269,16 @@ The `available_decks()` function retrieves the list of decks that are currently 
 2. Return the list of available decks
 
 ```yaml
-component_id: runtime:available_decks
-type: function
-file: flashcards_app/runtime.py
-line_start: 20
-line_end: 25
 tags: []
-dependencies: []
-used_in: ["decks:add_enabled_deck", "panels:deck_control"]
 ```
 
 </Details>
----
+
 
 <Details markdown="1">
 <Summary><sd
 
-#### [`visible_cards()`](./flashcards_app/runtime.py#def&nbspvisible_cards)
+#### [Visible cards](./flashcards_app/runtime.py#L66-73 "runtime:visible_cards")
 
 </Summary>
 The `visible_cards()` function retrieves the list of cards that are currently visible to the user.
@@ -1533,80 +1290,666 @@ The `visible_cards()` function retrieves the list of cards that are currently vi
 3. Return the list of visible cards
 
 ```yaml
-component_id: runtime:visible_cards
-type: function
-file: flashcards_app/runtime.py
-line_start: 66
-line_end: 72
 tags: []
-dependencies: ["models:flashcard"]
-used_in: ["callbacks:update_card"]
 ```
 
 </Details>
----
+
 
 <Details markdown="1">
 <Summary><sd
 
-#### [`reset_all_state()`](./flashcards_app/runtime.py#def&nbspreset_all_state)
+#### [Add enabled deck](./flashcards_app/services/decks.py#L12-18 "decks:add_enabled_deck")
 
 </Summary>
-The `reset_all_state()` function resets the entire application state, clearing all current data and returning the application to its initial state.
+The `add_enabled_deck()` function adds a deck to the list of enabled decks.
 
 **Algorithm**:
 
-1. Clear all current application data
-2. Reset all state variables to their initial values
-3. Ensure the application is in its initial state
+1. Load the current list of enabled decks
+2. Add the specified deck to the list
+3. Refresh the deck state to reflect the changes
 
 ```yaml
-component_id: runtime:reset_all_state
-type: function
-file: flashcards_app/runtime.py
-line_start: 75
-line_end: 83
 tags: []
-dependencies: ["geometry:sphere_positions"]
-used_in: ["callbacks:update_card"]
 ```
 
 </Details>
----
+
 
 <Details markdown="1">
 <Summary><sd
 
-#### [`update_card()`](./flashcards_app/callbacks.py#def&nbspupdate_card)
+#### [Remove enabled deck](./flashcards_app/services/decks.py#L20-27 "decks:remove_enabled_deck")
 
 </Summary>
-The `update_card()` function handles the logic for updating a card's state based on user interactions and application events.
+The `remove_enabled_deck()` function removes a deck from the list of enabled decks.
 
 **Algorithm**:
 
-1. Identify the card to be updated based on user input or application events
-2. Apply the necessary updates to the card's state
-3. Trigger any dependent updates or callbacks
-4. Ensure the application state remains consistent
+1. Load the current list of enabled decks
+2. Remove the specified deck from the list
+3. Refresh the deck state to reflect the changes
 
 ```yaml
-component_id: callbacks:update_card
-type: function
-file: flashcards_app/callbacks.py
-line_start: 24
-line_end: 233
 tags: []
-dependencies: ["cards:pick_adjacent", "cards:pick_random", "cards:select_from_click", "cards:toggle_reveal", "connections:create_link", "connections:disconnect_link", "decks:add_enabled_deck", "decks:deck_filter_options", "decks:remove_enabled_deck", "groups:add_to_group", "groups:create_group", "groups:delete_group", "groups:remove_from_group", "map:make_figure", "panels:card_panel", "panels:connection_control", "panels:deck_control", "panels:difficulty_control", "panels:group_control", "panels:position_control", "positions:set_position", "progress:set_difficulty", "runtime:reset_all_state", "runtime:visible_cards", "state:save_state"]
-used_in: []
 ```
 
 </Details>
----
+
+<font color="#3b82f6">********************************************************</font>
+
+
+### User interface (control panels)
+
+<!-- diagram:start (generated by update_index.py - do not edit) -->
+```mermaid
+graph LR
+    %% arrow A --> B: B uses A; dashed = component of another section
+    %% dashed arrow A -.-> B: transitive relation (data flow through module-level variables)
+    n_decks_deck_filter_options["decks:deck_filter_options"]
+    n_panels_deck_control["panels:deck_control"]
+    n_panels_card_panel["panels:card_panel"]
+    n_panels_difficulty_control["panels:difficulty_control"]
+    n_panels_position_control["panels:position_control"]
+    n_panels_group_control["panels:group_control"]
+    n_panels_connection_control["panels:connection_control"]
+    n_callbacks_update_card["callbacks:update_card"]:::ext
+    n_models_flashcard["models:flashcard"]:::ext
+    n_parser_load_decks["parser:load_decks"]:::ext
+    n_runtime_available_decks["runtime:available_decks"]:::ext
+    n_state_load_enabled_decks["state:load_enabled_decks"]:::ext
+    n_state_load_groups["state:load_groups"]:::ext
+    n_state_load_positions["state:load_positions"]:::ext
+    n_state_load_progress["state:load_progress"]:::ext
+    n_decks_deck_filter_options --> n_callbacks_update_card
+    n_decks_deck_filter_options --> n_panels_deck_control
+    n_models_flashcard --> n_panels_card_panel
+    n_models_flashcard --> n_panels_connection_control
+    n_models_flashcard --> n_panels_difficulty_control
+    n_models_flashcard --> n_panels_group_control
+    n_models_flashcard --> n_panels_position_control
+    n_panels_card_panel --> n_callbacks_update_card
+    n_panels_connection_control --> n_callbacks_update_card
+    n_panels_deck_control --> n_callbacks_update_card
+    n_panels_difficulty_control --> n_callbacks_update_card
+    n_panels_group_control --> n_callbacks_update_card
+    n_panels_position_control --> n_callbacks_update_card
+    n_runtime_available_decks --> n_panels_deck_control
+    n_parser_load_decks -.-> n_panels_connection_control
+    n_parser_load_decks -.-> n_panels_difficulty_control
+    n_parser_load_decks -.-> n_panels_group_control
+    n_parser_load_decks -.-> n_panels_position_control
+    n_runtime_available_decks -.-> n_decks_deck_filter_options
+    n_runtime_available_decks -.-> n_panels_connection_control
+    n_runtime_available_decks -.-> n_panels_difficulty_control
+    n_runtime_available_decks -.-> n_panels_group_control
+    n_runtime_available_decks -.-> n_panels_position_control
+    n_state_load_enabled_decks -.-> n_decks_deck_filter_options
+    n_state_load_enabled_decks -.-> n_panels_connection_control
+    n_state_load_enabled_decks -.-> n_panels_deck_control
+    n_state_load_enabled_decks -.-> n_panels_difficulty_control
+    n_state_load_enabled_decks -.-> n_panels_group_control
+    n_state_load_enabled_decks -.-> n_panels_position_control
+    n_state_load_groups -.-> n_panels_connection_control
+    n_state_load_groups -.-> n_panels_group_control
+    n_state_load_positions -.-> n_panels_position_control
+    n_state_load_progress -.-> n_panels_difficulty_control
+    classDef ext stroke:#3b82f6,stroke-dasharray: 4 3
+    linkStyle default stroke: #3b82f6, color: #3b82f6
+    classDef default fill:inherit, stroke: #3b82f6, color:inherit;
+```
+<!-- diagram:end -->
+
+There are various control elements located within panels. Each panel corresponds to a specific user interface component that allows interaction with flashcards.
+
 
 <Details markdown="1">
 <Summary><sd
 
-#### [`boot_id()`](./flashcards_app/server.py#def&nbspboot_id)
+#### [Deck filter options](./flashcards_app/services/decks.py#L5-10 "decks:deck_filter_options")
+
+</Summary>
+The `deck_filter_options()` function retrieves the available filter options for decks.
+
+**Algorithm**:
+
+1. Retrieve the list of available filter options for decks
+2. Return the list of available filter options
+
+```yaml
+tags: []
+```
+
+</Details>
+
+<Details markdown="1">
+<Summary><sd
+
+#### [Deck control](./flashcards_app/visualization/panels.py#L156-209 "panels:deck_control")
+
+</Summary>
+Generates user interface control for selecting decks of flashcards.
+
+**Algorithm**:
+
+1. Retrieve the current deck
+2. Create control layout
+3. Handle user interactions to update the deck
+4. Return the constructed control
+
+```yaml
+tags: []
+```
+
+</Details>
+
+
+<Details markdown="1">
+<Summary><sd
+
+#### [Card panel](./flashcards_app/visualization/panels.py#L9-27 "panels:card_panel")
+
+</Summary>
+The `card_panel()` function generates the user interface panel for displaying and interacting with a flashcard.
+
+**Algorithm**:
+
+1. Retrieve the flashcard data
+2. Create the panel layout with the flashcard content
+3. Include controls for interacting with the flashcard (e.g., reveal answer, navigate)
+4. Return the constructed panel
+
+```yaml
+tags: []
+```
+
+</Details>
+
+
+<Details markdown="1">
+<Summary><sd
+
+#### [Difficulty control](./flashcards_app/visualization/panels.py#L29-56 "panels:difficulty_control")
+
+</Summary>
+The `difficulty_control()` function generates the user interface control for selecting the difficulty level of a flashcard.
+
+**Algorithm**:
+
+1. Retrieve the current difficulty level of the flashcard
+2. Create the control layout with options for different difficulty levels
+3. Handle user interactions to update the difficulty level
+4. Return the constructed control
+
+```yaml
+tags: []
+```
+
+</Details>
+
+
+<Details markdown="1">
+<Summary><sd
+
+#### [Position control](./flashcards_app/visualization/panels.py#L58-89 "panels:position_control")
+
+</Summary>
+The `position_control()` function generates the user interface control for selecting the position of a flashcard.
+
+**Algorithm**:
+
+1. Retrieve the current position of the flashcard
+2. Create the control layout with options for different positions
+3. Handle user interactions to update the position
+4. Return the constructed control
+
+```yaml
+tags: []
+```
+
+</Details>
+
+
+<Details markdown="1">
+<Summary><sd
+
+#### [Group control](./flashcards_app/visualization/panels.py#L91-154 "panels:group_control")
+
+</Summary>
+The `group_control()` function generates the user interface control for selecting the group of a flashcard.
+
+**Algorithm**:
+
+1. Retrieve the current group of the flashcard
+2. Create the control layout with options for different groups
+3. Handle user interactions to update the group
+4. Return the constructed control
+
+```yaml
+tags: []
+```
+
+</Details>
+
+
+<Details markdown="1">
+<Summary><sd
+
+#### [Connection control](./flashcards_app/visualization/panels.py#L211-248 "panels:connection_control")
+
+</Summary>
+The `connection_control()` function generates the user interface control for selecting the connection of a flashcard.
+
+**Algorithm**:
+
+1. Retrieve the current connection of the flashcard
+2. Create the control layout with options for different connections
+3. Handle user interactions to update the connection
+4. Return the constructed control
+
+```yaml
+tags: []
+```
+
+</Details>
+
+<font color="#3b82f6">********************************************************</font>
+
+
+### Rendering visual mapping
+
+<!-- diagram:start (generated by update_index.py - do not edit) -->
+```mermaid
+graph LR
+    %% arrow A --> B: B uses A; dashed = component of another section
+    %% dashed arrow A -.-> B: transitive relation (data flow through module-level variables)
+    n_map_make_figure["map:make_figure"]
+    n_colors_hex_to_rgb["colors:hex_to_rgb"]
+    n_colors_rgb_to_hex["colors:rgb_to_hex"]
+    n_colors_interpolate_color["colors:interpolate_color"]
+    n_colors_progress_color["colors:progress_color"]
+    n_colors_group_color["colors:group_color"]
+    n_callbacks_update_card["callbacks:update_card"]:::ext
+    n_models_flashcard["models:flashcard"]:::ext
+    n_parser_load_decks["parser:load_decks"]:::ext
+    n_runtime_available_decks["runtime:available_decks"]:::ext
+    n_state_load_enabled_decks["state:load_enabled_decks"]:::ext
+    n_state_load_groups["state:load_groups"]:::ext
+    n_state_load_links["state:load_links"]:::ext
+    n_state_load_positions["state:load_positions"]:::ext
+    n_state_load_progress["state:load_progress"]:::ext
+    n_colors_group_color --> n_map_make_figure
+    n_colors_hex_to_rgb --> n_colors_interpolate_color
+    n_colors_interpolate_color --> n_colors_progress_color
+    n_colors_progress_color --> n_map_make_figure
+    n_colors_rgb_to_hex --> n_colors_interpolate_color
+    n_map_make_figure --> n_callbacks_update_card
+    n_models_flashcard --> n_map_make_figure
+    n_parser_load_decks -.-> n_colors_group_color
+    n_parser_load_decks -.-> n_colors_progress_color
+    n_parser_load_decks -.-> n_map_make_figure
+    n_runtime_available_decks -.-> n_colors_group_color
+    n_runtime_available_decks -.-> n_colors_progress_color
+    n_runtime_available_decks -.-> n_map_make_figure
+    n_state_load_enabled_decks -.-> n_colors_group_color
+    n_state_load_enabled_decks -.-> n_colors_progress_color
+    n_state_load_enabled_decks -.-> n_map_make_figure
+    n_state_load_groups -.-> n_colors_group_color
+    n_state_load_groups -.-> n_map_make_figure
+    n_state_load_links -.-> n_map_make_figure
+    n_state_load_positions -.-> n_map_make_figure
+    n_state_load_progress -.-> n_colors_progress_color
+    classDef ext stroke:#3b82f6,stroke-dasharray: 4 3
+    linkStyle default stroke: #3b82f6, color: #3b82f6
+    classDef default fill:inherit, stroke: #3b82f6, color:inherit;
+```
+<!-- diagram:end -->
+
+The visualization on a 3D sphere provides an intuitive way to explore the spatial relationships within the deck.
+
+Used framework: Dash (Plotly) with Flask for boot-id endpoint Visualization: Plotly 3D Scatter plots showing cards on a sphere.
+
+<Details markdown="1">
+<Summary><sd
+
+#### [Make figure](./flashcards_app/visualization/map.py#L9-138 "map:make_figure")
+
+</Summary>
+The `make_figure()` function generates a visual representation of the flashcards on a map, using colors to indicate progress and group membership.
+
+**Algorithm**:
+
+1. Initialize figure and axes
+2. For each flashcard: determine color based on progress and group
+3. Plot flashcard on map
+4. Return the generated figure
+
+```yaml
+tags: []
+```
+
+</Details>
+
+
+<Details markdown="1">
+<Summary><sd
+
+#### [Hex to rgb](./flashcards_app/visualization/colors.py#L4-7 "colors:hex_to_rgb")
+
+</Summary>
+The `hex_to_rgb()` function converts a hexadecimal color string to an RGB tuple.
+
+**Algorithm**:
+
+1. Remove the leading '#' from the hex string if present
+2. Convert the hex string to an integer
+3. Extract the red, green, and blue components
+4. Return the RGB tuple
+
+```yaml
+tags: []
+```
+
+</Details>
+
+
+<Details markdown="1">
+<Summary><sd
+
+#### [Rgb to hex](./flashcards_app/visualization/colors.py#L9-11 "colors:rgb_to_hex")
+
+</Summary>
+The `rgb_to_hex()` function converts an RGB tuple to a hexadecimal color string.
+
+**Algorithm**:
+
+1. Extract the red, green, and blue components from the RGB tuple
+2. Convert each component to a two-digit hexadecimal string
+3. Concatenate the hexadecimal strings with a leading '#'
+4. Return the hexadecimal color string
+
+```yaml
+tags: []
+```
+
+</Details>
+
+
+<Details markdown="1">
+<Summary><sd
+
+#### [Interpolate color](./flashcards_app/visualization/colors.py#L13-22 "colors:interpolate_color")
+
+</Summary>
+The `interpolate_color()` function calculates an intermediate color between two given colors based on a specified ratio.
+
+**Algorithm**:
+
+1. Convert the start and end colors from hex to RGB
+2. Interpolate each RGB component based on the ratio
+3. Convert the interpolated RGB color back to hex
+4. Return the resulting color
+
+```yaml
+tags: []
+```
+
+</Details>
+
+
+<Details markdown="1">
+<Summary><sd
+
+#### [Progress color](./flashcards_app/visualization/colors.py#L24-38 "colors:progress_color")
+
+</Summary>
+The `progress_color()` function determines the color representing the progress based on a given ratio.
+
+**Algorithm**:
+
+1. Define the start and end colors for the progress
+2. Use the `interpolate_color()` function to calculate the intermediate color based on the ratio
+3. Return the resulting color
+
+```yaml
+tags: []
+```
+
+</Details>
+
+
+<Details markdown="1">
+<Summary><sd
+
+#### [Group color](./flashcards_app/visualization/colors.py#L40-45 "colors:group_color")
+
+</Summary>
+The `group_color()` function determines the color associated with a specific group.
+
+**Algorithm**:
+
+1. Define a mapping of groups to colors
+2. Look up the color for the given group
+3. Return the corresponding color
+
+```yaml
+tags: []
+```
+
+</Details>
+
+<font color="#3b82f6">********************************************************</font>
+
+
+### Selection logic
+
+<!-- diagram:start (generated by update_index.py - do not edit) -->
+```mermaid
+graph LR
+    %% arrow A --> B: B uses A; dashed = component of another section
+    %% dashed arrow A -.-> B: transitive relation (data flow through module-level variables)
+    n_cards_choose_random_card["cards:choose_random_card"]
+    n_cards_pick_random["cards:pick_random"]
+    n_cards_adjacent_card["cards:adjacent_card"]
+    n_cards_pick_adjacent["cards:pick_adjacent"]
+    n_cards_select_from_click["cards:select_from_click"]
+    n_cards_toggle_reveal["cards:toggle_reveal"]
+    n_callbacks_update_card["callbacks:update_card"]:::ext
+    n_models_card_progress["models:card_progress"]:::ext
+    n_models_flashcard["models:flashcard"]:::ext
+    n_parser_load_decks["parser:load_decks"]:::ext
+    n_runtime_available_decks["runtime:available_decks"]:::ext
+    n_state_load_enabled_decks["state:load_enabled_decks"]:::ext
+    n_state_load_progress["state:load_progress"]:::ext
+    n_cards_adjacent_card --> n_cards_pick_adjacent
+    n_cards_choose_random_card --> n_cards_pick_random
+    n_cards_pick_adjacent --> n_callbacks_update_card
+    n_cards_pick_random --> n_callbacks_update_card
+    n_cards_select_from_click --> n_callbacks_update_card
+    n_cards_toggle_reveal --> n_callbacks_update_card
+    n_models_card_progress --> n_cards_choose_random_card
+    n_models_flashcard --> n_cards_adjacent_card
+    n_models_flashcard --> n_cards_choose_random_card
+    n_models_flashcard --> n_cards_pick_adjacent
+    n_models_flashcard --> n_cards_pick_random
+    n_parser_load_decks -.-> n_cards_pick_random
+    n_parser_load_decks -.-> n_cards_toggle_reveal
+    n_runtime_available_decks -.-> n_cards_pick_random
+    n_runtime_available_decks -.-> n_cards_toggle_reveal
+    n_state_load_enabled_decks -.-> n_cards_pick_random
+    n_state_load_enabled_decks -.-> n_cards_toggle_reveal
+    n_state_load_progress -.-> n_cards_pick_random
+    n_state_load_progress -.-> n_cards_toggle_reveal
+    classDef ext stroke:#3b82f6,stroke-dasharray: 4 3
+    linkStyle default stroke: #3b82f6, color: #3b82f6
+    classDef default fill:inherit, stroke: #3b82f6, color:inherit;
+```
+<!-- diagram:end -->
+
+<Details markdown="1">
+<Summary><sd
+
+#### [Choose random card](./flashcards_app/services/cards.py#L5-13 "cards:choose_random_card")
+
+</Summary>
+The `choose_random_card()` function selects a random card from the available flashcards.
+
+**Algorithm**:
+
+1. Retrieve the list of all flashcards
+2. Randomly select one card from the list
+3. Return the selected card
+
+```yaml
+tags: []
+```
+
+</Details>
+
+
+<Details markdown="1">
+<Summary><sd
+
+#### [Pick random](./flashcards_app/services/cards.py#L37-40 "cards:pick_random")
+
+</Summary>
+The `pick_random()` function selects a random flashcard using the `choose_random_card()` function and returns it.
+
+**Algorithm**:
+
+1. Call the `choose_random_card()` function to select a random card
+2. Return the selected card
+
+```yaml
+tags: []
+```
+
+</Details>
+
+
+<Details markdown="1">
+<Summary><sd
+
+#### [Adjacent card](./flashcards_app/services/cards.py#L15-22 "cards:adjacent_card")
+
+</Summary>
+The `adjacent_card()` function retrieves the card adjacent to the currently selected card, either the previous or next one based on the specified direction.
+
+**Algorithm**:
+
+1. Determine the current card's position in the list of flashcards
+2. Calculate the position of the adjacent card based on the direction
+3. Return the adjacent card
+
+```yaml
+tags: []
+```
+
+</Details>
+
+
+<Details markdown="1">
+<Summary><sd
+
+#### [Pick adjacent](./flashcards_app/services/cards.py#L42-45 "cards:pick_adjacent")
+
+</Summary>
+The `pick_adjacent()` function retrieves the flashcard adjacent to the currently selected one using the `adjacent_card()` function and returns it.
+
+**Algorithm**:
+
+1. Call the `adjacent_card()` function to get the adjacent card
+2. Return the adjacent card
+
+```yaml
+tags: []
+```
+
+</Details>
+
+
+<Details markdown="1">
+<Summary><sd
+
+#### [Select from click](./flashcards_app/services/cards.py#L24-28 "cards:select_from_click")
+
+</Summary>
+The `select_from_click()` function selects a flashcard based on a user's click input and returns it.
+
+**Algorithm**:
+
+1. Determine which card was clicked based on the input
+2. Return the selected card
+
+```yaml
+tags: []
+```
+
+</Details>
+
+
+<Details markdown="1">
+<Summary><sd
+
+#### [Toggle reveal](./flashcards_app/services/cards.py#L30-35 "cards:toggle_reveal")
+
+</Summary>
+The `toggle_reveal()` function toggles the reveal state of the currently selected flashcard.
+
+**Algorithm**:
+
+1. Check the current reveal state of the flashcard
+2. Toggle the reveal state
+
+```yaml
+tags: []
+```
+
+</Details>
+
+<font color="#3b82f6">********************************************************</font>
+
+
+### Orchestration
+
+<!-- diagram:start (generated by update_index.py - do not edit) -->
+```mermaid
+graph LR
+    %% arrow A --> B: B uses A; dashed = component of another section
+    %% dashed arrow A -.-> B: transitive relation (data flow through module-level variables)
+    n_server_boot_id["server:boot_id"]
+    n_server_main["server:main"]
+    n_parser_load_decks["parser:load_decks"]:::ext
+    n_runtime_available_decks["runtime:available_decks"]:::ext
+    n_state_load_enabled_decks["state:load_enabled_decks"]:::ext
+    n_state_load_groups["state:load_groups"]:::ext
+    n_state_load_links["state:load_links"]:::ext
+    n_state_load_positions["state:load_positions"]:::ext
+    n_state_load_progress["state:load_progress"]:::ext
+    n_state_save_state["state:save_state"]:::ext
+    n_state_save_state --> n_server_main
+    n_parser_load_decks -.-> n_server_main
+    n_runtime_available_decks -.-> n_server_main
+    n_state_load_enabled_decks -.-> n_server_main
+    n_state_load_groups -.-> n_server_main
+    n_state_load_links -.-> n_server_main
+    n_state_load_positions -.-> n_server_main
+    n_state_load_progress -.-> n_server_main
+    classDef ext stroke:#3b82f6,stroke-dasharray: 4 3
+    linkStyle default stroke: #3b82f6, color: #3b82f6
+    classDef default fill:inherit, stroke: #3b82f6, color:inherit;
+```
+<!-- diagram:end -->
+
+These background functionalities manage the overall state and visibility of decks and cards within the application. Functions are moved to this section if they primarily deal with maintaining or updating the application's state rather than direct user interactions.
+
+
+
+<Details markdown="1">
+<Summary><sd
+
+#### [Boot id](./flashcards_app/server.py#L20-23 "server:boot_id")
 
 </Summary>
 The `boot_id()` function retrieves the unique boot identifier for the application instance.
@@ -1617,23 +1960,16 @@ The `boot_id()` function retrieves the unique boot identifier for the applicatio
 2. Return the boot ID to the caller
 
 ```yaml
-component_id: server:boot_id
-type: function
-file: flashcards_app/server.py
-line_start: 20
-line_end: 22
 tags: []
-dependencies: []
-used_in: []
 ```
 
 </Details>
----
+
 
 <Details markdown="1">
 <Summary><sd
 
-#### [`main()`](./flashcards_app/server.py#def&nbspmain)
+#### [Main](./flashcards_app/server.py#L96-99 "server:main")
 
 </Summary>
 The `main()` function serves as the entry point for the application, initializing necessary components and starting the application's main loop.
@@ -1646,31 +1982,18 @@ The `main()` function serves as the entry point for the application, initializin
 4. Ensure proper shutdown and cleanup of resources
 
 ```yaml
-component_id: server:main
-type: function
-file: flashcards_app/server.py
-line_start: 96
-line_end: 98
 tags: []
-dependencies: ["state:save_state"]
-used_in: []
 ```
 
 </Details>
----
 
-<font color="red">Agents instructions: do not read the following section.</font>
-
+<font color="#3b82f6">********************************************************</font>
 
 
 ## Unindexed Components
 
-<font color="green">If you see any components below, copy them manually into the appropriate section above and fill in their manual metadata. component_id and type are proposals. The ID is the snake_case of the code name (CardPosition becomes card_position), with a file prefix on collisions. type is dataclass, class, function or async_function. If you use other values, adjust them when you move the block.
+<font color="green">If you see any components below, note that the keys are proposals. Copy the components manually into the appropriate section above and complete the metadata.
 
-Name collisions: the same file wins first, then the indexed component. Otherwise the name is skipped with a WARNING. Imports are not resolved, so two identically named unindexed functions can be ambiguous.
-
---check treats a changed section as stale and exits with 1. If you deliberately don't index something, use --ignore NAME (repeatable). --exclude-dir tests skips a folder while scanning, and --scan indexed looks only in files already in the index.
-
-Once you placed the new components into the appropriate sections above, run the `update_index` script again to regenerate the index. The section below is regenerated on each run, from its title line to the end of the file. Don't add your own text or tags below it. They would be overwritten. </font>
+Once you placed the new components into the appropriate sections above, run the `update_index.py` script again to regenerate the index. The section below is regenerated on each run, from its title line to the end of the file. Don't add your own text or tags below it. They would be overwritten. </font>
 
 **End of file**
