@@ -7,5 +7,7 @@ archive/*.*
 data/positions.json
 
 INDEX_bak_*.md
+
 INDEX.md
 update_index.py
+agent_index.yaml
