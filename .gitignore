@@ -2,9 +2,12 @@ __pycache__/
 .pytest_cache/
 .venv/
 
-archive/*.*
-plans/*.*
-tools/*.*
+archive/
+plans/
+tools/
+tools/scripts/
+tools/tranche_0/
+tools/tranche_1/
 
 data/positions.json
 
