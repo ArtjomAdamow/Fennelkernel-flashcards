@@ -3,6 +3,8 @@ __pycache__/
 .venv/
 
 archive/*.*
+plans/*.*
+tools/*.*
 
 data/positions.json
 

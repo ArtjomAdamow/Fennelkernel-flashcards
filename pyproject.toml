@@ -8,7 +8,7 @@ dependencies = [
     "dash-daq>=0.6.0",
     "numpy>=2.5.3",
     "plotly>=6.0.0",
-    "PyYAML>=6.0.3",
+    "pyyaml>=6.0.3",
 ]
 
 [dependency-groups]
