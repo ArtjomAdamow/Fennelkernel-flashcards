@@ -2,17 +2,9 @@ __pycache__/
 .pytest_cache/
 .venv/
 
+book/
 archive/
 plans/
 tools/
-tools/scripts/
-tools/tranche_0/
-tools/tranche_1/
 
 data/positions.json
-
-INDEX_bak_*.md
-
-INDEX.md
-update_index.py
-agent_index.yaml
