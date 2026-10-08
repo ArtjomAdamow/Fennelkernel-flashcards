@@ -29,13 +29,13 @@ def select_from_click(click_data: dict, hover_data: dict | None) -> str | None:
 
 def toggle_reveal(selected_id: str, revealed: bool) -> bool:
     revealed = not revealed
-    if revealed and selected_id in runtime.PROGRESS:
-        runtime.PROGRESS[selected_id].read = True
+    if revealed:
+        runtime.USER_STATE.mark_read(selected_id)
     return revealed
 
 
 def pick_random(cards: list[Flashcard], rng) -> str | None:
-    selected = choose_random_card(cards, runtime.PROGRESS, rng)
+    selected = choose_random_card(cards, runtime.USER_STATE.progress, rng)
     return selected.id if selected else None
 
 

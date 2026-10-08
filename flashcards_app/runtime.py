@@ -14,6 +14,7 @@ from flashcards_app.models import Flashcard
 from flashcards_app.parser import load_decks
 from flashcards_app.state import JsonStateStore
 from flashcards_app.state_core import STARTUP_SEED, StateCore
+from flashcards_app.user_state_service import UserStateService
 
 # Application configuration
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -48,6 +49,9 @@ GROUPS = CORE.groups
 LINKS = CORE.links
 CARD_BY_ID = CORE.card_by_id
 POSITION_BY_ID = CORE.position_by_id
+
+# The services call this; it works on the same objects as the names above
+USER_STATE = UserStateService(CORE, CATALOG)
 
 
 def refresh_deck_state() -> None:

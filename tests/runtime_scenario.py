@@ -8,6 +8,7 @@ legacy runtime and once with the router runtime. Do not run it inside your real 
 """
 
 import json
+import random
 import sys
 import time
 
@@ -72,18 +73,26 @@ ids = [card.id for card in runtime.CARDS]
 SEED[0] = 101
 cards_service.toggle_reveal(ids[0], False)
 progress_service.set_difficulty(ids[0], 40)
+shown = cards_service.toggle_reveal(ids[2], False)  # a card that was not read yet: revealing marks it read
+hidden = cards_service.toggle_reveal(ids[2], True)  # hiding it again does not undo that
 record("reveal and difficulty")
+record("toggle returns", [shown, hidden])
 
 positions_service.set_position(ids[1], 0.1, -0.2, 0.3)
 record("set position")
 
-# includes the old duplicate-id case on purpose: the services still use the old numbering
-groups_service.create_group(ids[0], " A ", "#f5b942")
-groups_service.create_group(ids[1], "B", "#69c6a5")
+# Deleting the group that was created last keeps the numbering identical in old and new code.
+# (Deleting an older group and then creating one is the old duplicate-id bug, fixed in tranche 5b.)
+groups_service.create_group(ids[0], " A ", "#f5b942")  # group-2
+groups_service.create_group(ids[1], "B", "#69c6a5")  # group-3
 groups_service.add_to_group(ids[2], "group-3")
+groups_service.add_to_group(ids[2], "group-3")
+groups_service.add_to_group(ids[2], "missing")
+groups_service.add_to_group(ids[2], "group-2")
+groups_service.remove_from_group(ids[0], "group-2")  # the founding member leaves a group that stays
 groups_service.remove_from_group(ids[1], "group-3")
-groups_service.delete_group("group-2")
-groups_service.create_group(ids[2], "C", "#e76f51")
+groups_service.delete_group("group-3")
+groups_service.create_group(ids[2], "C", "#e76f51")  # group-3 again
 record("groups")
 
 connections_service.create_link(ids[0], ids[1])
@@ -91,6 +100,20 @@ connections_service.create_link(ids[1], ids[0])
 connections_service.create_link(ids[0], ids[2])
 connections_service.disconnect_link(ids[2], ids[0])
 record("links")
+
+rng = random.Random(7)
+visible = runtime.visible_cards("all", None)
+record("navigation", {
+    "random": [cards_service.pick_random(visible, rng) for _ in range(6)],
+    "random_empty": cards_service.pick_random([], rng),
+    "next_from_none": cards_service.pick_adjacent(visible, None, 1),
+    "prev_from_none": cards_service.pick_adjacent(visible, None, -1),
+    "next_wraps": cards_service.pick_adjacent(visible, visible[-1].id, 1),
+    "prev_wraps": cards_service.pick_adjacent(visible, visible[0].id, -1),
+    "empty": cards_service.pick_adjacent([], None, 1),
+    "click_prefers_hover": cards_service.select_from_click({"points": [{"customdata": "a"}]}, {"points": [{"customdata": "b"}]}),
+    "click_without_hover": cards_service.select_from_click({"points": [{"customdata": "a"}]}, None),
+})
 
 SEED[0] = 1111
 decks_service.add_enabled_deck("gamma")
@@ -100,8 +123,13 @@ record("enable deck")
 record("filter options", decks_service.deck_filter_options())
 
 SEED[0] = 2222
-decks_service.remove_enabled_deck("alpha")
+remove_returns = [
+    decks_service.remove_enabled_deck("does-not-exist"),
+    decks_service.remove_enabled_deck("alpha"),
+    decks_service.remove_enabled_deck("alpha"),
+]
 record("disable deck")
+record("remove returns", remove_returns)
 
 # direct refresh strips what points at cards that are not loaded
 runtime.GROUPS[0].card_ids.append("ghost:1")
