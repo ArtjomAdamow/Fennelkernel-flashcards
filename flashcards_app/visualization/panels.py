@@ -6,6 +6,11 @@ from flashcards_app.models import Flashcard
 from flashcards_app.services.decks import deck_filter_options
 
 
+def _state(state):
+    # Default: the shared user state. Callers will pass it explicitly in a later tranche.
+    return state if state is not None else runtime.USER_STATE
+
+
 def card_panel(card: Flashcard | None, revealed: bool = False) -> html.Div:
     if card is None:
         return html.Div(
@@ -26,9 +31,10 @@ def card_panel(card: Flashcard | None, revealed: bool = False) -> html.Div:
     )
 
 
-def difficulty_control(card: Flashcard | None) -> html.Div:
-    is_flipped = bool(card and runtime.PROGRESS[card.id].read)
-    current_value = runtime.PROGRESS[card.id].difficulty if card and card.id in runtime.PROGRESS else 1
+def difficulty_control(card: Flashcard | None, state=None) -> html.Div:
+    state = _state(state)
+    is_flipped = bool(card and state.progress[card.id].read)
+    current_value = state.progress[card.id].difficulty if card and card.id in state.progress else 1
     progress_percent = (current_value - 1) / 99 * 100
     return html.Div(
         [
@@ -55,8 +61,8 @@ def difficulty_control(card: Flashcard | None) -> html.Div:
     )
 
 
-def position_control(card: Flashcard | None, drag_enabled: bool = False) -> html.Div:
-    position = runtime.POSITION_BY_ID.get(card.id) if card else None
+def position_control(card: Flashcard | None, drag_enabled: bool = False, state=None) -> html.Div:
+    position = _state(state).position_by_id.get(card.id) if card else None
     x_value = round(position.x, 3) if position else 0
     y_value = round(position.y, 3) if position else 0
     z_value = round(position.z, 3) if position else 0
@@ -88,11 +94,12 @@ def position_control(card: Flashcard | None, drag_enabled: bool = False) -> html
     )
 
 
-def group_control(card: Flashcard | None, dialog: str | None = None) -> html.Div:
-    selected_groups = [group.id for group in runtime.GROUPS if card and card.id in group.card_ids]
+def group_control(card: Flashcard | None, dialog: str | None = None, state=None) -> html.Div:
+    state = _state(state)
+    selected_groups = [group.id for group in state.groups if card and card.id in group.card_ids]
     dialog_options = [
         {"label": group.name, "value": group.id}
-        for group in runtime.GROUPS
+        for group in state.groups
         if dialog != "remove" or card is None or card.id in group.card_ids
     ]
     dialog_title = {"new": "New group", "add": "Add to group", "remove": "Remove from group", "delete": "Delete group", "focus": "Focus group"}.get(dialog)
@@ -118,7 +125,7 @@ def group_control(card: Flashcard | None, dialog: str | None = None) -> html.Div
                     html.Button("Delete", id="delete-group", n_clicks=0, disabled=card is None, className="tool-button"),
                     html.Button("Add", id="add-group", n_clicks=0, disabled=card is None, className="tool-button"),
                     html.Button("Remove", id="remove-group", n_clicks=0, disabled=card is None, className="tool-button"),
-                    html.Button("Focus", id="focus-group", n_clicks=0, disabled=not runtime.GROUPS, className="tool-button"),
+                    html.Button("Focus", id="focus-group", n_clicks=0, disabled=not state.groups, className="tool-button"),
                     html.Button("All", id="all-groups", n_clicks=0, className="tool-button"),
                 ],
                 className="tool-row control-actions",
@@ -129,7 +136,7 @@ def group_control(card: Flashcard | None, dialog: str | None = None) -> html.Div
                         [html.Span(className="group-color-swatch", style={"backgroundColor": group.color}), html.Span(group.name), html.Span(f"{len(group.card_ids)} cards", className="group-member-count")],
                         className="group-list-item",
                     )
-                    for group in runtime.GROUPS
+                    for group in state.groups
                 ] or [html.Div("No saved groups yet.", className="tool-status")],
                 className="group-list",
             ),
@@ -153,13 +160,14 @@ def group_control(card: Flashcard | None, dialog: str | None = None) -> html.Div
     )
 
 
-def deck_control(dialog: str | None = None, selected_deck: str | None = runtime.NONE_DECK) -> html.Div:
-    current_decks = runtime.available_decks()
+def deck_control(dialog: str | None = None, selected_deck: str | None = runtime.NONE_DECK, state=None) -> html.Div:
+    state = _state(state)
+    current_decks = state.available_decks()
     dialog_options = [
         {"label": deck, "value": deck}
         for deck in current_decks
-        if (dialog == "add" and deck not in runtime.ENABLED_DECKS)
-        or (dialog in {"remove", "focus"} and deck in runtime.ENABLED_DECKS)
+        if (dialog == "add" and deck not in state.enabled_decks)
+        or (dialog in {"remove", "focus"} and deck in state.enabled_decks)
     ]
     dialog_title = {"add": "Add deck", "remove": "Remove deck", "focus": "Focus deck"}.get(dialog)
     return html.Div(
@@ -208,10 +216,11 @@ def deck_control(dialog: str | None = None, selected_deck: str | None = runtime.
     )
 
 
-def connection_control(card: Flashcard | None, deck: str = "all", focused_group: str | None = None) -> html.Div:
-    candidate_cards = [entry for entry in runtime.CARDS if deck == "all" or entry.deck == deck]
+def connection_control(card: Flashcard | None, deck: str = "all", focused_group: str | None = None, state=None) -> html.Div:
+    state = _state(state)
+    candidate_cards = [entry for entry in state.cards if deck == "all" or entry.deck == deck]
     if focused_group:
-        group = next((item for item in runtime.GROUPS if item.id == focused_group), None)
+        group = next((item for item in state.groups if item.id == focused_group), None)
         if group:
             candidate_cards = [entry for entry in candidate_cards if entry.id in group.card_ids]
     options = [

@@ -21,9 +21,14 @@ def interpolate_color(start: str, end: str, progress: float) -> str:
     return rgb_to_hex(mixed)
 
 
-def progress_color(value_or_card_id: str | int) -> str:
+def _state(state):
+    # Default: the shared user state. Callers will pass it explicitly in a later tranche.
+    return state if state is not None else runtime.USER_STATE
+
+
+def progress_color(value_or_card_id: str | int, state=None) -> str:
     if isinstance(value_or_card_id, str):
-        progress = runtime.PROGRESS.get(value_or_card_id)
+        progress = _state(state).progress.get(value_or_card_id)
         if progress is None or not progress.read:
             return "#7c8b99"
         value = progress.difficulty
@@ -37,8 +42,8 @@ def progress_color(value_or_card_id: str | int) -> str:
     return "#69c6a5"
 
 
-def group_color(card_id: str) -> str:
-    for group in runtime.GROUPS:
+def group_color(card_id: str, state=None) -> str:
+    for group in _state(state).groups:
         if card_id in group.card_ids:
             return group.color
     return "#7c8b99"
