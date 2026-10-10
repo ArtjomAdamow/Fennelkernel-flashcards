@@ -42,8 +42,6 @@ def progress_color(value_or_card_id: str | int, state=None) -> str:
     return "#69c6a5"
 
 
-def group_color(card_id: str, state=None) -> str:
-    for group in _state(state).groups:
-        if card_id in group.card_ids:
-            return group.color
-    return "#7c8b99"
+def group_color(card_id: str, state=None, focused_group: str | None = None) -> str:
+    group = _state(state).deciding_group(card_id, focused_group)
+    return group.color if group is not None else "#7c8b99"

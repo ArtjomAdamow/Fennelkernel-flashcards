@@ -65,6 +65,16 @@ def run(project: Path, mode: str) -> subprocess.CompletedProcess:
     )
 
 
+def normalized(saved_file: str) -> dict:
+    """The saved file without what tranche 7 changed on purpose: no link group_id any more, a rank for every group."""
+    data = json.loads(saved_file)
+    for group in data["groups"]:
+        group.pop("rank", None)
+    for link in data["links"]:
+        link.pop("group_id", None)
+    return data
+
+
 class RuntimeRouterEquivalenceTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
@@ -94,7 +104,14 @@ class RuntimeRouterEquivalenceTest(unittest.TestCase):
                 self.assertEqual(new["state"], old["state"])
 
     def test_saved_file_is_identical(self) -> None:
-        self.assertEqual(self.result["router"]["run"]["saved_file"], self.result["legacy"]["run"]["saved_file"])
+        router, legacy = self.result["router"]["run"]["saved_file"], self.result["legacy"]["run"]["saved_file"]
+        self.assertEqual(normalized(router), normalized(legacy))
+
+    def test_saved_file_has_the_new_layout(self) -> None:
+        router = json.loads(self.result["router"]["run"]["saved_file"])
+        self.assertTrue(all("group_id" not in link for link in router["links"]))
+        self.assertEqual([group["rank"] for group in router["groups"]], list(range(1, len(router["groups"]) + 1)))
+        self.assertEqual(router["version"], 2)
 
     def test_state_after_a_restart_is_identical(self) -> None:
         self.assertEqual(self.result["router"]["restart"], self.result["legacy"]["restart"])

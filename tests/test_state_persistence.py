@@ -45,8 +45,8 @@ def legacy_save_state(path, positions, progress, groups=None, links=None, enable
 def sample():
     positions = [CardPosition("a:1", 0.1, 0.2, 0.3), CardPosition("a:2", -0.4, 0.5, 0.6, status="seen", related_ids=["a:1"])]
     progress = {"a:1": CardProgress("a:1", True, 40), "a:2": CardProgress("a:2")}
-    groups = [CardGroup("group-1", "X", "#f5b942", ["a:1", "a:2"])]
-    links = [CardLink("a:1", "a:2"), CardLink("a:2", "a:1", "group-1")]
+    groups = [CardGroup("group-1", "X", "#f5b942", ["a:1", "a:2"], 1)]
+    links = [CardLink("a:1", "a:2"), CardLink("a:2", "a:1")]
     return positions, progress, groups, links
 
 
@@ -172,6 +172,28 @@ class StatePersistenceTest(unittest.TestCase):
         self.path.parent.mkdir(parents=True)
         self.path.write_text(json.dumps({"version": 3}), encoding="utf-8")
         self.assertEqual(read_state_file(self.path, supported_versions={3}), RawState())
+
+    # --- layout change of tranche 7: no link group_id, a rank for every group -----------------------------
+
+    def test_files_from_the_previous_layout_still_load(self) -> None:
+        self.path.parent.mkdir(parents=True)
+        self.path.write_text(json.dumps({
+            "version": 2, "positions": [], "progress": [],
+            "groups": [{"id": "group-1", "name": "X", "color": "#fff", "card_ids": ["a:1"]}],
+            "links": [{"source_id": "a:1", "target_id": "a:2", "group_id": "group-1"}],
+        }), encoding="utf-8")
+        state = read_state_file(self.path)
+        self.assertEqual(state.links, [CardLink("a:1", "a:2")])  # the old key is ignored
+        self.assertIsNone(state.groups[0].rank)  # StateCore.refresh_deck_state fills it
+        self.assertEqual(load_links(self.path, ["a:1", "a:2"]), [CardLink("a:1", "a:2")])
+
+    def test_written_layout_has_ranks_and_no_link_group_id(self) -> None:
+        positions, progress, groups, links = sample()
+        save_state(self.path, positions, progress, groups, links)
+        payload = json.loads(self.path.read_text(encoding="utf-8"))
+        self.assertEqual(payload["groups"][0]["rank"], 1)
+        self.assertTrue(all("group_id" not in link for link in payload["links"]))
+        self.assertEqual(payload["version"], 2)  # same version: older code can still read the file
 
     # --- the old loaders keep working on files written by the new writer -----
 

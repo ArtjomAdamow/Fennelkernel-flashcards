@@ -59,6 +59,7 @@ def load_groups(path: Path, card_ids: List[str]) -> List[CardGroup]:
             name=item["name"],
             color=item["color"],
             card_ids=[card_id for card_id in item.get("card_ids", []) if card_id in valid_ids],
+            rank=item.get("rank"),
         )
         for item in payload.get("groups", [])
     ]
@@ -76,7 +77,6 @@ def load_links(path: Path, card_ids: List[str]) -> List[CardLink]:
         CardLink(
             source_id=item["source_id"],
             target_id=item["target_id"],
-            group_id=item.get("group_id"),
         )
         for item in payload.get("links", [])
         if item.get("source_id") in valid_ids and item.get("target_id") in valid_ids
@@ -148,6 +148,7 @@ def read_state_file(path: Path, supported_versions=SUPPORTED_VERSIONS) -> Option
                 name=item["name"],
                 color=item["color"],
                 card_ids=list(item.get("card_ids", [])),
+                rank=item.get("rank"),
             )
             for item in payload.get("groups", [])
         ],
@@ -155,7 +156,6 @@ def read_state_file(path: Path, supported_versions=SUPPORTED_VERSIONS) -> Option
             CardLink(
                 source_id=item["source_id"],
                 target_id=item["target_id"],
-                group_id=item.get("group_id"),
             )
             for item in payload.get("links", [])
         ],

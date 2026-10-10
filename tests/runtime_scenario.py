@@ -36,7 +36,7 @@ def view():
         "positions": [[p.card_id, round(p.x, 9), round(p.y, 9), round(p.z, 9), p.status, p.related_ids] for p in runtime.POSITIONS],
         "progress": [[key, v.read, v.difficulty] for key, v in runtime.PROGRESS.items()],
         "groups": [[g.id, g.name, g.color, list(g.card_ids)] for g in runtime.GROUPS],
-        "links": [[l.source_id, l.target_id, l.group_id] for l in runtime.LINKS],
+        "links": [[l.source_id, l.target_id] for l in runtime.LINKS],
         "card_by_id": sorted(runtime.CARD_BY_ID),
         "position_by_id": sorted(runtime.POSITION_BY_ID),
     }

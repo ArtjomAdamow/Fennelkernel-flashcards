@@ -119,6 +119,24 @@ class VisualizationEquivalenceTest(unittest.TestCase):
             self.assertNotEqual(foreign["deck_control_remove"], foreign["deck_control_remove_default"])
             self.assertIn('"options": []', foreign["deck_control_remove"])
 
+    def test_group_colour_rule(self) -> None:
+        # fix F2: a focused group decides; otherwise the oldest existing group; deleting it passes the colour on
+        self.assertIsNone(self.result["legacy"]["rank_rule"])  # the original knows no focus and no rank
+        if self.result["current"]["rank_rule"] is None:
+            self.skipTest("needs tranche 7b (colors.py with the focused_group parameter)")
+        rule = self.result["current"]["rank_rule"]
+        grey = "#7c8b99"
+        self.assertEqual(rule["no_focus"], "#a00001")
+        self.assertEqual((rule["focus_a"], rule["focus_b"], rule["focus_c"]), ("#a00001", "#b00002", "#c00003"))
+        self.assertEqual(rule["focus_unknown"], "#a00001")
+        self.assertEqual((rule["x2"], rule["x3"], rule["x3_focus_a_not_member"], rule["not_in_any_group"]), ("#a00001", "#c00003", "#c00003", grey))
+        self.assertEqual(rule["after_delete_a"], {"x1": "#b00002", "x2": grey})
+        self.assertEqual(rule["after_delete_b"], "#c00003")
+        self.assertEqual(rule["after_new_d"], "#c00003")  # a younger group never beats an older one
+        self.assertEqual(rule["ranks"], [3, 4])
+        if "figure_colors_when_c_is_focused" in rule:
+            self.assertEqual(rule["figure_colors_when_c_is_focused"]["x:1"], "#c00003")
+
     def test_links_are_drawn_only_when_both_ends_are_visible(self) -> None:
         # Focusing a deck or a group hides cards; a link to a hidden card must not be drawn.
         for project in ("legacy", "current"):

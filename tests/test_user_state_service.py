@@ -95,6 +95,13 @@ class UserStateServiceTest(unittest.TestCase):
         self.assertEqual(self.service.create_group("alpha:1", "N", "#3"), "group-6")
         self.assertEqual([g.id for g in self.service.groups], ["group-5", "group-5", "group-6"])  # left as they are
 
+    def test_deciding_group_comes_from_the_core(self) -> None:
+        first = self.service.create_group("alpha:1", "A", "#aa0000")
+        second = self.service.create_group("alpha:1", "B", "#00aa00")
+        self.assertEqual(self.service.deciding_group("alpha:1").id, first)
+        self.assertEqual(self.service.deciding_group("alpha:1", second).id, second)
+        self.assertIsNone(self.service.deciding_group("beta:1"))
+
     def test_queries(self) -> None:
         self.assertEqual([c.id for c in self.service.visible_cards("beta")], ["beta:1"])
         self.assertEqual([c.id for c in self.service.visible_cards()], ["alpha:1", "alpha:2", "beta:1"])

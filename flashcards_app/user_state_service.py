@@ -78,6 +78,9 @@ class UserStateService:
     def get_position_by_id(self, card_id: str) -> Optional[CardPosition]:
         return self._core.get_position_by_id(card_id)
 
+    def deciding_group(self, card_id: str, focused_group: Optional[str] = None) -> Optional[CardGroup]:
+        return self._core.deciding_group(card_id, focused_group)
+
     # --- mutations ---------------------------------------------------------
 
     def set_position(self, card_id: str, x: float, y: float, z: float) -> None:

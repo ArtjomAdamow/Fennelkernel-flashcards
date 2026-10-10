@@ -31,9 +31,9 @@ class CardGroup:
     name: str
     color: str
     card_ids: List[str] = field(default_factory=list)
+    rank: Optional[int] = None  # age order of groups: lower = older (see StateCore.deciding_group)
 
 @dataclass
 class CardLink:
     source_id: str
     target_id: str
-    group_id: Optional[str] = None

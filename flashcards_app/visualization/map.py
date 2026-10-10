@@ -6,7 +6,7 @@ from flashcards_app.models import Flashcard
 from flashcards_app.visualization.colors import group_color, progress_color
 
 
-def make_figure(cards: list[Flashcard], selected_id: str | None = None, camera: dict | None = None, state=None) -> go.Figure:
+def make_figure(cards: list[Flashcard], selected_id: str | None = None, camera: dict | None = None, state=None, focused_group: str | None = None) -> go.Figure:
     state = state if state is not None else runtime.USER_STATE
     visible_ids = {card.id for card in cards}
     points = [position for position in state.positions if position.card_id in visible_ids]
@@ -15,7 +15,6 @@ def make_figure(cards: list[Flashcard], selected_id: str | None = None, camera: 
 
     figure = go.Figure()
     position_by_id = {position.card_id: position for position in points}
-    group_by_id = {group.id: group for group in state.groups}
 
     # Invisible corner anchors: pins Plotly's internal camera data-scale to the fixed axis range,
     # so camera.js's centering math stays correct regardless of how many cards are filtered/visible.
@@ -38,7 +37,7 @@ def make_figure(cards: list[Flashcard], selected_id: str | None = None, camera: 
         target = position_by_id.get(link.target_id)
         if source is None or target is None:
             continue
-        color = group_by_id.get(link.group_id).color if link.group_id in group_by_id else "#9fb3c8"
+        color = "#9fb3c8"  # links carried a group_id for a group colour that nothing ever set
         figure.add_trace(
             go.Scatter3d(
                 x=[source.x, target.x, None],
@@ -80,7 +79,7 @@ def make_figure(cards: list[Flashcard], selected_id: str | None = None, camera: 
                 hovertemplate="%{text}<extra></extra>",
                 marker={
                     "size": 7,
-                    "color": [group_color(point.card_id, state) for point in regular],
+                    "color": [group_color(point.card_id, state, focused_group) for point in regular],
                 },
                 name="Cards",
             )
@@ -113,7 +112,7 @@ def make_figure(cards: list[Flashcard], selected_id: str | None = None, camera: 
                 customdata=[point.card_id],
                 text=[state.card_by_id[point.card_id].question],
                 hovertemplate="%{text}<extra></extra>",
-                marker={"size": 13, "color": group_color(point.card_id, state)},
+                marker={"size": 13, "color": group_color(point.card_id, state, focused_group)},
                 name="Selected",
             )
         )

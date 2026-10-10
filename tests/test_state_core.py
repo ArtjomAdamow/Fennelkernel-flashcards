@@ -248,12 +248,15 @@ class MutationTest(unittest.TestCase):
         self.core.disconnect_link("alpha:2", "alpha:1")
         self.assertEqual([(l.source_id, l.target_id) for l in self.core.links], [("alpha:1", "beta:1")])
 
-    def test_delete_group_removes_links_that_belong_to_it(self) -> None:
-        self.core.links.append(CardLink("alpha:1", "alpha:2", "group-1"))
-        self.core.links.append(CardLink("alpha:1", "beta:1"))
-        self.core.groups.append(CardGroup("group-1", "A", "#1", ["alpha:1"]))
-        self.core.delete_group("group-1")
-        self.assertEqual([(l.source_id, l.target_id) for l in self.core.links], [("alpha:1", "beta:1")])
+    def test_delete_group_never_touches_links(self) -> None:
+        # unlike removing a deck, deleting a group leaves its members on the map, so their links stay
+        self.core.create_link("alpha:1", "alpha:2")
+        self.core.create_link("alpha:1", "beta:1")
+        group_id = self.core.create_group("alpha:1", "A", "#1")
+        self.core.add_to_group("alpha:2", group_id)
+        self.core.delete_group(group_id)
+        self.assertEqual(self.core.groups, [])
+        self.assertEqual([(l.source_id, l.target_id) for l in self.core.links], [("alpha:1", "alpha:2"), ("alpha:1", "beta:1")])
 
     def test_visible_cards(self) -> None:
         ids = lambda cards: [card.id for card in cards]
@@ -269,6 +272,80 @@ class MutationTest(unittest.TestCase):
         self.assertEqual(self.core.get_card_by_id("beta:1").deck, "beta")
         self.assertIsNone(self.core.get_card_by_id("nope"))
         self.assertIsNone(self.core.get_position_by_id("nope"))
+
+
+class GroupRankTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self.core, _, _ = make_core(None)
+        self.core.refresh_deck_state(seed=1)
+        # x1 is in A (oldest), B and C; x2 only in A; x3 only in C
+        self.a = self.core.create_group("alpha:1", "A", "#a")
+        self.core.add_to_group("alpha:2", self.a)
+        self.b = self.core.create_group("alpha:1", "B", "#b")
+        self.c = self.core.create_group("alpha:1", "C", "#c")
+        self.core.add_to_group("beta:1", self.c)
+
+    def color(self, card_id, focused=None):
+        group = self.core.deciding_group(card_id, focused)
+        return group.color if group else None
+
+    def test_new_groups_get_rising_ranks(self) -> None:
+        self.assertEqual([g.rank for g in self.core.groups], [1, 2, 3])
+
+    def test_the_oldest_group_decides_when_nothing_is_focused(self) -> None:
+        self.assertEqual(self.color("alpha:1"), "#a")
+        self.assertEqual(self.color("alpha:2"), "#a")
+        self.assertEqual(self.color("beta:1"), "#c")
+        self.assertIsNone(self.color("gamma:1"))
+
+    def test_a_focused_group_decides_for_its_members(self) -> None:
+        self.assertEqual(self.color("alpha:1", self.b), "#b")
+        self.assertEqual(self.color("alpha:1", self.c), "#c")
+        self.assertEqual(self.color("alpha:1", self.a), "#a")
+
+    def test_focus_on_a_group_the_card_is_not_in_falls_back_to_the_oldest(self) -> None:
+        self.assertEqual(self.color("beta:1", self.a), "#c")
+        self.assertEqual(self.color("alpha:1", "missing"), "#a")
+
+    def test_deleting_the_oldest_group_passes_the_colour_to_the_next_oldest(self) -> None:
+        self.core.delete_group(self.a)
+        self.assertEqual(self.color("alpha:1"), "#b")
+        self.assertIsNone(self.color("alpha:2"))
+        self.core.delete_group(self.b)
+        self.assertEqual(self.color("alpha:1"), "#c")
+
+    def test_a_group_created_later_is_younger_than_every_existing_one(self) -> None:
+        self.core.delete_group(self.c)
+        d = self.core.create_group("alpha:1", "D", "#d")
+        self.assertEqual([g.rank for g in self.core.groups], [1, 2, 3])  # the number of the deleted group is free again
+        self.assertEqual(self.color("alpha:1"), "#a")
+        self.core.delete_group(self.a)
+        self.core.delete_group(self.b)
+        self.assertEqual(self.color("alpha:1"), "#d")
+        self.assertEqual(self.core.groups[0].id, d)
+
+    def test_groups_without_rank_get_one_in_list_order_when_refreshed(self) -> None:
+        raw = RawState(groups=[CardGroup("g1", "X", "#1", ["alpha:1"]), CardGroup("g2", "Y", "#2", ["alpha:1"])])
+        core, _, _ = make_core(raw)
+        core.refresh_deck_state(seed=1)
+        self.assertEqual([g.rank for g in core.groups], [1, 2])
+        self.assertEqual(core.deciding_group("alpha:1").id, "g1")
+
+    def test_existing_ranks_are_kept_and_missing_ones_follow(self) -> None:
+        raw = RawState(groups=[CardGroup("g1", "X", "#1", [], None), CardGroup("g2", "Y", "#2", [], 5), CardGroup("g3", "Z", "#3", [], None)])
+        core, _, _ = make_core(raw)
+        core.refresh_deck_state(seed=1)
+        self.assertEqual([g.rank for g in core.groups], [6, 5, 7])
+
+    def test_equal_ranks_are_decided_by_list_order(self) -> None:
+        raw = RawState(groups=[CardGroup("g1", "X", "#1", ["alpha:1"], 4), CardGroup("g2", "Y", "#2", ["alpha:1"], 4)])
+        core, _, _ = make_core(raw)
+        core.refresh_deck_state(seed=1)
+        self.assertEqual(core.deciding_group("alpha:1").id, "g1")
+
+    def test_group_that_was_never_ranked_counts_as_youngest(self) -> None:
+        self.core.groups.append(CardGroup("late", "L", "#l", ["alpha:2"]))  # added by hand, rank None
+        self.assertEqual(self.core.deciding_group("alpha:2").id, self.a)
 
 
 if __name__ == "__main__":

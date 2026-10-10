@@ -59,7 +59,7 @@ def view(enabled, cards, positions, progress, groups, links, card_by_id, positio
         "positions": [[p.card_id, round(p.x, 9), round(p.y, 9), round(p.z, 9), p.status, p.related_ids] for p in positions],
         "progress": [[key, value.read, value.difficulty] for key, value in progress.items()],
         "groups": [[g.id, g.name, g.color, list(g.card_ids)] for g in groups],
-        "links": [[l.source_id, l.target_id, l.group_id] for l in links],
+        "links": [[l.source_id, l.target_id] for l in links],
         "card_by_id": sorted(card_by_id),
         "position_by_id": sorted(position_by_id),
     }

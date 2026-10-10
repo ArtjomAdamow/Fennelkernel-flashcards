@@ -180,4 +180,54 @@ if state is not None:
         foreign["deck_control_remove"] = json.dumps(to_json(panels.deck_control("remove", runtime.NONE_DECK, state=other)))
         foreign["deck_control_remove_default"] = json.dumps(to_json(panels.deck_control("remove", runtime.NONE_DECK)))
 out["foreign_state"] = foreign
+
+# --- the group colour rule (fix F2): focused group, then the oldest existing group -------------------------
+rank_rule = None
+if state is not None and "focused_group" in inspect.signature(colors.group_color).parameters:
+    from flashcards_app.models import CardPosition, Flashcard  # noqa: E402
+    from flashcards_app.state_core import StateCore  # noqa: E402
+    from flashcards_app.user_state_service import UserStateService  # noqa: E402
+
+    class NothingStoredEither:
+        def read(self):
+            return None
+
+        def write(self, state):
+            pass
+
+    rule_core = StateCore(
+        NothingStoredEither(),
+        lambda decks: [Flashcard(f"x:{i}", "x", f"Q{i}", f"A{i}") for i in (1, 2, 3)],
+        lambda card_ids, seed: [CardPosition(cid, 0.1 * (i + 1), 0.2, 0.3) for i, cid in enumerate(card_ids)],
+    )
+    rule_core.load(["x"])
+    rule_core.refresh_deck_state(seed=1)
+    rk = UserStateService(rule_core, runtime.CATALOG)
+    a = rk.create_group("x:1", "A", "#a00001")
+    rk.add_to_group("x:2", a)
+    b = rk.create_group("x:1", "B", "#b00002")
+    c = rk.create_group("x:1", "C", "#c00003")
+    rk.add_to_group("x:3", c)
+
+    def color(card_id, focus=None):
+        return colors.group_color(card_id, rk, focus)
+
+    rank_rule = {
+        "no_focus": color("x:1"), "focus_a": color("x:1", a), "focus_b": color("x:1", b), "focus_c": color("x:1", c),
+        "focus_unknown": color("x:1", "nope"), "x2": color("x:2"), "x3": color("x:3"),
+        "x3_focus_a_not_member": color("x:3", a), "not_in_any_group": color("x:9"),
+    }
+    rk.delete_group(a)
+    rank_rule["after_delete_a"] = {"x1": color("x:1"), "x2": color("x:2")}
+    rk.delete_group(b)
+    rank_rule["after_delete_b"] = color("x:1")
+    rk.create_group("x:1", "D", "#d00004")
+    rank_rule["after_new_d"] = color("x:1")
+    rank_rule["ranks"] = [group.rank for group in rk.groups]
+    # the same rule seen through the map: a focused group colours its members
+    other_figure = map_module.make_figure(list(rk.cards), None, None, rk, c).to_dict() if takes_state(map_module.make_figure) else None
+    if other_figure is not None and "focused_group" in inspect.signature(map_module.make_figure).parameters:
+        by_name = {t.get("name"): t for t in other_figure["data"]}
+        rank_rule["figure_colors_when_c_is_focused"] = dict(zip(by_name["Cards"]["customdata"], by_name["Cards"]["marker"]["color"]))
+out["rank_rule"] = rank_rule
 json.dump(out, sys.stdout)

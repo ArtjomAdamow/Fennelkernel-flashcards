@@ -101,6 +101,7 @@ class StateCore:
         valid_ids = set(card_ids)
         for group in self.groups:
             group.card_ids = [card_id for card_id in group.card_ids if card_id in valid_ids]
+        self._fill_missing_ranks()
         self.links[:] = [
             link for link in self.links
             if link.source_id in valid_ids and link.target_id in valid_ids
@@ -166,6 +167,22 @@ class StateCore:
             cards = [card for card in cards if card.id in focused_ids]
         return cards
 
+    def deciding_group(self, card_id: str, focused_group: Optional[str] = None) -> Optional[CardGroup]:
+        """The group that decides how a card is shown (its colour).
+
+        1. A group is focused and the card is a member: that group.
+        2. Otherwise the oldest existing group the card is a member of (lowest rank; a tie goes to the
+           group that comes first in the list). When that group is deleted, the next oldest takes over.
+        """
+        members = [group for group in self.groups if card_id in group.card_ids]
+        if focused_group:
+            for group in members:
+                if group.id == focused_group:
+                    return group
+        if not members:
+            return None
+        return min(members, key=lambda group: (group.rank is None, group.rank if group.rank is not None else 0))
+
     # --- mutations ---------------------------------------------------------
 
     def set_position(self, card_id: str, x: float, y: float, z: float) -> None:
@@ -184,8 +201,10 @@ class StateCore:
             progress.read = True
 
     def create_group(self, card_id: str, name: str, color: str) -> str:
+        self._fill_missing_ranks()
         group_id = self._next_group_id()
-        self.groups.append(CardGroup(group_id, name.strip(), color, [card_id]))
+        rank = max((group.rank for group in self.groups), default=0) + 1
+        self.groups.append(CardGroup(group_id, name.strip(), color, [card_id], rank))
         return group_id
 
     def add_to_group(self, card_id: str, group_id: str) -> None:
@@ -199,8 +218,8 @@ class StateCore:
             group.card_ids = [member for member in group.card_ids if member != card_id]
 
     def delete_group(self, group_id: str) -> None:
+        # Links are never touched: the members stay on the map (unlike removing a deck)
         self.groups[:] = [group for group in self.groups if group.id != group_id]
-        self.links[:] = [link for link in self.links if link.group_id != group_id]
 
     def create_link(self, source_id: str, target_id: str) -> None:
         exists = any(
@@ -238,6 +257,14 @@ class StateCore:
 
     def _group(self, group_id: str) -> Optional[CardGroup]:
         return next((item for item in self.groups if item.id == group_id), None)
+
+    def _fill_missing_ranks(self) -> None:
+        """Groups from files written before ranks existed get one in list order, after the existing ranks."""
+        highest = max((group.rank for group in self.groups if group.rank is not None), default=0)
+        for group in self.groups:
+            if group.rank is None:
+                highest += 1
+                group.rank = highest
 
     def _next_group_id(self) -> str:
         # The old "group-<count+1>" produced duplicates after a group was deleted.

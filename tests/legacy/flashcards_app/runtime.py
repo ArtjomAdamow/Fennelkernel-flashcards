@@ -4,7 +4,6 @@ from pathlib import Path
 import time
 import uuid
 
-from flashcards_app.deck_catalog import DeckCatalog
 from flashcards_app.geometry import sphere_positions
 from flashcards_app.models import CardProgress, Flashcard
 from flashcards_app.parser import load_decks
@@ -16,11 +15,14 @@ STATE_PATH = BASE_DIR / "data" / "positions.json" # single cards position - rand
 CARDS_DIR = BASE_DIR / "data" / "cards" # preprocessed examples
 SERVER_BOOT_ID = uuid.uuid4().hex
 NONE_DECK = "None" # this is a workaround to display empty map on startup
-CATALOG = DeckCatalog(CARDS_DIR, exclude={"readme", NONE_DECK}) # cannot be loaded: dummy NONE_DECK, readme files
 
 
 def available_decks() -> list[str]:
-    return CATALOG.available()
+    return sorted(
+        path.stem
+        for path in CARDS_DIR.glob("*.md")
+        if path.stem.casefold() not in {"readme", NONE_DECK.casefold()} # cannot be loaded: dummy NONE_DECK, readme files
+    )
 
 
 AVAILABLE_DECKS = available_decks()

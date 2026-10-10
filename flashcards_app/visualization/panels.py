@@ -3,12 +3,18 @@ from dash import dcc, html
 
 from flashcards_app import runtime
 from flashcards_app.models import Flashcard
-from flashcards_app.services.decks import deck_filter_options
 
 
 def _state(state):
     # Default: the shared user state. Callers will pass it explicitly in a later tranche.
     return state if state is not None else runtime.USER_STATE
+
+
+def deck_filter_options(state=None) -> list[dict[str, str]]:
+    return [{"label": "None", "value": runtime.NONE_DECK}, {"label": "All decks", "value": "all"}] + [
+        {"label": deck, "value": deck}
+        for deck in sorted(_state(state).enabled_decks)
+    ]
 
 
 def card_panel(card: Flashcard | None, revealed: bool = False) -> html.Div:
@@ -186,7 +192,7 @@ def deck_control(dialog: str | None = None, selected_deck: str | None = runtime.
             dcc.Dropdown(
                 id="deck-filter",
                 className="closed-dropdown",
-                options=deck_filter_options(),
+                options=deck_filter_options(state),
                 value=selected_deck,
                 clearable=False,
                 style={"display": "none"},
