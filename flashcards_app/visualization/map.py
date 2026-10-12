@@ -1,13 +1,13 @@
 import plotly.graph_objects as go
 from dash import html
 
-from flashcards_app import runtime
 from flashcards_app.models import Flashcard
 from flashcards_app.visualization.colors import group_color, progress_color
 
 
 def make_figure(cards: list[Flashcard], selected_id: str | None = None, camera: dict | None = None, state=None, focused_group: str | None = None) -> go.Figure:
-    state = state if state is not None else runtime.USER_STATE
+    if state is None:
+        raise TypeError("state is required: pass the UserStateService")
     visible_ids = {card.id for card in cards}
     points = [position for position in state.positions if position.card_id in visible_ids]
     selected = [position for position in points if position.card_id == selected_id]
@@ -140,7 +140,7 @@ def make_figure(cards: list[Flashcard], selected_id: str | None = None, camera: 
 def color_legend() -> html.Div:
     return html.Div(
         [
-            html.Div("Card colors", className="card-label"),
+            html.Div("Card's ring colors", className="card-label"),
             html.Div([html.Span(className="legend-swatch unread"), html.Span("unopened")], className="legend-item"),
             html.Div([html.Span(className="legend-swatch review"), html.Span("review")], className="legend-item"),
             html.Div([html.Span(className="legend-swatch developing"), html.Span("developing")], className="legend-item"),

@@ -99,6 +99,8 @@ def make_project(base: Path, name: str, legacy: bool, state=STATE) -> Path:
     shutil.copytree(ROOT / "flashcards_app", project / "flashcards_app", ignore=shutil.ignore_patterns("__pycache__"))
     if legacy:
         shutil.copytree(HERE / "legacy" / "flashcards_app", project / "flashcards_app", dirs_exist_ok=True)
+    if not legacy:
+        shutil.copy(ROOT / "app.py", project / "app.py")  # the composition root (the original code has none that composes)
     cards = project / "data" / "cards"
     cards.mkdir(parents=True)
     for deck, count in (("alpha", 3), ("beta", 2), ("gamma", 2)):

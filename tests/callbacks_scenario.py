@@ -17,10 +17,10 @@ time.time_ns = lambda: SEED[0]
 
 import dash  # noqa: E402  (stand-in)
 from dash import to_json  # noqa: E402
-from flashcards_app import runtime  # noqa: E402
-from flashcards_app import callbacks  # noqa: E402,F401  (registers the callback)
-from flashcards_app.server import app  # noqa: E402
-from flashcards_app.services import groups as groups_service  # noqa: E402
+from world import load_world  # noqa: E402  (tests/world.py: the original app or the one app.py composes)
+
+W = load_world()
+app = W.dash_app  # the original registers its callback when callbacks.py is imported; the current app.py when it composes
 
 assert len(app.callbacks) == 1, app.callbacks
 registration, update_card = app.callbacks[0]
@@ -29,7 +29,7 @@ parameter_names = list(inspect.signature(update_card).parameters)
 assert len(specs) == len(parameter_names)
 
 BASE = {f"{cid}.{prop}": (0 if prop == "n_clicks" else None) for cid, prop in specs}
-BASE.update({"revealed.data": False, "drag-enabled.data": False, "deck-filter.value": runtime.NONE_DECK, "keyboard-nav.value": ""})
+BASE.update({"revealed.data": False, "drag-enabled.data": False, "deck-filter.value": W.none_deck, "keyboard-nav.value": ""})
 carried = {}
 
 
@@ -59,8 +59,38 @@ def find_by_id(node, wanted):
     return None
 
 
+
+def is_note(x):
+    return isinstance(x, dict) and isinstance(x.get("props"), dict) and x["props"].get("className") == "dialog-note"
+
+
+def strip_notes(x):
+    """The recorded tree without the dialog notes (the original has none, so the rest can be compared)."""
+    if isinstance(x, list):
+        return [strip_notes(i) for i in x if not is_note(i)]
+    if isinstance(x, dict):
+        return {k: strip_notes(v) for k, v in x.items()}
+    return x
+
+
+def notes_in(x, found=None):
+    """[(text, ids of the buttons in the same row)] for every dialog note in a recorded tree."""
+    found = [] if found is None else found
+    if isinstance(x, list):
+        notes = [i for i in x if is_note(i)]
+        if notes:
+            buttons = [i["props"].get("id") for i in x if isinstance(i, dict) and i.get("type") == "html.Button"]
+            found.extend([n["args"][0], buttons] for n in notes)
+        for i in x:
+            notes_in(i, found)
+    elif isinstance(x, dict):
+        for v in x.values():
+            notes_in(v, found)
+    return found
+
+
 def saved_file():
-    data = json.loads(runtime.STATE_PATH.read_text(encoding="utf-8"))
+    data = json.loads(W.state_path.read_text(encoding="utf-8"))
     for group in data["groups"]:
         group.pop("rank", None)
     for link in data["links"]:
@@ -70,12 +100,12 @@ def saved_file():
 
 def view():
     return {
-        "enabled": list(runtime.ENABLED_DECKS),
-        "cards": [c.id for c in runtime.CARDS],
-        "positions": [[p.card_id, round(p.x, 9), round(p.y, 9), round(p.z, 9)] for p in runtime.POSITIONS],
-        "progress": [[k, v.read, v.difficulty] for k, v in runtime.PROGRESS.items()],
-        "groups": [[g.id, g.name, g.color, list(g.card_ids)] for g in runtime.GROUPS],
-        "links": [[l.source_id, l.target_id] for l in runtime.LINKS],
+        "enabled": list(W.enabled_decks),
+        "cards": [c.id for c in W.cards],
+        "positions": [[p.card_id, round(p.x, 9), round(p.y, 9), round(p.z, 9)] for p in W.positions],
+        "progress": [[k, v.read, v.difficulty] for k, v in W.progress.items()],
+        "groups": [[g.id, g.name, g.color, list(g.card_ids)] for g in W.groups],
+        "links": [[l.source_id, l.target_id] for l in W.links],
     }
 
 
@@ -92,13 +122,15 @@ def call(label, trigger, values=None, record=True):
     out = update_card(**dict(zip(parameter_names, [inputs[f"{cid}.{prop}"] for cid, prop in specs])))
     assert len(out) == 18
     normalized = norm(out)
+    notes = notes_in(normalized[4]) + notes_in(normalized[15])  # group panel and deck panel
+    normalized[4], normalized[15] = strip_notes(normalized[4]), strip_notes(normalized[15])
     carried.update({
         "selected-id.data": out[7], "revealed.data": out[8], "drag-enabled.data": out[10],
         "group-dialog.data": out[13], "focused-group.data": out[14], "deck-dialog-state.data": out[16],
         "deck-filter.value": find_by_id(normalized[15], "deck-filter")["props"]["value"],
     })
     if record:
-        records.append({"step": label, "trigger": trigger, "outputs": normalized, "state": view(), "file": saved_file()})
+        records.append({"step": label, "trigger": trigger, "outputs": normalized, "notes": notes, "state": view(), "file": saved_file()})
     return normalized
 
 
@@ -108,7 +140,7 @@ def key(value):
 
 call("initial load", None)
 call("deck: all", "all-decks")
-ids = [c.id for c in runtime.CARDS]
+ids = [c.id for c in W.cards]
 call("next card", "keyboard-nav", key("next"))
 call("next card again", "keyboard-nav", key("next"))
 call("reveal", "selected-card", {"selected-card.n_clicks": 1})
@@ -120,6 +152,7 @@ call("create group", "group-dialog-submit", {"dialog-group-name.value": "G1", "d
 call("third card", "keyboard-nav", key("next"))  # not a member of the older fixture group: no card is in two groups here
 call("add to group dialog", "add-group")
 call("add to group", "group-dialog-submit", {"dialog-group-select.value": "group-2"})
+call("add to group dialog (card already grouped)", "add-group")
 call("cancel group dialog", "group-dialog-cancel")
 call("focus group dialog", "focus-group")
 call("focus group", "group-dialog-submit", {"dialog-group-select.value": "group-2"})
@@ -146,14 +179,23 @@ call("cancel deck dialog", "deck-dialog-cancel")
 call("deck: all again", "all-decks")
 call("deck filter", "deck-filter", {"deck-filter.value": "beta"})
 call("deck: all (3)", "all-decks")
-call("focus group (to delete it)", "focus-group")
-call("focus group submit", "group-dialog-submit", {"dialog-group-select.value": "group-2"})
-call("delete dialog", "delete-group")
-call("delete the focused group", "group-dialog-submit", {"dialog-group-select.value": "group-2"})
-call("all groups (2)", "all-groups")
 call("reset dialog", "reset-cards")
 call("reset", "reset-confirm", {"reset-confirm.submit_n_clicks": 1})
 call("reveal without a selection", "selected-card", {"selected-card.n_clicks": 4})
+
+# Deleting the focused group comes last on purpose (nothing is selected after the reset, so the sessions stay
+# comparable): the original keeps the focus on the deleted group and shows an empty map until "All groups" is clicked.
+ids = [c.id for c in W.cards]
+W.create_group(ids[0], "P", "#aaaaaa")  # group-1
+W.create_group(ids[1], "Q", "#bbbbbb")  # group-2
+call("focus group (to delete it)", "focus-group")
+call("focus group submit", "group-dialog-submit", {"dialog-group-select.value": "group-2"})
+call("select a card in the focus", "keyboard-nav", key("next"))  # the delete dialog only opens for a selected card
+call("delete dialog", "delete-group")
+call("delete the focused group", "group-dialog-submit", {"dialog-group-select.value": "group-2"})
+call("all groups (2)", "all-groups")
+call("reset dialog (2)", "reset-cards")
+call("reset (2)", "reset-confirm", {"reset-confirm.submit_n_clicks": 1})  # nothing is selected and no group is left afterwards
 
 out = {
     "registration": [[a.kind, a.component_id, a.component_property] for a in registration],
@@ -161,21 +203,21 @@ out = {
 }
 
 # --- the layout, the title, the boot-id route and the index page --------------------------------------------
-boot = runtime.SERVER_BOOT_ID
+boot = W.boot_id
 out["server"] = {
     "title": app.title,
     "layout": json.loads(json.dumps(to_json(app.layout)).replace(boot, "<BOOT>")),
     "index_string": app.index_string.replace(boot, "<BOOT>"),
     "routes": sorted(app.server.routes),
     "boot_id_route": json.loads(json.dumps(app.server.routes["/boot-id"]()).replace(boot, "<BOOT>")),
-    "assets_folder": str(app.assets_folder).replace(str(runtime.BASE_DIR), "<BASE>"),
+    "assets_folder": str(app.assets_folder).replace(str(W.base_dir), "<BASE>"),
 }
 
 # --- fix F2 through the callback: a card in two groups, one of them focused -------------------------------
-ids = [c.id for c in runtime.CARDS]
-groups_service.create_group(ids[0], "P", "#aaaaaa")  # group-1, the older group
-groups_service.create_group(ids[1], "Q", "#bbbbbb")  # group-2, the younger group
-groups_service.add_to_group(ids[0], "group-2")  # ids[0] is a member of both
+ids = [c.id for c in W.cards]
+W.create_group(ids[0], "P", "#aaaaaa")  # group-1, the older group
+W.create_group(ids[1], "Q", "#bbbbbb")  # group-2, the younger group
+W.add_to_group(ids[0], "group-2")  # ids[0] is a member of both
 
 
 def card_colors(outputs):
@@ -189,15 +231,16 @@ call("F2 all groups", "all-groups", record=False)
 unfocused = call("F2 deck all", "all-decks", record=False)
 out["f2"] = {"ids": ids[:2], "focused_on_younger_group": card_colors(focused), "nothing_focused": card_colors(unfocused)}
 
+# a reset ends a group focus, in the original and in the current code
+call("focus dialog (3)", "focus-group", record=False)
+call("focus P", "group-dialog-submit", {"dialog-group-select.value": "group-1"}, record=False)
+after_reset = call("reset while a group is focused", "reset-confirm", {"reset-confirm.submit_n_clicks": 1}, record=False)
+out["focus_after_reset"] = after_reset[14]
+
 # --- the injected state is the one that gets used (current code only) ------------------------------------------
 foreign = None
-register_callbacks = None
-if hasattr(runtime, "USER_STATE"):  # the original runtime has none
-    try:
-        from flashcards_app.callbacks_impl import register_callbacks
-    except ImportError:  # tranche 7c is not inserted yet
-        register_callbacks = None
-if register_callbacks is not None:
+if W.current:  # the original has no register_callbacks, create_app or state objects to pass in
+    from flashcards_app.callbacks import register_callbacks
     from flashcards_app.models import CardPosition, Flashcard
     from flashcards_app.state_core import StateCore
     from flashcards_app.user_state_service import UserStateService
@@ -216,17 +259,17 @@ if register_callbacks is not None:
     )
     core.load(["x"])
     core.refresh_deck_state(seed=1)
-    other = UserStateService(core, runtime.CATALOG)
-    other_callback = register_callbacks(dash.Dash(), other, runtime.NONE_DECK)
-    file_before = runtime.STATE_PATH.read_text(encoding="utf-8")
-    shared_cards_before = [c.id for c in runtime.CARDS]
+    other = UserStateService(core, W.catalog)
+    other_callback = register_callbacks(dash.Dash(), other, W.none_deck)
+    file_before = W.state_path.read_text(encoding="utf-8")
+    shared_cards_before = [c.id for c in W.cards]
 
     def call_other(trigger, **changes):
         dash.ctx.triggered_id = trigger
         values = dict(BASE, **changes)
         return norm(other_callback(**dict(zip(parameter_names, [values[f"{c}.{p}"] for c, p in specs]))))
 
-    first = call_other("all-decks", **{"deck-filter.value": runtime.NONE_DECK})
+    first = call_other("all-decks", **{"deck-filter.value": W.none_deck})
     second = call_other("keyboard-nav", **{"deck-filter.value": "all", "keyboard-nav.value": "next"})
     foreign = {
         "count_text": first[9],
@@ -238,12 +281,12 @@ if register_callbacks is not None:
         "connections": json.dumps(second[5]),
         "deck_control": json.dumps(second[15]),
         "filter_option_values": [o["value"] for o in second[17]],
-        "shared_cards_unchanged": [c.id for c in runtime.CARDS] == shared_cards_before,
-        "shared_file_unchanged": runtime.STATE_PATH.read_text(encoding="utf-8") == file_before,
+        "shared_cards_unchanged": [c.id for c in W.cards] == shared_cards_before,
+        "shared_file_unchanged": W.state_path.read_text(encoding="utf-8") == file_before,
     }
     # the server builds its first page from the state it is given
-    from flashcards_app.server_impl import create_app
-    built = create_app(runtime.BASE_DIR, "BOOT-X", other)
+    from flashcards_app.server import create_app
+    built = create_app(W.base_dir, "BOOT-X", other)
     layout = json.dumps(to_json(built.layout))
     foreign["server"] = {
         "layout_has_foreign_cards": "x:1" in layout,

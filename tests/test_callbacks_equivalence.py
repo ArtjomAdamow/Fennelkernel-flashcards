@@ -16,10 +16,29 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from tests.project_fixture import CALLBACKS_TEST_FILES, ROOT, check_test_files, make_project, run_script
+from tests.project_fixture import CALLBACKS_TEST_FILES, check_test_files, make_project, run_script
 
-# Tranche 7c adds these two files; the checks that need them are skipped until then.
-TRANCHE_7C_INSERTED = (ROOT / "flashcards_app" / "callbacks_impl.py").exists() and (ROOT / "flashcards_app" / "server_impl.py").exists()
+
+# Steps where the original behaves differently on purpose (fix F5, one focus handling): what they return is not
+# compared with the original, it is checked in test_one_focus_handling. State and saved file are still compared.
+# The last two only differ because the card selected in the focus stays selected now when its group is deleted.
+F5_STEPS = {"all groups", "delete the focused group", "all groups (2)", "reset dialog (2)"}
+
+
+def find_by_id(node, wanted):
+    if isinstance(node, dict):
+        if isinstance(node.get("props"), dict) and node["props"].get("id") == wanted:
+            return node
+        for value in node.values():
+            found = find_by_id(value, wanted)
+            if found:
+                return found
+    elif isinstance(node, list):
+        for value in node:
+            found = find_by_id(value, wanted)
+            if found:
+                return found
+    return None
 
 
 class CallbacksEquivalenceTest(unittest.TestCase):
@@ -51,9 +70,56 @@ class CallbacksEquivalenceTest(unittest.TestCase):
         self.assertEqual([r["step"] for r in current], [r["step"] for r in legacy])
         for old, new in zip(legacy, current):
             with self.subTest(step=old["step"]):
-                self.assertEqual(new["outputs"], old["outputs"])
+                if old["step"] not in F5_STEPS:
+                    self.assertEqual(new["outputs"], old["outputs"])
                 self.assertEqual(new["state"], old["state"])
                 self.assertEqual(new["file"], old["file"])
+
+    def test_one_focus_handling(self) -> None:
+        # fix F5: a card is visible when neither the deck focus nor the group focus hides it, decided in one place
+        def step(project, name):
+            return next(r for r in self.result[project]["records"] if r["step"] == name)
+
+        def link_targets(record):  # the cards the connection list offers
+            return [option["value"] for option in find_by_id(record["outputs"][5], "link-target")["props"]["options"]]
+
+        # clicking "All groups" ends the group focus, so the connection list offers every card but the selected one
+        current = step("current", "all groups")
+        selected = current["outputs"][7]
+        self.assertEqual(link_targets(current), [c for c in current["state"]["cards"] if c != selected])
+        self.assertLess(len(link_targets(step("legacy", "all groups"))), len(link_targets(current)))  # the original kept the old group's filter
+
+        # deleting the focused group ends the focus: every card is on the map and no empty map is left behind
+        current, legacy = step("current", "delete the focused group"), step("legacy", "delete the focused group")
+        self.assertIsNone(current["outputs"][14])
+        self.assertEqual(current["outputs"][9], f"{len(current['state']['cards'])} cards mapped")
+        self.assertEqual((legacy["outputs"][14], legacy["outputs"][9]), ("group-2", "0 cards mapped"))  # the original: empty map
+
+    def test_a_reset_ends_the_group_focus(self) -> None:
+        for project in ("legacy", "current"):
+            with self.subTest(project=project):
+                self.assertIsNone(self.result[project]["focus_after_reset"])
+
+    def test_dialog_notes_appear_in_the_callback_output(self) -> None:
+        # fix F3, end to end: the note is part of what the callback returns, next to the Confirm button
+        note = {
+            "new": "The selected card will be added to the new group.",
+            "add": "Membership and color of the previously assigned group will remain until removed from the other group.",
+            "delete": "Connections of member cards will remain.",
+            "remove": "Settings of all deck member cards will be erased.",
+        }
+        group_buttons, deck_buttons = ["group-dialog-submit", "group-dialog-cancel"], ["deck-dialog-submit", "deck-dialog-cancel"]
+        expected = {
+            "new group dialog": [[note["new"], group_buttons]],
+            "add to group dialog": [],  # the selected card is in no group yet
+            "add to group dialog (card already grouped)": [[note["add"], group_buttons]],
+            "delete dialog": [[note["delete"], group_buttons]],
+            "remove deck dialog": [[note["remove"], deck_buttons]],
+        }
+        for record in self.result["current"]["records"]:
+            with self.subTest(step=record["step"]):
+                self.assertEqual(record["notes"], expected.get(record["step"], []))
+        self.assertTrue(all(r["notes"] == [] for r in self.result["legacy"]["records"]))  # the original has no notes
 
     def test_layout_title_boot_id_route_and_index_page_match(self) -> None:
         legacy, current = self.result["legacy"]["server"], self.result["current"]["server"]
@@ -63,7 +129,6 @@ class CallbacksEquivalenceTest(unittest.TestCase):
         self.assertIn("window.__SERVER_BOOT_ID__ = \"<BOOT>\"", current["index_string"])  # reload-guard.js reads this name
         self.assertEqual(current["routes"], ["/boot-id"])
 
-    @unittest.skipUnless(TRANCHE_7C_INSERTED, "needs tranche 7c (callbacks_impl.py, server_impl.py)")
     def test_group_colour_follows_the_focused_group(self) -> None:
         # fix F2: card 0 is in the older group P (#aaaaaa) and the younger group Q (#bbbbbb)
         for project, expected_when_focused in (("legacy", "#aaaaaa"), ("current", "#bbbbbb")):
@@ -75,7 +140,6 @@ class CallbacksEquivalenceTest(unittest.TestCase):
                 self.assertEqual(f2["nothing_focused"][first], "#aaaaaa")  # without focus the oldest group still wins
                 self.assertEqual(f2["nothing_focused"][second], "#bbbbbb")
 
-    @unittest.skipUnless(TRANCHE_7C_INSERTED, "needs tranche 7c (callbacks_impl.py, server_impl.py)")
     def test_the_callback_uses_only_the_state_it_was_given(self) -> None:
         self.assertIsNone(self.result["legacy"]["foreign"])
         foreign = self.result["current"]["foreign"]
@@ -93,7 +157,6 @@ class CallbacksEquivalenceTest(unittest.TestCase):
         self.assertTrue(foreign["shared_cards_unchanged"])
         self.assertTrue(foreign["shared_file_unchanged"])
 
-    @unittest.skipUnless(TRANCHE_7C_INSERTED, "needs tranche 7c (callbacks_impl.py, server_impl.py)")
     def test_the_server_builds_its_first_page_from_the_state_and_boot_id_it_is_given(self) -> None:
         server = self.result["current"]["foreign"]["server"]
         self.assertTrue(server["layout_has_foreign_cards"])

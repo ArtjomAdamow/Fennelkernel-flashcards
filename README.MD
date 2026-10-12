@@ -1,47 +1,38 @@
-# Flashcards
+# Flashcards v2.0
 
-Here are some hints for extraction (open in edit mode to see a real hack):
 
 <details>
-  <summary><b> <sd
+<summary>The magic has not arrived yet</summary>
 
- Use Markdown Preview for the best experience of`format`.
- </b></summary>
+... but the manual experience is as cool as it gets. All decks can be added from the app, just click the `"Add"` button in the DECK section. No input files needed, all flashcards and quizzes are included. **Quizes are flattened and represented with the correct answer only**. Flashcards are shown as dots on on a rotating 3-D map and coordinates for cards from new loaded decks are still created at random.
 
-Use `backticks` for code, commands etc.
 
 </details>
 
-[In the summary block <sd followed by empty line allows the use if backticks]:#
+[The quiz content was not hidden that well to prevent accidental exposure]:#
 
-## Spatial Flashcards
 
-This folder contains a small Dash application for visualizing the learning flashcards. Flashcards are stored as markdown decks, watch out for the **Q/A** format. Decks are stored in `data/cards`, new decks can be added from there. The flashcards are shown as dots on on a rotating 3-D map. Coordinates are created at random and stored in `data/positions.json`, they are kept separate from the Markdown decks.
 
-### Run locally
+## Run locally
 
-With Python 3.13 or newer:
 
 ```powershell
 uv sync
 uv run python app.py
 ```
 
-Open the local URL printed by Dash.
+Open the **local URL** printed by Dash.
 
-In VS Code, select `.venv\Scripts\python.exe` as the Python interpreter.
-`uv sync` installs dependencies into this project environment; a bare `pip`
-command may install into a different Python installation. The YAML package
-is named `PyYAML`, but it is imported with `import yaml`.
 
-### Quick start:
+
+## Quick start:
 
 First use `"Add"` button in the DECK section to load flashcards. Select `"All"` or `"Focus"` to show only a specific deck. Select your first flashcard-dot on the 3D-map. Click on the question in the text box to flip to the answer.
 
 
-### How to:
+## Spatial Study
 
-1. Select decks of flashcards. Multiple decks can be uploaded and you can select specific decks with the `"Focus"` button.
+1. Select decks of flashcards. Multiple decks can be loaded and you can select specific decks with the `"Focus"` button. Loaded decks can be removed to clean up the workspace.
 2. Hover mouse over a card-point to `preview` the question without selecting.
 2. Use mouse on `3D map` space to drag move, rotate and zoom the map.
 3. Click on a flashcard (represented as dots) to select a specific card. Alternativly use key arrows to `scroll` through the cards.
@@ -54,16 +45,37 @@ First use `"Add"` button in the DECK section to load flashcards. Select `"All"` 
 10. The button `"Random card"` will only select flipped cards and will **prefer cards with low progress**.
 11. The button `"Reset"` removes all settings for a fresh start.
 
-### Tests
-
-```powershell
-uv run pytest
-```
-
 ### Notes
 
-Dash resolves assets_folder relative to wherever Dash(__name__) is instantiated — moving that call into a submodule silently breaks static assets with no error, so it needs an explicit assets_folder when the app isn't created at the project root.
+All states and progress are stored in `data/positions.json`, the structure must follow Version 2 format.
+In VS Code, select `.venv\Scripts\python.exe` as the Python interpreter. `uv sync` installs dependencies into this project environment; a bare `pip` command may install into a different Python installation. The YAML package (only needed for internal tools) is named `PyYAML`, but it is imported with `import yaml`.
 
-### License
 
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
+### Improvements
+
+
+- workflow
+  - state management cleaned of transitive shared mutable globals
+  - mutation authority centralized in user_state_service
+  - read models/snapshots feed other consumers
+  - ownership boundaries separate source / state / persistence / UI
+  - deck scope is properly first-class
+  - no more duplicate id's
+- usability 
+  - deck state is saved, at startup only added decks are loaded
+  - groups are ranked, group color is updated when focused on a group
+  - connections only visible for visible cards
+- connectivity
+  - the app is nowhighly modular
+  - interfaces for recommender system are prepared
+  - RAG-state -> own states 
+  - RAG-comprehension -> shared state with user state
+  - scripted self updating indexing tool for backend development
+
+
+## Outlook
+
+- Milestone 1: POC of recommender system, flashcard data for suggestions in the connections dropdown list.
+- Milestone 2: POC autoconnect flashcards with prims algorithm through recommender system.
+- Milestone 3: POC autogrouping of flashcards based on content.
+- Milestone 4: POC location proximity instead of random placement based on cosine similarity using PCA.

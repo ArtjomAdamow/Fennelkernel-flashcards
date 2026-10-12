@@ -1,6 +1,3 @@
-from flashcards_app import runtime
-
-
 def hex_to_rgb(value: str) -> tuple[int, int, int]:
     value = value.lstrip("#")
     return tuple(int(value[i : i + 2], 16) for i in (0, 2, 4))
@@ -22,8 +19,9 @@ def interpolate_color(start: str, end: str, progress: float) -> str:
 
 
 def _state(state):
-    # Default: the shared user state. Callers will pass it explicitly in a later tranche.
-    return state if state is not None else runtime.USER_STATE
+    if state is None:
+        raise TypeError("state is required: pass the UserStateService")
+    return state
 
 
 def progress_color(value_or_card_id: str | int, state=None) -> str:

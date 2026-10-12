@@ -6,8 +6,20 @@ from flashcards_app.models import Flashcard
 
 
 def _state(state):
-    # Default: the shared user state. Callers will pass it explicitly in a later tranche.
-    return state if state is not None else runtime.USER_STATE
+    if state is None:
+        raise TypeError("state is required: pass the UserStateService")
+    return state
+
+
+# Small notes next to the Confirm button of a dialog
+NEW_GROUP_NOTE = "The selected card will be added to the new group."
+ADD_TO_GROUP_NOTE = "Membership and color of the previously assigned group will remain until removed from the other group."
+DELETE_GROUP_NOTE = "Connections of member cards will remain."
+REMOVE_DECK_NOTE = "Settings of all deck member cards will be erased."
+
+
+def _dialog_note(text):
+    return [html.Span(text, className="dialog-note")] if text else []
 
 
 def deck_filter_options(state=None) -> list[dict[str, str]]:
@@ -109,6 +121,9 @@ def group_control(card: Flashcard | None, dialog: str | None = None, state=None)
         if dialog != "remove" or card is None or card.id in group.card_ids
     ]
     dialog_title = {"new": "New group", "add": "Add to group", "remove": "Remove from group", "delete": "Delete group", "focus": "Focus group"}.get(dialog)
+    note = {"new": NEW_GROUP_NOTE, "delete": DELETE_GROUP_NOTE}.get(dialog)
+    if dialog == "add" and card is not None and any(card.id in group.card_ids for group in state.groups):
+        note = ADD_TO_GROUP_NOTE
     dialog_body = [
         dcc.Input(id="dialog-group-name", type="text", placeholder="Group name", style={"display": "block" if dialog == "new" else "none"}),
         daq.ColorPicker(id="dialog-group-color", value={"hex": "#f5b942"}, size=140, style={"display": "block" if dialog == "new" else "none"}),
@@ -154,7 +169,7 @@ def group_control(card: Flashcard | None, dialog: str | None = None, state=None)
                         [
                             html.Button("Confirm", id="group-dialog-submit", n_clicks=0, className="tool-button"),
                             html.Button("Cancel", id="group-dialog-cancel", n_clicks=0, className="tool-button"),
-                        ],
+                        ] + _dialog_note(note),
                         className="tool-row",
                     ),
                 ],
@@ -176,6 +191,7 @@ def deck_control(dialog: str | None = None, selected_deck: str | None = runtime.
         or (dialog in {"remove", "focus"} and deck in state.enabled_decks)
     ]
     dialog_title = {"add": "Add deck", "remove": "Remove deck", "focus": "Focus deck"}.get(dialog)
+    note = REMOVE_DECK_NOTE if dialog == "remove" else None
     return html.Div(
         [
             html.Div("Deck", className="card-label"),
@@ -211,7 +227,7 @@ def deck_control(dialog: str | None = None, selected_deck: str | None = runtime.
                         [
                             html.Button("Confirm", id="deck-dialog-submit", n_clicks=0, className="tool-button"),
                             html.Button("Cancel", id="deck-dialog-cancel", n_clicks=0, className="tool-button"),
-                        ],
+                        ] + _dialog_note(note),
                         className="tool-row",
                     ),
                 ],
@@ -222,13 +238,8 @@ def deck_control(dialog: str | None = None, selected_deck: str | None = runtime.
     )
 
 
-def connection_control(card: Flashcard | None, deck: str = "all", focused_group: str | None = None, state=None) -> html.Div:
-    state = _state(state)
-    candidate_cards = [entry for entry in state.cards if deck == "all" or entry.deck == deck]
-    if focused_group:
-        group = next((item for item in state.groups if item.id == focused_group), None)
-        if group:
-            candidate_cards = [entry for entry in candidate_cards if entry.id in group.card_ids]
+def connection_control(card: Flashcard | None, candidate_cards: list[Flashcard]) -> html.Div:
+    """`candidate_cards` are the cards the map shows: the deck focus and the group focus are already applied."""
     options = [
         {"label": other.question[:55], "value": other.id}
         for other in candidate_cards

@@ -11,7 +11,7 @@ from typing import Iterable
 class DeckCatalog:
     def __init__(self, cards_dir: Path, exclude: Iterable[str] = ()) -> None:
         self._cards_dir = Path(cards_dir)
-        # Names are compared case-insensitively, as runtime.available_decks always did
+        # Names are compared case-insensitively, as the deck discovery always did
         self._exclude = {name.casefold() for name in exclude}
 
     def available(self) -> list[str]:

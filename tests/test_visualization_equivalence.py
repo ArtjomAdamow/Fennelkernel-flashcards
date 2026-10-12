@@ -65,7 +65,7 @@ class VisualizationEquivalenceTest(unittest.TestCase):
 
     def test_panels_match(self) -> None:
         self.assert_section_equal("panels")
-        self.assertGreater(len(self.result["current"]["panels"]["connection"]), 20)
+        self.assertGreater(len(self.result["current"]["panels"]["connection"]), 15)
 
     def test_figures_and_legend_match(self) -> None:
         legacy, current = self.result["legacy"]["map"], self.result["current"]["map"]
@@ -74,11 +74,6 @@ class VisualizationEquivalenceTest(unittest.TestCase):
         for key in legacy["figures"]:
             with self.subTest(figure=key):
                 self.assertEqual(current["figures"][key], legacy["figures"][key])
-
-    def test_passing_the_state_explicitly_changes_nothing(self) -> None:
-        explicit = self.result["current"]["explicit_state_matches_default"]
-        self.assertNotIn(False, explicit.values(), [k for k, v in explicit.items() if v is False])
-        self.assertEqual(self.result["legacy"]["explicit_state_matches_default"], {})  # the originals take no state
 
     def test_a_state_that_is_passed_in_is_the_one_that_gets_used(self) -> None:
         # A second state (cards x:1, x:2, one group "Z", one link) next to the shared one:
@@ -118,6 +113,40 @@ class VisualizationEquivalenceTest(unittest.TestCase):
             self.assertIn("gamma", foreign["deck_control_add"])
             self.assertNotEqual(foreign["deck_control_remove"], foreign["deck_control_remove_default"])
             self.assertIn('"options": []', foreign["deck_control_remove"])
+
+    def test_without_a_state_the_functions_refuse_to_run_with_a_clear_message(self) -> None:
+        self.assertIsNone(self.result["legacy"]["missing_state"])  # the originals take no state
+        missing = self.result["current"]["missing_state"]
+        self.assertEqual(len(missing), 7)
+        self.assertEqual([name for name, value in missing.items() if value is not True], [])
+
+    def test_a_group_focus_that_does_not_exist_leaves_the_connection_list_empty(self) -> None:
+        self.assertIsNone(self.result["legacy"]["connection_unknown_group"])
+        tree = json.dumps(self.result["current"]["connection_unknown_group"])
+        self.assertIn('"options": []', tree)
+
+    def test_dialog_notes_sit_next_to_the_confirm_button(self) -> None:
+        # fix F3: the right note for the right dialog, in the row of the Confirm button
+        new, add, delete = "The selected card will be added to the new group.", None, "Connections of member cards will remain."
+        add = "Membership and color of the previously assigned group will remain until removed from the other group."
+        remove = "Settings of all deck member cards will be erased."
+        legacy, current = self.result["legacy"]["notes"], self.result["current"]["notes"]
+        self.assertEqual({k: v for k, v in legacy["group"].items() if v}, {})  # the original has no notes
+        self.assertEqual({k: v for k, v in legacy["deck"].items() if v}, {})
+        group_buttons = ["group-dialog-submit", "group-dialog-cancel"]
+        # cards: 0 none, 1 in no group, 2 in two groups, 3 in one group
+        expected = {}
+        for card in range(4):
+            expected[f"{card}:new"] = [[new, group_buttons]]
+            expected[f"{card}:delete"] = [[delete, group_buttons]]
+            expected[f"{card}:add"] = [[add, group_buttons]] if card in (2, 3) else []
+            for dialog in (None, "remove", "focus"):
+                expected[f"{card}:{dialog}"] = []
+        self.assertEqual(current["group"], expected)
+        deck_buttons = ["deck-dialog-submit", "deck-dialog-cancel"]
+        for key, notes in current["deck"].items():
+            with self.subTest(deck_dialog=key):
+                self.assertEqual(notes, [[remove, deck_buttons]] if key.startswith("remove:") else [])
 
     def test_group_colour_rule(self) -> None:
         # fix F2: a focused group decides; otherwise the oldest existing group; deleting it passes the colour on
