@@ -34,10 +34,10 @@ def progress_color(value_or_card_id: str | int, state=None) -> str:
         value = int(value_or_card_id)
     value = max(1, min(100, value))
     if value < 35:
-        return interpolate_color("#e76f51", "#f5b942", (value - 1) / 34)
+        return interpolate_color("#ff6b6b", "#a020f0", (value - 1) / 34)
     if value < 70:
-        return interpolate_color("#f5b942", "#69c6a5", (value - 35) / 35)
-    return "#69c6a5"
+        return interpolate_color("#a020f0", "#20b2aa", (value - 35) / 35)
+    return "#20b2aa"
 
 
 def group_color(card_id: str, state=None, focused_group: str | None = None) -> str:

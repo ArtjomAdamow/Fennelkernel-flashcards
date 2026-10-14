@@ -41,6 +41,19 @@ def find_by_id(node, wanted):
     return None
 
 
+def without_legend_title(node):
+    """The recorded tree with the title of the colour legend blanked: it is a matter of taste, not of behavior."""
+    if isinstance(node, list):
+        return [without_legend_title(item) for item in node]
+    if isinstance(node, dict):
+        if isinstance(node.get("props"), dict) and node["props"].get("className") == "color-legend":
+            args = [without_legend_title(a) for a in node["args"]]
+            args[0] = [dict(args[0][0], args=["<legend title>"])] + args[0][1:]
+            return dict(node, args=args)
+        return {key: without_legend_title(value) for key, value in node.items()}
+    return node
+
+
 class CallbacksEquivalenceTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
@@ -95,6 +108,24 @@ class CallbacksEquivalenceTest(unittest.TestCase):
         self.assertEqual(current["outputs"][9], f"{len(current['state']['cards'])} cards mapped")
         self.assertEqual((legacy["outputs"][14], legacy["outputs"][9]), ("group-2", "0 cards mapped"))  # the original: empty map
 
+    def test_the_group_swatches_glow_for_groups_that_share_members_with_the_focused_group(self) -> None:
+        # tranche 9: P (#aaaaaa) and Q (#bbbbbb) share a card; the swatch of the other group glows in its own colour
+        self.assertEqual(self.result["legacy"]["swatches"], {"focus_Q": [], "focus_P": [], "no_focus": []})
+        swatches = self.result["current"]["swatches"]
+        self.assertEqual(swatches["focus_Q"], [["P", "#aaaaaa", "#aaaaaa"]])
+        self.assertEqual(swatches["focus_P"], [["Q", "#bbbbbb", "#bbbbbb"]])
+        self.assertEqual(swatches["no_focus"], [])
+
+    def test_the_glow_always_follows_the_state_and_the_focus(self) -> None:
+        # in every recorded step: exactly the groups that share a member with the focused group glow
+        for record in self.result["current"]["records"]:
+            with self.subTest(step=record["step"]):
+                groups, focus = record["state"]["groups"], record["outputs"][14]
+                focused = next((g for g in groups if g[0] == focus), None) if focus else None
+                expected = sorted(g[1] for g in groups if focused is not None and g is not focused and set(g[3]) & set(focused[3]))
+                self.assertEqual(sorted(name for name, _, _ in record["swatches"]), expected)
+        self.assertTrue(all(r["swatches"] == [] for r in self.result["legacy"]["records"]))  # the original has none
+
     def test_a_reset_ends_the_group_focus(self) -> None:
         for project in ("legacy", "current"):
             with self.subTest(project=project):
@@ -125,7 +156,7 @@ class CallbacksEquivalenceTest(unittest.TestCase):
         legacy, current = self.result["legacy"]["server"], self.result["current"]["server"]
         for key in legacy:
             with self.subTest(part=key):
-                self.assertEqual(current[key], legacy[key])
+                self.assertEqual(without_legend_title(current[key]), without_legend_title(legacy[key]))
         self.assertIn("window.__SERVER_BOOT_ID__ = \"<BOOT>\"", current["index_string"])  # reload-guard.js reads this name
         self.assertEqual(current["routes"], ["/boot-id"])
 

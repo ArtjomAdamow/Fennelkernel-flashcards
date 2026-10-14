@@ -218,7 +218,7 @@ def register_callbacks(app, state, none_deck="None"):
             card_panel(selected_card, revealed),
             difficulty_control(selected_card, state),
             position_control(selected_card, bool(drag_enabled), state),
-            group_control(selected_card, next_group_dialog, state),
+            group_control(selected_card, next_group_dialog, state, next_focused_group),
             connection_control(selected_card, cards),
             "Saved" if trigger in {"save-position", "create-link", "disconnect-link", "group-dialog-submit", "delete-group"} else "",
             selected_id,

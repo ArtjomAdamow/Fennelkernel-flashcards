@@ -64,13 +64,37 @@ def is_note(x):
     return isinstance(x, dict) and isinstance(x.get("props"), dict) and x["props"].get("className") == "dialog-note"
 
 
+def is_swatch(x):
+    return isinstance(x, dict) and isinstance(x.get("props"), dict) and str(x["props"].get("className", "")).startswith("group-color-swatch")
+
+
 def strip_notes(x):
-    """The recorded tree without the dialog notes (the original has none, so the rest can be compared)."""
+    """The recorded tree without what the original does not have (the dialog notes and the highlight of group swatches:
+    a class and an inline colour), so that the rest can be compared with the original."""
     if isinstance(x, list):
         return [strip_notes(i) for i in x if not is_note(i)]
+    if is_swatch(x):
+        style = {"backgroundColor": x["props"]["style"]["backgroundColor"]}
+        return dict(x, props=dict(x["props"], className="group-color-swatch", style=style))
     if isinstance(x, dict):
         return {k: strip_notes(v) for k, v in x.items()}
     return x
+
+
+def highlighted_in(x, found=None):
+    """[[group name, swatch colour, glow colour]] for every highlighted group swatch in a recorded tree."""
+    found = [] if found is None else found
+    if isinstance(x, list):
+        for index, item in enumerate(x):
+            if is_swatch(item) and "group-color-swatch-shared" in item["props"]["className"]:
+                style = item["props"]["style"]
+                found.append([x[index + 1]["args"][0], style.get("backgroundColor"), style.get("color")])
+        for item in x:
+            highlighted_in(item, found)
+    elif isinstance(x, dict):
+        for value in x.values():
+            highlighted_in(value, found)
+    return found
 
 
 def notes_in(x, found=None):
@@ -110,6 +134,7 @@ def view():
 
 
 records = []
+LAST = {}  # what the last call showed that the original does not have
 
 
 def call(label, trigger, values=None, record=True):
@@ -123,6 +148,8 @@ def call(label, trigger, values=None, record=True):
     assert len(out) == 18
     normalized = norm(out)
     notes = notes_in(normalized[4]) + notes_in(normalized[15])  # group panel and deck panel
+    highlighted = highlighted_in(normalized[4])
+    LAST["swatches"] = highlighted
     normalized[4], normalized[15] = strip_notes(normalized[4]), strip_notes(normalized[15])
     carried.update({
         "selected-id.data": out[7], "revealed.data": out[8], "drag-enabled.data": out[10],
@@ -130,7 +157,7 @@ def call(label, trigger, values=None, record=True):
         "deck-filter.value": find_by_id(normalized[15], "deck-filter")["props"]["value"],
     })
     if record:
-        records.append({"step": label, "trigger": trigger, "outputs": normalized, "notes": notes, "state": view(), "file": saved_file()})
+        records.append({"step": label, "trigger": trigger, "outputs": normalized, "notes": notes, "swatches": highlighted, "state": view(), "file": saved_file()})
     return normalized
 
 
@@ -206,7 +233,7 @@ out = {
 boot = W.boot_id
 out["server"] = {
     "title": app.title,
-    "layout": json.loads(json.dumps(to_json(app.layout)).replace(boot, "<BOOT>")),
+    "layout": strip_notes(json.loads(json.dumps(to_json(app.layout)).replace(boot, "<BOOT>"))),  # without the swatch highlight (tranche 9)
     "index_string": app.index_string.replace(boot, "<BOOT>"),
     "routes": sorted(app.server.routes),
     "boot_id_route": json.loads(json.dumps(app.server.routes["/boot-id"]()).replace(boot, "<BOOT>")),
@@ -230,6 +257,17 @@ focused = call("F2 focus Q", "group-dialog-submit", {"dialog-group-select.value"
 call("F2 all groups", "all-groups", record=False)
 unfocused = call("F2 deck all", "all-decks", record=False)
 out["f2"] = {"ids": ids[:2], "focused_on_younger_group": card_colors(focused), "nothing_focused": card_colors(unfocused)}
+
+# group swatches glow for the groups that share member cards with the focused one (tranche 9): P (group-1) and
+# Q (group-2) share the first card
+call("F2 focus dialog (2)", "focus-group", record=False)
+call("F2 focus Q again", "group-dialog-submit", {"dialog-group-select.value": "group-2"}, record=False)
+swatches_q = LAST["swatches"]
+call("F2 focus dialog (3)", "focus-group", record=False)
+call("F2 focus P", "group-dialog-submit", {"dialog-group-select.value": "group-1"}, record=False)
+swatches_p = LAST["swatches"]
+call("F2 all groups (2)", "all-groups", record=False)
+out["swatches"] = {"focus_Q": swatches_q, "focus_P": swatches_p, "no_focus": LAST["swatches"]}
 
 # a reset ends a group focus, in the original and in the current code
 call("focus dialog (3)", "focus-group", record=False)

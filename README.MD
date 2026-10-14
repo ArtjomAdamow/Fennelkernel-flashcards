@@ -66,7 +66,7 @@ In VS Code, select `.venv\Scripts\python.exe` as the Python interpreter. `uv syn
   - groups are ranked, group color is updated when focused on a group
   - connections only visible for visible cards
 - connectivity
-  - the app is nowhighly modular
+  - the app is now evolving modular
   - interfaces for recommender system are prepared
   - RAG-state -> own states 
   - RAG-comprehension -> shared state with user state

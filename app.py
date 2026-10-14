@@ -16,7 +16,8 @@ from flashcards_app.user_state_service import UserStateService
 
 # Application configuration
 BASE_DIR = Path(__file__).resolve().parent
-STATE_PATH = BASE_DIR / "data" / "positions.json" # single cards position - random as placeholder
+STATE_PATH = BASE_DIR / "data" / "user_state.json" # all user state: positions, progress, groups, links, enabled decks
+LEGACY_STATE_PATH = BASE_DIR / "data" / "positions.json" # the file name before tranche 9: read once while user_state.json does not exist
 CARDS_DIR = BASE_DIR / "data" / "cards" # preprocessed examples
 SERVER_BOOT_ID = uuid.uuid4().hex
 
@@ -37,7 +38,7 @@ class Composition:
 def compose(boot_id: str = SERVER_BOOT_ID) -> Composition:
     catalog = DeckCatalog(CARDS_DIR, exclude={"readme", NONE_DECK}) # cannot be loaded: dummy NONE_DECK, readme files
     core = StateCore(
-        JsonStateStore(STATE_PATH),
+        JsonStateStore(STATE_PATH, fallback_path=LEGACY_STATE_PATH),
         card_source=lambda decks: load_decks(CARDS_DIR, decks),
         position_source=sphere_positions,
     )

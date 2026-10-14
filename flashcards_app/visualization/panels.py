@@ -112,8 +112,14 @@ def position_control(card: Flashcard | None, drag_enabled: bool = False, state=N
     )
 
 
-def group_control(card: Flashcard | None, dialog: str | None = None, state=None) -> html.Div:
+def group_control(card: Flashcard | None, dialog: str | None = None, state=None, focused_group: str | None = None) -> html.Div:
     state = _state(state)
+    # While a group is focused, the swatches of the other groups that share member cards with it are highlighted
+    focused = next((group for group in state.groups if group.id == focused_group), None) if focused_group else None
+    shares_members = {
+        id(group) for group in state.groups
+        if focused is not None and group is not focused and set(group.card_ids) & set(focused.card_ids)
+    }
     selected_groups = [group.id for group in state.groups if card and card.id in group.card_ids]
     dialog_options = [
         {"label": group.name, "value": group.id}
@@ -154,7 +160,7 @@ def group_control(card: Flashcard | None, dialog: str | None = None, state=None)
             html.Div(
                 [
                     html.Div(
-                        [html.Span(className="group-color-swatch", style={"backgroundColor": group.color}), html.Span(group.name), html.Span(f"{len(group.card_ids)} cards", className="group-member-count")],
+                        [html.Span(className="group-color-swatch group-color-swatch-shared" if id(group) in shares_members else "group-color-swatch", style={"backgroundColor": group.color, "color": group.color}), html.Span(group.name), html.Span(f"{len(group.card_ids)} cards", className="group-member-count")],
                         className="group-list-item",
                     )
                     for group in state.groups

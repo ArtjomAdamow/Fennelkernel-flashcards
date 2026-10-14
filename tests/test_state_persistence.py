@@ -12,15 +12,11 @@ from pathlib import Path
 from unittest import mock
 
 from flashcards_app.models import CardGroup, CardLink, CardPosition, CardProgress
+from flashcards_app import state as state_module
 from flashcards_app.state import (
     JsonStateStore,
     RawState,
     StateFileError,
-    load_enabled_decks,
-    load_groups,
-    load_links,
-    load_positions,
-    load_progress,
     read_state_file,
     save_state,
     write_state_file,
@@ -185,7 +181,6 @@ class StatePersistenceTest(unittest.TestCase):
         state = read_state_file(self.path)
         self.assertEqual(state.links, [CardLink("a:1", "a:2")])  # the old key is ignored
         self.assertIsNone(state.groups[0].rank)  # StateCore.refresh_deck_state fills it
-        self.assertEqual(load_links(self.path, ["a:1", "a:2"]), [CardLink("a:1", "a:2")])
 
     def test_written_layout_has_ranks_and_no_link_group_id(self) -> None:
         positions, progress, groups, links = sample()
@@ -195,17 +190,54 @@ class StatePersistenceTest(unittest.TestCase):
         self.assertTrue(all("group_id" not in link for link in payload["links"]))
         self.assertEqual(payload["version"], 2)  # same version: older code can still read the file
 
-    # --- the old loaders keep working on files written by the new writer -----
+    # --- the old loaders are gone (tranche 9) ---------------------------------------------------------------
 
-    def test_legacy_loaders_read_files_from_the_new_writer(self) -> None:
+    def test_the_old_loaders_are_gone(self) -> None:
+        for name in ("load_positions", "load_progress", "load_groups", "load_links", "load_enabled_decks"):
+            self.assertFalse(hasattr(state_module, name), name)
+
+    # --- the store with a fallback file name (tranche 9) --------------------------------------------------------
+
+    def test_the_fallback_file_is_read_while_the_new_one_does_not_exist(self) -> None:
         positions, progress, groups, links = sample()
-        save_state(self.path, positions, progress, groups, links, ["a"])
-        ids = ["a:1", "a:2"]
-        self.assertEqual(load_positions(self.path, ids), positions)
-        self.assertEqual(load_progress(self.path, ids), progress)
-        self.assertEqual(load_groups(self.path, ids), groups)
-        self.assertEqual(load_links(self.path, ids), links)
-        self.assertEqual(load_enabled_decks(self.path, ["a", "b"]), ["a"])
+        old, new = self.dir / "positions.json", self.dir / "user_state.json"
+        save_state(old, positions, progress, groups, links, ["a"])
+        before = old.read_bytes()
+        store = JsonStateStore(new, fallback_path=old)
+        self.assertEqual(store.read(), RawState(positions, progress, groups, links, ["a"]))
+        self.assertFalse(new.exists())  # reading does not create anything
+        self.assertEqual(old.read_bytes(), before)
+
+    def test_the_first_write_creates_the_new_file_and_leaves_the_old_one_alone(self) -> None:
+        positions, progress, groups, links = sample()
+        old, new = self.dir / "positions.json", self.dir / "user_state.json"
+        save_state(old, positions, progress, groups, links, ["a"])
+        before = old.read_bytes()
+        store = JsonStateStore(new, fallback_path=old)
+        store.write(RawState(positions, progress, groups, links, ["a", "b"]))
+        self.assertEqual(old.read_bytes(), before)
+        self.assertEqual(read_state_file(new).decks, ["a", "b"])
+        self.assertEqual(store.read().decks, ["a", "b"])  # from now on the new file wins
+
+    def test_the_new_file_wins_when_both_exist(self) -> None:
+        positions, progress, groups, links = sample()
+        old, new = self.dir / "positions.json", self.dir / "user_state.json"
+        save_state(old, positions, progress, groups, links, ["old"])
+        save_state(new, positions, progress, groups, links, ["new"])
+        self.assertEqual(JsonStateStore(new, fallback_path=old).read().decks, ["new"])
+
+    def test_nothing_at_all_reads_as_none_and_a_store_without_fallback_ignores_other_files(self) -> None:
+        positions, progress, groups, links = sample()
+        old, new = self.dir / "positions.json", self.dir / "user_state.json"
+        self.assertIsNone(JsonStateStore(new, fallback_path=old).read())
+        save_state(old, positions, progress, groups, links)
+        self.assertIsNone(JsonStateStore(new).read())
+
+    def test_the_fallback_file_is_checked_like_any_other(self) -> None:
+        old = self.dir / "positions.json"
+        old.write_text(json.dumps({"version": 1}), encoding="utf-8")
+        with self.assertRaises(StateFileError):
+            JsonStateStore(self.dir / "user_state.json", fallback_path=old).read()
 
 
 if __name__ == "__main__":

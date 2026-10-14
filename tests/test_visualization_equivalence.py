@@ -35,6 +35,19 @@ def find_by_id(node, wanted):
     return None
 
 
+def without_legend_title(node):
+    """The recorded tree with the title of the colour legend blanked: it is a matter of taste, not of behavior."""
+    if isinstance(node, list):
+        return [without_legend_title(item) for item in node]
+    if isinstance(node, dict):
+        if isinstance(node.get("props"), dict) and node["props"].get("className") == "color-legend":
+            args = [without_legend_title(a) for a in node["args"]]
+            args[0] = [dict(args[0][0], args=["<legend title>"])] + args[0][1:]
+            return dict(node, args=args)
+        return {key: without_legend_title(value) for key, value in node.items()}
+    return node
+
+
 class VisualizationEquivalenceTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
@@ -69,7 +82,7 @@ class VisualizationEquivalenceTest(unittest.TestCase):
 
     def test_figures_and_legend_match(self) -> None:
         legacy, current = self.result["legacy"]["map"], self.result["current"]["map"]
-        self.assertEqual(current["legend"], legacy["legend"])
+        self.assertEqual(without_legend_title(current["legend"]), without_legend_title(legacy["legend"]))
         self.assertEqual(current["figures"].keys(), legacy["figures"].keys())
         for key in legacy["figures"]:
             with self.subTest(figure=key):
@@ -124,6 +137,18 @@ class VisualizationEquivalenceTest(unittest.TestCase):
         self.assertIsNone(self.result["legacy"]["connection_unknown_group"])
         tree = json.dumps(self.result["current"]["connection_unknown_group"])
         self.assertIn('"options": []', tree)
+
+    def test_swatches_of_groups_that_share_members_with_the_focused_group_glow(self) -> None:
+        self.assertIsNone(self.result["legacy"]["swatches"])  # the original knows no highlight
+        swatches = self.result["current"]["swatches"]
+        for focus, entry in swatches.items():
+            with self.subTest(focus=focus):
+                self.assertEqual(entry["highlighted"], entry["expected"])
+                self.assertTrue(entry["glow_is_the_group_colour"])  # box-shadow: currentColor needs the group colour as text colour
+        self.assertEqual((swatches["None"]["highlighted"], swatches["nope"]["highlighted"]), ([], []))  # no focus, no glow
+        self.assertTrue(any(entry["expected"] for entry in swatches.values()), "the scenario needs a group that shares a card")
+        self.assertTrue(any(not entry["expected"] for key, entry in swatches.items() if key not in ("None", "nope")),
+                        "and a focused group that shares none")
 
     def test_dialog_notes_sit_next_to_the_confirm_button(self) -> None:
         # fix F3: the right note for the right dialog, in the row of the Confirm button

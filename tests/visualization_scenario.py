@@ -94,13 +94,37 @@ def is_note(x):
     return isinstance(x, dict) and isinstance(x.get("props"), dict) and x["props"].get("className") == "dialog-note"
 
 
+def is_swatch(x):
+    return isinstance(x, dict) and isinstance(x.get("props"), dict) and str(x["props"].get("className", "")).startswith("group-color-swatch")
+
+
 def strip_notes(x):
-    """The recorded tree without the dialog notes (the original has none, so the rest can be compared)."""
+    """The recorded tree without what the original does not have (the dialog notes and the highlight of group swatches:
+    a class and an inline colour), so that the rest can be compared with the original."""
     if isinstance(x, list):
         return [strip_notes(i) for i in x if not is_note(i)]
+    if is_swatch(x):
+        style = {"backgroundColor": x["props"]["style"]["backgroundColor"]}
+        return dict(x, props=dict(x["props"], className="group-color-swatch", style=style))
     if isinstance(x, dict):
         return {k: strip_notes(v) for k, v in x.items()}
     return x
+
+
+def highlighted_in(x, found=None):
+    """[[group name, swatch colour, glow colour]] for every highlighted group swatch in a recorded tree."""
+    found = [] if found is None else found
+    if isinstance(x, list):
+        for index, item in enumerate(x):
+            if is_swatch(item) and "group-color-swatch-shared" in item["props"]["className"]:
+                style = item["props"]["style"]
+                found.append([x[index + 1]["args"][0], style.get("backgroundColor"), style.get("color")])
+        for item in x:
+            highlighted_in(item, found)
+    elif isinstance(x, dict):
+        for value in x.values():
+            highlighted_in(value, found)
+    return found
 
 
 def notes_in(x, found=None):
@@ -198,6 +222,25 @@ if state is not None:
         foreign["deck_control_remove"] = json.dumps(to_json(panels.deck_control("remove", W.none_deck, state=other)))
         foreign["deck_control_remove_default"] = json.dumps(to_json(panels.deck_control("remove", W.none_deck, state=state)))
 out["foreign_state"] = foreign
+
+# group swatches: the groups that share member cards with the focused group glow (tranche 9)
+swatches = None
+if W.current:
+    def expected_glow(focus_id):
+        focused = next((g for g in W.groups if g.id == focus_id), None)
+        if focused is None:
+            return []
+        return sorted(g.name for g in W.groups if g is not focused and set(g.card_ids) & set(focused.card_ids))
+
+    swatches = {}
+    for focus in [None] + [g.id for g in W.groups] + ["nope"]:
+        found = highlighted_in(to_json(panels.group_control(None, None, focused_group=focus, **kw)))
+        swatches[str(focus)] = {
+            "highlighted": sorted(name for name, _, _ in found),
+            "glow_is_the_group_colour": all(background == glow for _, background, glow in found),
+            "expected": expected_glow(focus),
+        }
+out["swatches"] = swatches
 
 # the dialog notes: which text next to which buttons, for every card and dialog (fix F3)
 out["notes"] = {
