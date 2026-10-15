@@ -32,44 +32,6 @@ STATE = {
 }
 
 
-# Files the visualization test needs besides the code under test: relative to tests/, and a piece of text each
-# must contain (None = may be empty). The legacy files must be your ORIGINAL colors/map/panels.
-VISUALIZATION_TEST_FILES = {
-    "stubs/dash/__init__.py": "def to_json",
-    "stubs/dash_daq/__init__.py": "def ColorPicker",
-    "stubs/plotly/__init__.py": None,
-    "stubs/plotly/graph_objects.py": "class Figure",
-    "legacy/flashcards_app/visualization/colors.py": "runtime.PROGRESS",
-    "legacy/flashcards_app/visualization/map.py": "runtime.POSITIONS",
-    "legacy/flashcards_app/visualization/panels.py": "runtime.PROGRESS",
-}
-
-
-# Same idea for the callbacks/server test. A tuple is (must contain, must NOT contain): the legacy files have to be
-# the ORIGINAL ones, not the versions from tranche 7.
-CALLBACKS_TEST_FILES = {
-    "stubs/dash/__init__.py": "def Input",
-    "stubs/dash_daq/__init__.py": "def ColorPicker",
-    "stubs/plotly/__init__.py": None,
-    "stubs/plotly/graph_objects.py": "class Figure",
-    "stubs/flask/__init__.py": "def jsonify",
-    "legacy/flashcards_app/models.py": ("group_id", "rank"),
-    "legacy/flashcards_app/state.py": ("def load_positions", "RawState"),
-    "legacy/flashcards_app/callbacks.py": ("@app.callback(", "register_callbacks"),
-    "legacy/flashcards_app/server.py": ("app = Dash(", "create_app"),
-    "legacy/flashcards_app/runtime.py": ("def available_decks", "USER_STATE"),
-    "legacy/flashcards_app/visualization/colors.py": ("runtime.PROGRESS", "_state"),
-    "legacy/flashcards_app/visualization/map.py": ("runtime.POSITIONS", "_state"),
-    "legacy/flashcards_app/visualization/panels.py": ("runtime.PROGRESS", "_state"),
-    "legacy/flashcards_app/services/cards.py": ("runtime.PROGRESS", "USER_STATE"),
-    "legacy/flashcards_app/services/decks.py": ("load_decks", "USER_STATE"),
-    "legacy/flashcards_app/services/groups.py": ("runtime.GROUPS", "USER_STATE"),
-    "legacy/flashcards_app/services/connections.py": ("runtime.LINKS", "USER_STATE"),
-    "legacy/flashcards_app/services/positions.py": ("POSITION_BY_ID", "USER_STATE"),
-    "legacy/flashcards_app/services/progress.py": ("runtime.PROGRESS", "USER_STATE"),
-}
-
-
 def check_test_files(required: dict) -> None:
     """Fail with a readable message if a support file is missing, empty or not the expected one."""
     problems = []
@@ -88,19 +50,15 @@ def check_test_files(required: dict) -> None:
         raise AssertionError(
             "This test needs support files that are not in your tests folder (or are not the right ones):\n  "
             + "\n  ".join(problems)
-            + "\nCopy them unchanged from the delivered folder tranche_06a/tests/ (the stubs folder with its 4 files, "
-            "and legacy/flashcards_app/visualization/ with your three ORIGINAL files from before tranche 6)."
+            + "\nCopy them unchanged from the delivered folder tranche_06a/tests/ (the stubs folder)."
         )
 
 
-def make_project(base: Path, name: str, legacy: bool, state=STATE) -> Path:
-    """Copy the package; with legacy=True lay tests/legacy/flashcards_app/* over it (the code before the tranches)."""
+def make_project(base: Path, name: str, state=STATE) -> Path:
+    """Copy the package and the composition root, with fixture decks and state."""
     project = base / name
     shutil.copytree(ROOT / "flashcards_app", project / "flashcards_app", ignore=shutil.ignore_patterns("__pycache__"))
-    if legacy:
-        shutil.copytree(HERE / "legacy" / "flashcards_app", project / "flashcards_app", dirs_exist_ok=True)
-    if not legacy:
-        shutil.copy(ROOT / "app.py", project / "app.py")  # the composition root (the original code has none that composes)
+    shutil.copy(ROOT / "app.py", project / "app.py")  # the composition root
     cards = project / "data" / "cards"
     cards.mkdir(parents=True)
     for deck, count in (("alpha", 3), ("beta", 2), ("gamma", 2)):

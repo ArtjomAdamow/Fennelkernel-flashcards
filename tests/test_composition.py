@@ -40,11 +40,11 @@ class CompositionTest(unittest.TestCase):
                           "stubs/dash_daq/__init__.py": "def ColorPicker", "stubs/plotly/graph_objects.py": "class Figure"})
         cls._tmp = tempfile.TemporaryDirectory()
         base = Path(cls._tmp.name)
-        done = run_script(make_project(base, "full", legacy=False), "composition_scenario.py", stubs=True)
+        done = run_script(make_project(base, "full"), "composition_scenario.py", stubs=True)
         if done.returncode != 0:
             raise AssertionError(f"scenario failed:\n{done.stderr}")
         cls.result = json.loads(done.stdout)
-        no_data = run_script(make_project(base, "no_data", legacy=False), "composition_scenario.py", "no_data", stubs=True)
+        no_data = run_script(make_project(base, "no_data"), "composition_scenario.py", "no_data", stubs=True)
         if no_data.returncode != 0:
             raise AssertionError(f"importing the hub without a data folder failed:\n{no_data.stderr}")
         cls.no_data = json.loads(no_data.stdout)
@@ -105,7 +105,7 @@ class CompositionTest(unittest.TestCase):
 
     def test_the_new_file_wins_when_both_exist(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            project = make_project(Path(tmp), "both", legacy=False)
+            project = make_project(Path(tmp), "both")
             state = json.loads((project / "data" / "positions.json").read_text(encoding="utf-8"))
             state["decks"] = ["alpha"]
             (project / "data" / "user_state.json").write_text(json.dumps(state), encoding="utf-8")
