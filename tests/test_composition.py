@@ -13,7 +13,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from tests.project_fixture import ROOT, check_test_files, make_project, run_script
+from tests.project_fixture import ROOT, STATE, check_test_files, make_project, run_script
 
 PACKAGE = ROOT / "flashcards_app"
 
@@ -64,8 +64,9 @@ class CompositionTest(unittest.TestCase):
     def test_configuration_lives_in_app_py(self) -> None:
         constants = self.result["constants"]
         self.assertTrue(constants["base_dir_holds_app_py"])
-        self.assertEqual((constants["state_path"], constants["legacy_state_path"], constants["cards_dir"]),
-                         ("data/user_state.json", "data/positions.json", "data/cards"))
+        # phase 2: the course file instead of the cards folder, no positions.json fallback
+        self.assertEqual((constants["state_path"], constants["cards_file"]), ("data/user_state.json", "data/cards.json"))
+        self.assertFalse(constants["has_legacy_state_path"])
         self.assertEqual(constants["none_deck"], "None")
 
     # --- the hub -----------------------------------------------------------------------------------
@@ -86,32 +87,26 @@ class CompositionTest(unittest.TestCase):
         self.assertEqual(f4["decks_in_file"], ["alpha"])  # beta was disabled before main() saved
         self.assertEqual(f4["app_run_called"], {"debug": True})
         self.assertEqual(f4["after_restart_enabled"], ["alpha"])  # before the fix every available deck came back
-        self.assertTrue(all(card_id.startswith("alpha:") for card_id in f4["after_restart_cards"]))
+        self.assertTrue(all(card_id.startswith("101") for card_id in f4["after_restart_cards"]))  # phase 2: alpha's comb_ids
         self.assertEqual(f4["after_restart_difficulty"], 33)
         self.assertTrue(f4["two_compositions_are_independent"])
 
-    # --- O5: user_state.json, with the old file name as a one-time fallback ---------------------------------------
-
-    def test_the_old_file_is_read_once_and_the_new_one_is_written(self) -> None:
-        o5 = self.result["o5"]
-        self.assertTrue(o5["started_from_the_old_file"])  # the fixture project only has positions.json
-        self.assertTrue(o5["new_file_exists_after_the_first_save"])
-        self.assertTrue(o5["old_file_untouched"])  # it stays as a backup
+    # --- user_state.json keyed by comb_id (phase 2: the O5 fallback to positions.json is gone) --------------------
 
     def test_the_restart_reads_the_new_file(self) -> None:
         # the F4 scenario restarts after main() saved: the state came back from user_state.json (decks, progress)
         self.assertEqual(self.result["f4"]["after_restart_enabled"], ["alpha"])
         self.assertEqual(self.result["f4"]["after_restart_difficulty"], 33)
 
-    def test_the_new_file_wins_when_both_exist(self) -> None:
+    def test_the_saved_file_is_keyed_by_comb_id(self) -> None:
+        self.assertEqual(self.result["f4"]["state_keys"], ["comb_id"])
+
+    def test_positions_json_is_not_read_any_more(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            project = make_project(Path(tmp), "both")
-            state = json.loads((project / "data" / "positions.json").read_text(encoding="utf-8"))
-            state["decks"] = ["alpha"]
-            (project / "data" / "user_state.json").write_text(json.dumps(state), encoding="utf-8")
-            done = run_script(project, "composition_scenario.py", "precedence", stubs=True)
+            project = make_project(Path(tmp), "legacy", state=dict(STATE, decks=["alpha"]), state_file="positions.json")
+            done = run_script(project, "composition_scenario.py", "enabled", stubs=True)
         self.assertEqual(done.returncode, 0, done.stderr)
-        self.assertEqual(json.loads(done.stdout)["enabled"], ["alpha"])  # positions.json says alpha and beta
+        self.assertNotEqual(json.loads(done.stdout)["enabled"], ["alpha"])  # positions.json is ignored, the start is fresh
 
     # --- the cut-over, checked in the source files ---------------------------------------------------
 

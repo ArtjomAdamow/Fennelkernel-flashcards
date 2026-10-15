@@ -5,16 +5,17 @@ from flashcards_app.models import Flashcard
 from flashcards_app.visualization.colors import group_color, progress_color
 
 
+# phase 1: positions are addressed by their comb_id (was card_id)
 def make_figure(cards: list[Flashcard], selected_id: str | None = None, camera: dict | None = None, state=None, focused_group: str | None = None) -> go.Figure:
     if state is None:
         raise TypeError("state is required: pass the UserStateService")
     visible_ids = {card.id for card in cards}
-    points = [position for position in state.positions if position.card_id in visible_ids]
-    selected = [position for position in points if position.card_id == selected_id]
-    regular = [position for position in points if position.card_id != selected_id]
+    points = [position for position in state.positions if position.comb_id in visible_ids]
+    selected = [position for position in points if position.comb_id == selected_id]
+    regular = [position for position in points if position.comb_id != selected_id]
 
     figure = go.Figure()
-    position_by_id = {position.card_id: position for position in points}
+    position_by_id = {position.comb_id: position for position in points}
 
     # Invisible corner anchors: pins Plotly's internal camera data-scale to the fixed axis range,
     # so camera.js's centering math stays correct regardless of how many cards are filtered/visible.
@@ -61,7 +62,7 @@ def make_figure(cards: list[Flashcard], selected_id: str | None = None, camera: 
                 mode="markers",
                 marker={
                     "size": 7 * 1.4,
-                    "color": [progress_color(point.card_id, state) for point in regular],
+                    "color": [progress_color(point.comb_id, state) for point in regular],
                 },
                 hoverinfo="skip",
                 showlegend=False,
@@ -74,12 +75,12 @@ def make_figure(cards: list[Flashcard], selected_id: str | None = None, camera: 
                 y=[point.y for point in regular],
                 z=[point.z for point in regular],
                 mode="markers",
-                customdata=[point.card_id for point in regular],
-                text=[state.card_by_id[point.card_id].question for point in regular],
+                customdata=[point.comb_id for point in regular],
+                text=[state.card_by_id[point.comb_id].question for point in regular],
                 hovertemplate="%{text}<extra></extra>",
                 marker={
                     "size": 7,
-                    "color": [group_color(point.card_id, state, focused_group) for point in regular],
+                    "color": [group_color(point.comb_id, state, focused_group) for point in regular],
                 },
                 name="Cards",
             )
@@ -96,7 +97,7 @@ def make_figure(cards: list[Flashcard], selected_id: str | None = None, camera: 
                 mode="markers",
                 marker={
                     "size": 13 * 1.4,
-                    "color": progress_color(point.card_id, state),
+                    "color": progress_color(point.comb_id, state),
                 },
                 hoverinfo="skip",
                 showlegend=False,
@@ -109,10 +110,10 @@ def make_figure(cards: list[Flashcard], selected_id: str | None = None, camera: 
                 y=[point.y],
                 z=[point.z],
                 mode="markers",
-                customdata=[point.card_id],
-                text=[state.card_by_id[point.card_id].question],
+                customdata=[point.comb_id],
+                text=[state.card_by_id[point.comb_id].question],
                 hovertemplate="%{text}<extra></extra>",
-                marker={"size": 13, "color": group_color(point.card_id, state, focused_group)},
+                marker={"size": 13, "color": group_color(point.comb_id, state, focused_group)},
                 name="Selected",
             )
         )

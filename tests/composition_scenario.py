@@ -22,8 +22,8 @@ if len(sys.argv) > 1 and sys.argv[1] == "no_data":
     json.dump({"imported": True, "names": sorted(n for n in dir(runtime) if not n.startswith("_")), "app_imported": "app" in sys.modules}, sys.stdout)
     sys.exit(0)
 
-if len(sys.argv) > 1 and sys.argv[1] == "precedence":
-    # a project that has both files: user_state.json must win
+if len(sys.argv) > 1 and sys.argv[1] == "enabled":
+    # phase 2: only the enabled decks after the start (the precedence scenario went with LEGACY_STATE_PATH)
     import app as application
 
     json.dump({"enabled": list(application.composition.user_state.enabled_decks)}, sys.stdout)
@@ -31,9 +31,6 @@ if len(sys.argv) > 1 and sys.argv[1] == "precedence":
 
 import app as application  # noqa: E402  (composes at import)
 from flashcards_app import runtime  # noqa: E402
-
-LEGACY_BYTES_BEFORE = application.LEGACY_STATE_PATH.read_bytes() if application.LEGACY_STATE_PATH.exists() else None
-USER_STATE_BEFORE = application.STATE_PATH.exists()
 
 comp = application.composition
 state = comp.user_state
@@ -51,8 +48,8 @@ out["startup"] = {
 out["constants"] = {
     "base_dir_holds_app_py": (application.BASE_DIR / "app.py").exists(),
     "state_path": application.STATE_PATH.relative_to(application.BASE_DIR).as_posix(),
-    "legacy_state_path": application.LEGACY_STATE_PATH.relative_to(application.BASE_DIR).as_posix(),
-    "cards_dir": application.CARDS_DIR.relative_to(application.BASE_DIR).as_posix(),
+    "cards_file": application.CARDS_FILE.relative_to(application.BASE_DIR).as_posix(),  # phase 2
+    "has_legacy_state_path": hasattr(application, "LEGACY_STATE_PATH"),
     "none_deck": runtime.NONE_DECK,
 }
 out["runtime_names"] = sorted(n for n in dir(runtime) if not n.startswith("_"))
@@ -68,9 +65,6 @@ out["f4"]["after_restart_enabled"] = list(again.user_state.enabled_decks)
 out["f4"]["after_restart_cards"] = [c.id for c in again.user_state.cards]
 out["f4"]["after_restart_difficulty"] = again.user_state.progress[again.user_state.cards[0].id].difficulty
 out["f4"]["two_compositions_are_independent"] = again.core is not comp.core and again.user_state.cards is not state.cards
-out["o5"] = {
-    "started_from_the_old_file": LEGACY_BYTES_BEFORE is not None and not USER_STATE_BEFORE,
-    "new_file_exists_after_the_first_save": application.STATE_PATH.exists(),
-    "old_file_untouched": application.LEGACY_STATE_PATH.read_bytes() == LEGACY_BYTES_BEFORE,
-}
+# phase 2: the saved file is keyed by comb_id
+out["f4"]["state_keys"] = sorted({key for section in ("positions", "progress") for item in saved[section] for key in item if key.endswith("_id")})
 json.dump(out, sys.stdout)

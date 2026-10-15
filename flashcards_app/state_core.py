@@ -87,12 +87,12 @@ class StateCore:
         """Make everything consistent with the current cards.
 
         Positions and progress are generated for cards that have none; entries of cards
-        that are no longer loaded are dropped from progress, positions, groups and links.
+        that are no longer loaded are dropped from progress, positions, related_ids, groups and links.
         """
         card_ids = [card.id for card in self.cards]
-        stored_positions = {position.card_id: position for position in self.positions}
+        stored_positions = {position.comb_id: position for position in self.positions}
         generated = self._position_source(card_ids, self._seed(seed))
-        self.positions[:] = [stored_positions.get(position.card_id, position) for position in generated]
+        self.positions[:] = [stored_positions.get(position.comb_id, position) for position in generated]
 
         stored_progress = dict(self.progress)
         self.progress.clear()
@@ -101,6 +101,9 @@ class StateCore:
         valid_ids = set(card_ids)
         for group in self.groups:
             group.card_ids = [card_id for card_id in group.card_ids if card_id in valid_ids]
+        # phase 1: related_ids hold comb_ids too and get the same filter as group members and links
+        for position in self.positions:
+            position.related_ids = [related_id for related_id in position.related_ids if related_id in valid_ids]
         self._fill_missing_ranks()
         self.links[:] = [
             link for link in self.links
@@ -253,7 +256,7 @@ class StateCore:
         self.card_by_id.clear()
         self.card_by_id.update({card.id: card for card in self.cards})
         self.position_by_id.clear()
-        self.position_by_id.update({position.card_id: position for position in self.positions})
+        self.position_by_id.update({position.comb_id: position for position in self.positions})
 
     def _group(self, group_id: str) -> Optional[CardGroup]:
         return next((item for item in self.groups if item.id == group_id), None)

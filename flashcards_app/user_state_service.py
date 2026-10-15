@@ -1,6 +1,7 @@
 """User state service: the learner's state as the rest of the app sees it.
 
-A facade over StateCore (the live state and its mutations) and DeckCatalog (which decks exist).
+A facade over StateCore (the live state and its mutations) and the deck catalog (which decks exist in
+the course file: JsonDeckCatalog; phase 2: the .md DeckCatalog is switched off).
 It adds the one rule that needs the catalog: only decks that exist can be enabled.
 
 The containers it exposes are the core's own live objects (same object on every access), because
@@ -9,13 +10,13 @@ panels, map, colors and callbacks read them directly and rely on in-place change
 
 from typing import Optional
 
-from .deck_catalog import DeckCatalog
+from .deck_catalog import JsonDeckCatalog
 from .models import CardGroup, CardLink, CardPosition, CardProgress, Flashcard
 from .state_core import StateCore
 
 
 class UserStateService:
-    def __init__(self, core: StateCore, catalog: DeckCatalog) -> None:
+    def __init__(self, core: StateCore, catalog: JsonDeckCatalog) -> None:
         self._core = core
         self._catalog = catalog
 
@@ -58,8 +59,13 @@ class UserStateService:
     def available_decks(self) -> list[str]:
         return self._catalog.available()
 
+    def reload_decks(self) -> bool:
+        """phase 2: read the course file again, so decks added to it can be enabled. The cards of the enabled
+        decks follow at the next deck change. False if the file is invalid now; the current decks are kept."""
+        return self._catalog.reload()
+
     def enable_deck(self, deck_name: str) -> bool:
-        """Enable a deck that exists on disk. False if it does not exist or is already enabled."""
+        """Enable a deck the catalog lists. False if it does not exist or is already enabled."""
         if not self._catalog.is_available(deck_name):
             return False
         return self._core.enable_deck(deck_name)

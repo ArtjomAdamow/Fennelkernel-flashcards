@@ -1,11 +1,11 @@
-"""Deck catalog: which decks exist (draft replacement for flashcards_app/deck_catalog.py). Two catalogs:
+"""Deck catalog: which decks exist. Two catalogs:
 
   * DeckCatalog: the .md deck files, unchanged from the project. Stateless on purpose: the directory
     is re-read on every call, so a deck file added while the app is running shows up the next time
     the catalog is asked (live update). Switched off (phase 1) with the .md source, see
     parser.MD_SOURCE_ENABLED.
-  * JsonDeckCatalog: the decks of the course file (parser.CardsFile). The names are taken once, on
-    construction, from the already parsed file; the file itself is never touched. No live update.
+  * JsonDeckCatalog: the decks of the course file (parser.CardsFile). The names come from the parsed
+    file in memory. No live update: the file is read again only by reload() (phase 2: the deck "Add" button).
 """
 
 from pathlib import Path
@@ -35,13 +35,17 @@ class DeckCatalog:
 
 class JsonDeckCatalog:
     def __init__(self, cards_file: CardsFile, exclude: Iterable[str] = ()) -> None:
-        # Same exclusion rule as DeckCatalog (case-insensitive), applied once
-        excluded = {name.casefold() for name in exclude}
-        self._names = sorted(name for name in cards_file.deck_names if name.casefold() not in excluded)
+        # Same exclusion rule as DeckCatalog (case-insensitive)
+        self._cards_file = cards_file
+        self._excluded = {name.casefold() for name in exclude}
 
     def available(self) -> list[str]:
-        # A copy: callers may change the list they get
-        return list(self._names)
+        # phase 2: asked from the course file each time, so a reload() shows up. A new list: callers may change it
+        return sorted(name for name in self._cards_file.deck_names if name.casefold() not in self._excluded)
 
     def is_available(self, deck_name: str) -> bool:
-        return deck_name in self._names
+        return deck_name in self.available()
+
+    def reload(self) -> bool:
+        """phase 2: read the course file again (the deck "Add" button). False if it is invalid; the course stays."""
+        return self._cards_file.reload()

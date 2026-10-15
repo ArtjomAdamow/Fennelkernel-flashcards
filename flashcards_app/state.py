@@ -21,7 +21,7 @@ _WRITE_LOCK = threading.Lock()
 
 
 class StateFileError(Exception):
-    """The state file exists but cannot be used (invalid JSON or unsupported version)."""
+    """The state file exists but cannot be used (invalid JSON, unsupported version, or card_id keys instead of comb_id)."""
 
 
 @dataclass
@@ -48,10 +48,20 @@ def read_state_file(path: Path, supported_versions=SUPPORTED_VERSIONS) -> Option
             f"{path} has state version {version!r}; supported versions: {sorted(supported_versions)}"
         )
 
+    # phase 1: positions and progress are keyed by comb_id. A version 2 file written before that has card_id
+    # keys and is incompatible; it is refused instead of failing somewhere in the constructors below.
+    for section in ("positions", "progress"):
+        for item in payload.get(section, []):
+            if not isinstance(item, dict) or "comb_id" not in item:
+                raise StateFileError(
+                    f"{path} is incompatible: {section} entries need a 'comb_id' key"
+                    + (" (it has 'card_id', the key before comb_id)" if isinstance(item, dict) and "card_id" in item else "")
+                )
+
     decks = payload.get("decks")
     return RawState(
         positions=[CardPosition(**item) for item in payload.get("positions", [])],
-        progress={item["card_id"]: CardProgress(**item) for item in payload.get("progress", [])},
+        progress={item["comb_id"]: CardProgress(**item) for item in payload.get("progress", [])},
         groups=[
             CardGroup(
                 id=item["id"],

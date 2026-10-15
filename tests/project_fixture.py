@@ -10,26 +10,36 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
 
-DETAILS = "<details><summary>{q}</summary>{a}</details>\n"
+# phase 2: the fixture course is a cards.json; deck ids 01..05, all cards stack 1 (no "quiz"), so the comb_ids are
+# "1" + deck id + card_id: alpha 101001..101003, beta 102001..102002, gamma 103001..103002
+DECKS = (("01", "alpha", 3), ("02", "beta", 2), ("03", "gamma", 2), ("04", "README", 0), ("05", "None", 0))
+ALPHA_1, BETA_1, GAMMA_1 = "101001", "102001", "103001"
 
 STATE = {
     "version": 2,
     "positions": [
-        {"card_id": "alpha:1", "x": 0.5, "y": 0.4, "z": 0.3, "status": "new", "related_ids": []},
-        {"card_id": "beta:1", "x": -0.5, "y": 0.2, "z": 0.1, "status": "new", "related_ids": []},
-        {"card_id": "gamma:1", "x": 0.9, "y": 0.9, "z": 0.1, "status": "new", "related_ids": []},
+        {"comb_id": ALPHA_1, "x": 0.5, "y": 0.4, "z": 0.3, "status": "new", "related_ids": []},
+        {"comb_id": BETA_1, "x": -0.5, "y": 0.2, "z": 0.1, "status": "new", "related_ids": []},
+        {"comb_id": GAMMA_1, "x": 0.9, "y": 0.9, "z": 0.1, "status": "new", "related_ids": []},
     ],
     "progress": [
-        {"card_id": "alpha:1", "read": True, "difficulty": 55},
-        {"card_id": "gamma:1", "read": True, "difficulty": 80},
+        {"comb_id": ALPHA_1, "read": True, "difficulty": 55},
+        {"comb_id": GAMMA_1, "read": True, "difficulty": 80},
     ],
-    "groups": [{"id": "group-1", "name": "X", "color": "#ffffff", "card_ids": ["alpha:1", "gamma:1"]}],
+    "groups": [{"id": "group-1", "name": "X", "color": "#ffffff", "card_ids": [ALPHA_1, GAMMA_1]}],
     "links": [
-        {"source_id": "alpha:1", "target_id": "beta:1", "group_id": None},
-        {"source_id": "alpha:1", "target_id": "gamma:1", "group_id": None},
+        {"source_id": ALPHA_1, "target_id": BETA_1, "group_id": None},
+        {"source_id": ALPHA_1, "target_id": GAMMA_1, "group_id": None},
     ],
     "decks": ["alpha", "beta"],
 }
+
+
+def course() -> dict:
+    return {"courseName": "fixture", "version": 2, "decks": [
+        {"id": deck_id, "name": name, "cards": [
+            {"card_id": f"{i:03d}", "question": f"Q {name} {i}", "feedback": f"A {name} {i}"} for i in range(1, count + 1)]}
+        for deck_id, name, count in DECKS]}
 
 
 def check_test_files(required: dict) -> None:
@@ -54,19 +64,14 @@ def check_test_files(required: dict) -> None:
         )
 
 
-def make_project(base: Path, name: str, state=STATE) -> Path:
-    """Copy the package and the composition root, with fixture decks and state."""
+def make_project(base: Path, name: str, state=STATE, state_file: str = "user_state.json") -> Path:
+    """Copy the package and the composition root, with the fixture course and state (phase 2: cards.json, user_state.json)."""
     project = base / name
     shutil.copytree(ROOT / "flashcards_app", project / "flashcards_app", ignore=shutil.ignore_patterns("__pycache__"))
     shutil.copy(ROOT / "app.py", project / "app.py")  # the composition root
-    cards = project / "data" / "cards"
-    cards.mkdir(parents=True)
-    for deck, count in (("alpha", 3), ("beta", 2), ("gamma", 2)):
-        (cards / f"{deck}.md").write_text(
-            "".join(DETAILS.format(q=f"Q {deck} {i}", a=f"A {deck} {i}") for i in range(1, count + 1)), encoding="utf-8")
-    (cards / "README.md").write_text("readme", encoding="utf-8")
-    (cards / "None.md").write_text("dummy", encoding="utf-8")
-    (project / "data" / "positions.json").write_text(json.dumps(state, indent=2), encoding="utf-8")
+    (project / "data").mkdir()
+    (project / "data" / "cards.json").write_text(json.dumps(course(), indent=2), encoding="utf-8")
+    (project / "data" / state_file).write_text(json.dumps(state, indent=2), encoding="utf-8")
     return project
 
 

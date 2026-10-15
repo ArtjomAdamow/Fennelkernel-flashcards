@@ -22,7 +22,7 @@ def sphere_positions(card_ids: List[str], seed: int = 42, radius: float = 1.0) -
         # Scale by radius and create position object
         positions.append(
             CardPosition(
-                card_id=card_id,
+                comb_id=card_id,  # phase 1: the model field is comb_id
                 x=x * radius,
                 y=y * radius,
                 z=z * radius,

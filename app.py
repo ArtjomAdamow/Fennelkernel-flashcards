@@ -5,9 +5,9 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from flashcards_app.callbacks import register_callbacks
-from flashcards_app.deck_catalog import DeckCatalog
+from flashcards_app.deck_catalog import JsonDeckCatalog
 from flashcards_app.geometry import sphere_positions
-from flashcards_app.parser import load_decks
+from flashcards_app.parser import CardsFile
 from flashcards_app.runtime import NONE_DECK, Runtime
 from flashcards_app.server import create_app
 from flashcards_app.state import JsonStateStore
@@ -17,15 +17,14 @@ from flashcards_app.user_state_service import UserStateService
 # Application configuration
 BASE_DIR = Path(__file__).resolve().parent
 STATE_PATH = BASE_DIR / "data" / "user_state.json" # all user state: positions, progress, groups, links, enabled decks
-LEGACY_STATE_PATH = BASE_DIR / "data" / "positions.json" # the file name before tranche 9: read once while user_state.json does not exist
-CARDS_DIR = BASE_DIR / "data" / "cards" # preprocessed examples
+CARDS_FILE = BASE_DIR / "data" / "cards.json" # course file, read once at startup
 SERVER_BOOT_ID = uuid.uuid4().hex
 
 
 @dataclass(frozen=True)
 class Composition:
     boot_id: str
-    catalog: DeckCatalog
+    catalog: JsonDeckCatalog
     core: StateCore
     hub: Runtime
     dash_app: object
@@ -36,10 +35,11 @@ class Composition:
 
 
 def compose(boot_id: str = SERVER_BOOT_ID) -> Composition:
-    catalog = DeckCatalog(CARDS_DIR, exclude={"readme", NONE_DECK}) # cannot be loaded: dummy NONE_DECK, readme files
+    cards_file = CardsFile(CARDS_FILE) # the only read of the course file
+    catalog = JsonDeckCatalog(cards_file, exclude={"readme", NONE_DECK}) # cannot be loaded: dummy NONE_DECK, readme deck
     core = StateCore(
-        JsonStateStore(STATE_PATH, fallback_path=LEGACY_STATE_PATH),
-        card_source=lambda decks: load_decks(CARDS_DIR, decks),
+        JsonStateStore(STATE_PATH), # phase 1: no fallback to positions.json, the state starts fresh with comb_id keys
+        card_source=cards_file.load_decks,
         position_source=sphere_positions,
     )
     # Startup: read the state file once, then make everything consistent with the enabled decks

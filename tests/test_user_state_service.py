@@ -3,11 +3,13 @@
     python -m unittest tests.test_user_state_service -v
 """
 
+import json
 import tempfile
 import unittest
 from pathlib import Path
 
-from flashcards_app.deck_catalog import DeckCatalog
+from flashcards_app.deck_catalog import JsonDeckCatalog
+from flashcards_app.parser import CardsFile
 from flashcards_app.models import CardGroup, CardPosition, Flashcard
 from flashcards_app.state import RawState
 from flashcards_app.state_core import StateCore
@@ -31,6 +33,12 @@ def card_source(deck_names):
     return [Flashcard(card_id, deck, "Q", "A") for deck in sorted(deck_names) for card_id in DECKS[deck]]
 
 
+def write_course(path, *names):
+    # phase 2: the catalog reads the deck names from the course file; the cards come from card_source
+    decks = [{"id": f"{index:02d}", "name": name, "cards": []} for index, name in enumerate(names, 1)]
+    path.write_text(json.dumps({"courseName": "c", "version": 2, "decks": decks}), encoding="utf-8")
+
+
 def positions(card_ids, seed):
     return [CardPosition(card_id, 0.0, 0.0, 0.0) for card_id in card_ids]
 
@@ -39,12 +47,11 @@ class UserStateServiceTest(unittest.TestCase):
     def setUp(self) -> None:
         self._tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self._tmp.cleanup)
-        cards_dir = Path(self._tmp.name)
-        for name in ("alpha", "beta", "gamma", "README", "None"):
-            (cards_dir / f"{name}.md").write_text("x", encoding="utf-8")
+        self.course = Path(self._tmp.name) / "cards.json"
+        write_course(self.course, "alpha", "beta", "gamma", "README", "None")
         self.persistence = FakePersistence()
         self.core = StateCore(self.persistence, card_source, positions)
-        self.catalog = DeckCatalog(cards_dir, exclude={"readme", "None"})
+        self.catalog = JsonDeckCatalog(CardsFile(self.course), exclude={"readme", "None"})
         self.service = UserStateService(self.core, self.catalog)
         self.core.load(["alpha", "beta"])
         self.core.refresh_deck_state(seed=1)
@@ -68,10 +75,18 @@ class UserStateServiceTest(unittest.TestCase):
         self.assertFalse(self.service.disable_deck("alpha"))
         self.assertEqual([c.id for c in self.service.cards], ["beta:1"])
 
-    def test_available_decks_follow_the_directory(self) -> None:
+    def test_available_decks_follow_the_course_file_after_a_reload(self) -> None:
+        # phase 2: the file is read again only by reload_decks() (the deck "Add" button)
         self.assertEqual(self.service.available_decks(), ["alpha", "beta", "gamma"])
-        (Path(self._tmp.name) / "delta.md").write_text("x", encoding="utf-8")
+        write_course(self.course, "alpha", "beta", "gamma", "delta")
+        self.assertEqual(self.service.available_decks(), ["alpha", "beta", "gamma"])
+        self.assertTrue(self.service.reload_decks())
         self.assertEqual(self.service.available_decks(), ["alpha", "beta", "delta", "gamma"])
+
+    def test_an_invalid_course_file_on_reload_keeps_the_decks(self) -> None:
+        self.course.write_text("{", encoding="utf-8")
+        self.assertFalse(self.service.reload_decks())
+        self.assertEqual(self.service.available_decks(), ["alpha", "beta", "gamma"])
 
     def test_mutations_reach_the_core(self) -> None:
         self.service.set_position("alpha:1", 0.1, 0.2, 0.3)

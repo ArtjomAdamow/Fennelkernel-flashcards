@@ -113,6 +113,8 @@ def register_callbacks(app, state, none_deck="None"):
             drag_enabled = False
             next_focused_group = None
         elif trigger == "add-deck":
+            # phase 2: the course file is read again only here, so the dialog offers decks added to it
+            state.reload_decks()
             next_deck_dialog = "add"
         elif trigger == "remove-deck":
             next_deck_dialog = "remove"

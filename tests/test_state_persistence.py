@@ -146,7 +146,7 @@ class StatePersistenceTest(unittest.TestCase):
             encoding="utf-8",
         )
         state = read_state_file(self.path)
-        self.assertEqual([p.card_id for p in state.positions], ["zzz:9"])
+        self.assertEqual([p.comb_id for p in state.positions], ["zzz:9"])
         self.assertEqual(state.progress, {})
 
     def test_unsupported_or_missing_version_is_rejected_with_a_clear_message(self) -> None:
@@ -163,6 +163,27 @@ class StatePersistenceTest(unittest.TestCase):
         self.path.write_text('{"version": 2, "positions": [', encoding="utf-8")
         with self.assertRaises(StateFileError):
             read_state_file(self.path)
+
+    # --- comb_id keys (phase 2) ---------------------------------------------------------------------------
+
+    def test_positions_and_progress_are_keyed_by_comb_id(self) -> None:
+        positions, progress, groups, links = sample()
+        save_state(self.path, positions, progress, groups, links)
+        payload = json.loads(self.path.read_text(encoding="utf-8"))
+        for section in ("positions", "progress"):
+            self.assertTrue(payload[section])
+            self.assertTrue(all("comb_id" in item and "card_id" not in item for item in payload[section]), section)
+
+    def test_a_version_2_file_with_card_id_is_rejected(self) -> None:
+        # the layout before comb_id: same version, older key; old states are not carried over
+        self.path.parent.mkdir(parents=True)
+        for section in ("positions", "progress"):
+            with self.subTest(section=section):
+                item = {"card_id": "a:1", "x": 0, "y": 0, "z": 0} if section == "positions" else {"card_id": "a:1"}
+                self.path.write_text(json.dumps({"version": 2, section: [item]}), encoding="utf-8")
+                with self.assertRaises(StateFileError) as caught:
+                    read_state_file(self.path)
+                self.assertIn("card_id", str(caught.exception))
 
     def test_custom_supported_versions(self) -> None:
         self.path.parent.mkdir(parents=True)

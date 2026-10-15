@@ -1,11 +1,11 @@
-"""Card parser (draft replacement for flashcards_app/parser.py). Two sources:
+"""Card parser. Two sources:
 
   * .md deck files, as in the project: parse_deck(path), load_decks(folder, deck_names).
     Every call reads the files again; with deck_catalog.DeckCatalog this is the live update of the .md decks.
     Switched off (phase 1): the code is kept, but every call raises MarkdownSourceDisabled while
     MD_SOURCE_ENABLED is False.
   * the JSON course file (data/cards.json): CardsFile reads and parses it once, on construction.
-    No live update: changes to the file show up only after a restart.
+    No live update: the file is read again only by CardsFile.reload() (phase 2: the deck "Add" button).
 
 Course file layout:
     {"courseName": ..., "version": 2, "decks": [{"id": "02", "name": ..., "cards": [{"card_id": "032", ...}, ...]}, ...]}
@@ -107,7 +107,7 @@ def parse_deck(path: Path) -> List[Flashcard]:
             continue
 
         # Create flashcard with unique ID based on deck name and sequence number
-        # (draft: keyword comb_id, the model's renamed id field; the value is unchanged)
+        # (keyword comb_id, the model's renamed id field; the value is unchanged)
         cards.append(
             Flashcard(
                 comb_id=f"{path.stem}:{index}",
@@ -246,15 +246,19 @@ def parse_json_deck(raw_deck: dict) -> List[Flashcard]:
 
 
 class CardsFile:
-    """The course file, read and parsed once on construction; the file is not touched again."""
+    """The course file, read and parsed once on construction. It is read again only by reload()
+    (phase 2: when the deck "Add" button is clicked); nothing is ever written."""
 
     def __init__(self, path: Path) -> None:
         self.path = Path(path)
+        self.deck_names, self._cards, self._by_id = self._read()
+
+    def _read(self) -> tuple:
         # Decks in name order, as the sorted *.md files were; cards in file order
         raw_decks = sorted(read_decks(self.path), key=lambda deck: deck["name"])
-        self.deck_names = tuple(deck["name"] for deck in raw_decks)
+        deck_names = tuple(deck["name"] for deck in raw_decks)
 
-        self._cards: List[Flashcard] = []
+        cards: List[Flashcard] = []
         seen = {}
         for raw_deck in raw_decks:
             for card in parse_json_deck(raw_deck):
@@ -263,9 +267,18 @@ class CardsFile:
                 if card.comb_id in seen:
                     raise ValueError(f"duplicate comb_id {card.comb_id!r} in decks {seen[card.comb_id]!r} and {card.deck!r}")
                 seen[card.comb_id] = card.deck
-                self._cards.append(card)
+                cards.append(card)
         # phase 1: every card of the course by comb_id, enabled or not, for card()
-        self._by_id = {card.comb_id: card for card in self._cards}
+        return deck_names, cards, {card.comb_id: card for card in cards}
+
+    def reload(self) -> bool:
+        """phase 2: read the file again. If it is missing or invalid now, the current course is kept and the
+        result is False: a file being edited must not stop the running app."""
+        try:
+            self.deck_names, self._cards, self._by_id = self._read()
+        except (OSError, ValueError):
+            return False
+        return True
 
     def card(self, comb_id: str) -> Optional[Flashcard]:
         """The card with this comb_id (name as card.deck, question, answer = feedback), whether its deck is

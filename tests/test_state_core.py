@@ -88,14 +88,14 @@ class LifecycleTest(unittest.TestCase):
 
     def test_load_is_passive_and_does_not_strip(self) -> None:
         core, _, spy = make_core(stored_raw())
-        self.assertEqual([p.card_id for p in core.positions], ["alpha:1", "gamma:1"])  # gamma is not enabled
+        self.assertEqual([p.comb_id for p in core.positions], ["alpha:1", "gamma:1"])  # gamma is not enabled
         self.assertEqual(spy.calls, [])
 
     def test_refresh_fills_missing_and_strips_out_of_scope(self) -> None:
         core, _, spy = make_core(stored_raw())
         core.refresh_deck_state(seed=STARTUP_SEED)
         self.assertEqual([c.id for c in core.cards], ["alpha:1", "alpha:2", "beta:1"])
-        self.assertEqual([p.card_id for p in core.positions], ["alpha:1", "alpha:2", "beta:1"])
+        self.assertEqual([p.comb_id for p in core.positions], ["alpha:1", "alpha:2", "beta:1"])
         self.assertEqual((core.position_by_id["alpha:1"].x, core.position_by_id["alpha:1"].y), (0.5, 0.5))  # stored wins
         self.assertEqual(core.position_by_id["alpha:2"].x, STARTUP_SEED % 100 / 100)  # generated with the seed
         self.assertEqual(list(core.progress), ["alpha:1", "alpha:2", "beta:1"])
@@ -106,6 +106,14 @@ class LifecycleTest(unittest.TestCase):
         self.assertEqual(set(core.card_by_id), {"alpha:1", "alpha:2", "beta:1"})
         self.assertEqual(set(core.position_by_id), {"alpha:1", "alpha:2", "beta:1"})
         self.assertEqual(spy.calls[-1][1], STARTUP_SEED)
+
+    def test_refresh_strips_related_ids_like_group_members(self) -> None:
+        # phase 2: related_ids hold comb_ids and get the same filter as groups and links
+        raw = stored_raw()
+        raw.positions[0].related_ids = ["beta:1", "gamma:1", "unknown"]
+        core, _, _ = make_core(raw)
+        core.refresh_deck_state(seed=STARTUP_SEED)
+        self.assertEqual(core.position_by_id["alpha:1"].related_ids, ["beta:1"])
 
     def test_refresh_without_seed_uses_the_clock(self) -> None:
         core, _, spy = make_core(None)
@@ -160,7 +168,7 @@ class LifecycleTest(unittest.TestCase):
         core.save()
         written = persistence.writes[-1]
         self.assertEqual(written.decks, ["alpha", "beta"])
-        self.assertEqual([p.card_id for p in written.positions], ["alpha:1", "alpha:2", "beta:1"])
+        self.assertEqual([p.comb_id for p in written.positions], ["alpha:1", "alpha:2", "beta:1"])
         self.assertEqual(list(written.progress), ["alpha:1", "alpha:2", "beta:1"])
 
     def test_nothing_saves_by_itself(self) -> None:
@@ -188,8 +196,8 @@ class LifecycleTest(unittest.TestCase):
             self.assertEqual(second.enabled_decks, ["alpha", "beta"])
             self.assertEqual(second.progress["alpha:1"].difficulty, 33)
             self.assertEqual([g.name for g in second.groups], ["G"])
-            self.assertEqual([(p.card_id, p.x, p.y, p.z) for p in second.positions],
-                             [(p.card_id, p.x, p.y, p.z) for p in first.positions])
+            self.assertEqual([(p.comb_id, p.x, p.y, p.z) for p in second.positions],
+                             [(p.comb_id, p.x, p.y, p.z) for p in first.positions])
 
 
 class MutationTest(unittest.TestCase):

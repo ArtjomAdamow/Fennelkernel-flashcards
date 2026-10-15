@@ -110,6 +110,31 @@ def test_course_file_is_read_once(tmp_path):
     assert len(cards_file.load_decks(["alpha"])) == 1
 
 
+def test_reload_reads_the_file_again(tmp_path):
+    # phase 2: the deck "Add" button reloads, so decks added to the file can be enabled without a restart
+    path = write_course(tmp_path, [deck("01", "alpha", card("001"))])
+    cards_file = CardsFile(path)
+    catalog = JsonDeckCatalog(cards_file)
+    write_course(tmp_path, [deck("01", "alpha", card("001")), deck("02", "beta", card("001"))])
+    assert catalog.available() == ["alpha"]
+    assert catalog.reload() is True
+    assert catalog.available() == ["alpha", "beta"] and catalog.is_available("beta")
+    assert cards_file.deck_names == ("alpha", "beta") and cards_file.card("102001").deck == "beta"
+    assert [c.id for c in cards_file.load_decks(["beta"])] == ["102001"]
+
+
+@pytest.mark.parametrize("broken", ["{", None])
+def test_failed_reload_keeps_the_course(tmp_path, broken):
+    path = write_course(tmp_path, [deck("01", "alpha", card("001"))])
+    cards_file = CardsFile(path)
+    if broken is None:
+        path.unlink()
+    else:
+        path.write_text(broken, encoding="utf-8")
+    assert cards_file.reload() is False
+    assert cards_file.deck_names == ("alpha",) and cards_file.card("101001") is not None
+
+
 def test_missing_file_is_an_error(tmp_path):
     with pytest.raises(FileNotFoundError):
         CardsFile(tmp_path / "missing.json")
@@ -252,37 +277,26 @@ def test_state_models_are_keyed_by_comb_id():
     assert CardProgress("101001", difficulty=500).difficulty == 100
 
 
-# --- changes/ against the project -------------------------------------------
+# --- the module against the project (phase 2: switched) ---------------------
 
-# A changed spot of a copy must mention one of these (deck wiring, comb_id, the dropped positions.json fallback)
-_ALLOWED_CHANGE = re.compile(r"deck|Deck|CARDS|cards_file|card_source|load_decks|CardsFile|catalog|comb_id|related_ids|LEGACY_STATE_PATH")
-
-
-def _changed_spots(original: list, changed: list) -> list:
-    """The differing lines, grouped by diff hunk (n=0: one hunk per changed spot)."""
-    spots = []
-    for line in difflib.unified_diff(original, changed, lineterm="", n=0):
-        if line.startswith("@@"):
-            spots.append([])
-        elif line[:1] in "+-" and not line.startswith(("+++", "---")):
-            spots[-1].append(line[1:])
-    return spots
-
-
+# Phase 2 copied the module files over the project files. Until the module is retired (phase 3), a module file that
+# differs from its project file is a change made on one side only.
 @pytest.mark.parametrize("project_file, changed_file", [
+    ("flashcards_app/models.py", "models.py"),
+    ("flashcards_app/parser.py", "parser.py"),
+    ("flashcards_app/deck_catalog.py", "deck_catalog.py"),
     ("app.py", "changes/app.py"),
     ("flashcards_app/user_state_service.py", "changes/user_state_service.py"),
     ("flashcards_app/state.py", "changes/state.py"),
     ("flashcards_app/state_core.py", "changes/state_core.py"),
     ("flashcards_app/geometry.py", "changes/geometry.py"),
     ("flashcards_app/visualization/map.py", "changes/map.py"),
+    ("flashcards_app/callbacks.py", "changes/callbacks.py"),
 ])
-def test_changes_differ_from_the_project_only_in_planned_spots(project_file, changed_file):
-    # Guards against a stale copy: if the project file moves on elsewhere, the copy has to be redone
+def test_module_files_equal_the_switched_project(project_file, changed_file):
     original = (ROOT / project_file).read_text(encoding="utf-8").splitlines()
     changed = (DRAFT_DIR / changed_file).read_text(encoding="utf-8").splitlines()
-    spots = _changed_spots(original, changed)
-    assert spots and all(any(_ALLOWED_CHANGE.search(line) for line in spot) for spot in spots), spots
+    assert changed == original, "\n".join(difflib.unified_diff(original, changed, project_file, changed_file, lineterm="", n=0))
     # comb_id replaces card_id as the attribute of positions and progress
     assert not re.search(r"(position|point|item)\.card_id|\[\"card_id\"\]", "\n".join(changed))
 
@@ -399,6 +413,7 @@ def test_launcher_runs_the_app_on_the_module(launch):
         "flashcards_app.geometry": DRAFT_DIR / "changes" / "geometry.py",
         "flashcards_app.visualization.map": DRAFT_DIR / "changes" / "map.py",
         "flashcards_app.user_state_service": DRAFT_DIR / "changes" / "user_state_service.py",
+        "flashcards_app.callbacks": DRAFT_DIR / "changes" / "callbacks.py",
         # what app.py itself sees; the code is compiled from changes/app.py
         "app": ROOT / "app.py",
     }
