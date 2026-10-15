@@ -23,7 +23,8 @@ class Flashcard:
 
 @dataclass
 class CardPosition:
-    card_id: str
+    # phase 1: the card's comb_id, also the key in the state file (was card_id)
+    comb_id: str
     x: float
     y: float
     z: float
@@ -32,7 +33,8 @@ class CardPosition:
 
 @dataclass
 class CardProgress:
-    card_id: str
+    # phase 1: the card's comb_id, also the key in the state file (was card_id)
+    comb_id: str
     read: bool = False
     difficulty: int = 1
     def __post_init__(self) -> None:

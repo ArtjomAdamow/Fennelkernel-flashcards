@@ -2,7 +2,8 @@
 
   * DeckCatalog: the .md deck files, unchanged from the project. Stateless on purpose: the directory
     is re-read on every call, so a deck file added while the app is running shows up the next time
-    the catalog is asked (live update).
+    the catalog is asked (live update). Switched off (phase 1) with the .md source, see
+    parser.MD_SOURCE_ENABLED.
   * JsonDeckCatalog: the decks of the course file (parser.CardsFile). The names are taken once, on
     construction, from the already parsed file; the file itself is never touched. No live update.
 """
@@ -10,16 +11,18 @@
 from pathlib import Path
 from typing import Iterable
 
-from .parser import CardsFile
+from .parser import CardsFile, require_md_source
 
 
 class DeckCatalog:
     def __init__(self, cards_dir: Path, exclude: Iterable[str] = ()) -> None:
+        require_md_source()
         self._cards_dir = Path(cards_dir)
         # Names are compared case-insensitively, as the deck discovery always did
         self._exclude = {name.casefold() for name in exclude}
 
     def available(self) -> list[str]:
+        require_md_source()
         return sorted(
             path.stem
             for path in self._cards_dir.glob("*.md")

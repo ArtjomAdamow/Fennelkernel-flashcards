@@ -2,6 +2,8 @@
 
   * .md deck files, as in the project: parse_deck(path), load_decks(folder, deck_names).
     Every call reads the files again; with deck_catalog.DeckCatalog this is the live update of the .md decks.
+    Switched off (phase 1): the code is kept, but every call raises MarkdownSourceDisabled while
+    MD_SOURCE_ENABLED is False.
   * the JSON course file (data/cards.json): CardsFile reads and parses it once, on construction.
     No live update: changes to the file show up only after a restart.
 
@@ -25,7 +27,22 @@ from typing import List, Optional
 from .models import Flashcard
 
 
-# --- .md deck files (flashcards_app/parser.py, unchanged but for one keyword) ----
+# --- .md deck files (flashcards_app/parser.py, unchanged but for one keyword and the guard) ----
+
+# phase 1: the .md source is switched off; the code below the guard is kept, it will be used for other content
+MD_SOURCE_ENABLED = False
+MD_SOURCE_NOTICE = "Loading decks from .md files is disabled: it will be used for other content."
+
+
+class MarkdownSourceDisabled(RuntimeError):
+    """Raised on any use of the .md deck source while MD_SOURCE_ENABLED is False."""
+
+
+def require_md_source() -> None:
+    # Read at call time, so tests can switch the source on for one test
+    if not MD_SOURCE_ENABLED:
+        raise MarkdownSourceDisabled(MD_SOURCE_NOTICE)
+
 
 # Regex patterns for parsing markdown deck files
 # Matches <details> tags with DOTALL flag to span multiple lines
@@ -67,6 +84,7 @@ def _clean_answer(value: str) -> str:
     return format_technical_terms(value.strip(" \t\r\n"))
 
 def parse_deck(path: Path) -> List[Flashcard]:
+    require_md_source()
     # Read the file content
     text = path.read_text(encoding="utf-8")
     cards: List[Flashcard] = []
@@ -102,6 +120,7 @@ def parse_deck(path: Path) -> List[Flashcard]:
     return cards
 
 def load_decks(folder: Path, deck_names: Optional[List[str]] = None) -> List[Flashcard]:
+    require_md_source()
     cards: List[Flashcard] = []
     # Get all markdown files in the folder, sorted alphabetically
     paths = sorted(folder.glob("*.md"))
@@ -245,6 +264,13 @@ class CardsFile:
                     raise ValueError(f"duplicate comb_id {card.comb_id!r} in decks {seen[card.comb_id]!r} and {card.deck!r}")
                 seen[card.comb_id] = card.deck
                 self._cards.append(card)
+        # phase 1: every card of the course by comb_id, enabled or not, for card()
+        self._by_id = {card.comb_id: card for card in self._cards}
+
+    def card(self, comb_id: str) -> Optional[Flashcard]:
+        """The card with this comb_id (name as card.deck, question, answer = feedback), whether its deck is
+        enabled or not. None if the course has no such card."""
+        return self._by_id.get(comb_id)
 
     def load_decks(self, deck_names: Optional[List[str]] = None) -> List[Flashcard]:
         """Same contract as load_decks(folder, deck_names), served from memory (a state_core.CardSource)."""
