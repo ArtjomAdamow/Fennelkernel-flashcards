@@ -258,8 +258,12 @@ call("F2 all groups", "all-groups", record=False)
 unfocused = call("F2 deck all", "all-decks", record=False)
 out["f2"] = {"ids": ids[:2], "focused_on_younger_group": card_colors(focused), "nothing_focused": card_colors(unfocused)}
 
-# group swatches glow for the groups that share member cards with the focused one (tranche 9): P (group-1) and
-# Q (group-2) share the first card
+# group swatches (tranche 9, new rule): the other groups of the selected card glow, all but the one that colours it
+# on the map. P (group-1, older) and Q (group-2) share the first card; the second card is only in Q
+click = {"sphere.clickData": {"points": [{"customdata": ids[0]}]}}
+swatches_none = LAST["swatches"]  # nothing is selected yet
+call("F2 select the shared card", "sphere", click, record=False)
+swatches_shared = LAST["swatches"]
 call("F2 focus dialog (2)", "focus-group", record=False)
 call("F2 focus Q again", "group-dialog-submit", {"dialog-group-select.value": "group-2"}, record=False)
 swatches_q = LAST["swatches"]
@@ -267,7 +271,10 @@ call("F2 focus dialog (3)", "focus-group", record=False)
 call("F2 focus P", "group-dialog-submit", {"dialog-group-select.value": "group-1"}, record=False)
 swatches_p = LAST["swatches"]
 call("F2 all groups (2)", "all-groups", record=False)
-out["swatches"] = {"focus_Q": swatches_q, "focus_P": swatches_p, "no_focus": LAST["swatches"]}
+swatches_all = LAST["swatches"]
+call("F2 select the card only in Q", "sphere", {"sphere.clickData": {"points": [{"customdata": ids[1]}]}}, record=False)
+out["swatches"] = {"nothing_selected": swatches_none, "no_focus": swatches_shared, "focus_Q": swatches_q,
+                   "focus_P": swatches_p, "focus_ended": swatches_all, "single_group_card": LAST["swatches"]}
 
 # a reset ends a group focus, in the original and in the current code
 call("focus dialog (3)", "focus-group", record=False)

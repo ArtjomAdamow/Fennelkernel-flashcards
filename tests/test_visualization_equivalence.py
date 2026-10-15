@@ -138,17 +138,24 @@ class VisualizationEquivalenceTest(unittest.TestCase):
         tree = json.dumps(self.result["current"]["connection_unknown_group"])
         self.assertIn('"options": []', tree)
 
-    def test_swatches_of_groups_that_share_members_with_the_focused_group_glow(self) -> None:
+    def test_the_other_groups_of_the_selected_card_glow(self) -> None:
         self.assertIsNone(self.result["legacy"]["swatches"])  # the original knows no highlight
-        swatches = self.result["current"]["swatches"]
-        for focus, entry in swatches.items():
-            with self.subTest(focus=focus):
+        swatches = dict(self.result["current"]["swatches"])
+        names = swatches.pop("names")
+        for key, entry in swatches.items():
+            with self.subTest(case=key):
                 self.assertEqual(entry["highlighted"], entry["expected"])
                 self.assertTrue(entry["glow_is_the_group_colour"])  # box-shadow: currentColor needs the group colour as text colour
-        self.assertEqual((swatches["None"]["highlighted"], swatches["nope"]["highlighted"]), ([], []))  # no focus, no glow
-        self.assertTrue(any(entry["expected"] for entry in swatches.values()), "the scenario needs a group that shares a card")
-        self.assertTrue(any(not entry["expected"] for key, entry in swatches.items() if key not in ("None", "nope")),
-                        "and a focused group that shares none")
+        # the card in group-1 (older) and group-2: the group that colours it on the map does not glow, the other one does
+        older, younger = names["group-1"], names["group-2"]
+        for focus, glowing in (("None", younger), ("group-1", younger), ("group-2", older), ("group-3", younger), ("nope", younger)):
+            with self.subTest(focus=focus):
+                self.assertEqual(swatches[f"two_groups|{focus}"]["highlighted"], [glowing])
+        # no card, or a card in at most one group: nothing glows, whatever is focused
+        for key, entry in swatches.items():
+            if not key.startswith("two_groups|"):
+                with self.subTest(case=key):
+                    self.assertEqual(entry["highlighted"], [])
 
     def test_dialog_notes_sit_next_to_the_confirm_button(self) -> None:
         # fix F3: the right note for the right dialog, in the row of the Confirm button

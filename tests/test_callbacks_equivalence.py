@@ -108,21 +108,27 @@ class CallbacksEquivalenceTest(unittest.TestCase):
         self.assertEqual(current["outputs"][9], f"{len(current['state']['cards'])} cards mapped")
         self.assertEqual((legacy["outputs"][14], legacy["outputs"][9]), ("group-2", "0 cards mapped"))  # the original: empty map
 
-    def test_the_group_swatches_glow_for_groups_that_share_members_with_the_focused_group(self) -> None:
-        # tranche 9: P (#aaaaaa) and Q (#bbbbbb) share a card; the swatch of the other group glows in its own colour
-        self.assertEqual(self.result["legacy"]["swatches"], {"focus_Q": [], "focus_P": [], "no_focus": []})
+    def test_the_other_groups_of_the_selected_card_glow(self) -> None:
+        # tranche 9: the first card is in P (#aaaaaa, older) and Q (#bbbbbb); the group that colours it on the map
+        # (the focused group if it is a member of it, else the oldest) does not glow, its other group does
+        self.assertTrue(all(not v for v in self.result["legacy"]["swatches"].values()))
         swatches = self.result["current"]["swatches"]
+        self.assertEqual(swatches["nothing_selected"], [])
+        self.assertEqual(swatches["no_focus"], [["Q", "#bbbbbb", "#bbbbbb"]])
         self.assertEqual(swatches["focus_Q"], [["P", "#aaaaaa", "#aaaaaa"]])
         self.assertEqual(swatches["focus_P"], [["Q", "#bbbbbb", "#bbbbbb"]])
-        self.assertEqual(swatches["no_focus"], [])
+        self.assertEqual(swatches["focus_ended"], [["Q", "#bbbbbb", "#bbbbbb"]])
+        self.assertEqual(swatches["single_group_card"], [])
 
-    def test_the_glow_always_follows_the_state_and_the_focus(self) -> None:
-        # in every recorded step: exactly the groups that share a member with the focused group glow
+    def test_the_glow_always_follows_the_state_the_selection_and_the_focus(self) -> None:
+        # in every recorded step: the selected card's groups glow, except the one that decides its colour
+        # (groups are listed oldest first, so the first one the card is in is the oldest)
         for record in self.result["current"]["records"]:
             with self.subTest(step=record["step"]):
-                groups, focus = record["state"]["groups"], record["outputs"][14]
-                focused = next((g for g in groups if g[0] == focus), None) if focus else None
-                expected = sorted(g[1] for g in groups if focused is not None and g is not focused and set(g[3]) & set(focused[3]))
+                groups, selected, focus = record["state"]["groups"], record["outputs"][7], record["outputs"][14]
+                members = [g for g in groups if selected and selected in g[3]]
+                deciding = next((g for g in members if g[0] == focus), members[0] if members else None)
+                expected = sorted(g[1] for g in members if g is not deciding)
                 self.assertEqual(sorted(name for name, _, _ in record["swatches"]), expected)
         self.assertTrue(all(r["swatches"] == [] for r in self.result["legacy"]["records"]))  # the original has none
 

@@ -1,15 +1,18 @@
 __pycache__/
 .pytest_cache/
 .venv/
+.vscode/
+.claude
+Python/
+
 
 data/
 book/
 archive/
 image/
-
-plans/
-tools/
 docs/
+plans/
 
-Python/
+tools/
+modules/
 

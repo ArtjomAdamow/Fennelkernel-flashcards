@@ -223,23 +223,25 @@ if state is not None:
         foreign["deck_control_remove_default"] = json.dumps(to_json(panels.deck_control("remove", W.none_deck, state=state)))
 out["foreign_state"] = foreign
 
-# group swatches: the groups that share member cards with the focused group glow (tranche 9)
+# group swatches: the other groups of the selected card glow, all but the one that colours it on the map
 swatches = None
 if W.current:
-    def expected_glow(focus_id):
-        focused = next((g for g in W.groups if g.id == focus_id), None)
-        if focused is None:
+    def expected_glow(card, focus_id):
+        if card is None:
             return []
-        return sorted(g.name for g in W.groups if g is not focused and set(g.card_ids) & set(focused.card_ids))
+        deciding = state.deciding_group(card.id, focus_id)
+        return sorted(g.name for g in W.groups if card.id in g.card_ids and g is not deciding)
 
     swatches = {}
-    for focus in [None] + [g.id for g in W.groups] + ["nope"]:
-        found = highlighted_in(to_json(panels.group_control(None, None, focused_group=focus, **kw)))
-        swatches[str(focus)] = {
-            "highlighted": sorted(name for name, _, _ in found),
-            "glow_is_the_group_colour": all(background == glow for _, background, glow in found),
-            "expected": expected_glow(focus),
-        }
+    for label, card in (("none", None), ("two_groups", two_groups), ("one_group", unread), ("no_group", read_card)):
+        for focus in [None] + [g.id for g in W.groups] + ["nope"]:
+            found = highlighted_in(to_json(panels.group_control(card, None, focused_group=focus, **kw)))
+            swatches[f"{label}|{focus}"] = {
+                "highlighted": sorted(name for name, _, _ in found),
+                "glow_is_the_group_colour": all(background == glow for _, background, glow in found),
+                "expected": expected_glow(card, focus),
+            }
+    swatches["names"] = {g.id: g.name for g in W.groups}
 out["swatches"] = swatches
 
 # the dialog notes: which text next to which buttons, for every card and dialog (fix F3)

@@ -114,11 +114,11 @@ def position_control(card: Flashcard | None, drag_enabled: bool = False, state=N
 
 def group_control(card: Flashcard | None, dialog: str | None = None, state=None, focused_group: str | None = None) -> html.Div:
     state = _state(state)
-    # While a group is focused, the swatches of the other groups that share member cards with it are highlighted
-    focused = next((group for group in state.groups if group.id == focused_group), None) if focused_group else None
+    # The swatches of the selected card's groups glow, except the group that gives the card its colour on the map
+    deciding = state.deciding_group(card.id, focused_group) if card else None
     shares_members = {
         id(group) for group in state.groups
-        if focused is not None and group is not focused and set(group.card_ids) & set(focused.card_ids)
+        if card and card.id in group.card_ids and group is not deciding
     }
     selected_groups = [group.id for group in state.groups if card and card.id in group.card_ids]
     dialog_options = [
