@@ -3,7 +3,30 @@ from dash import dcc, html
 
 from flashcards_app import runtime
 from flashcards_app.models import Flashcard
-from flashcards_app.services.decks import deck_filter_options
+
+
+def _state(state):
+    if state is None:
+        raise TypeError("state is required: pass the UserStateService")
+    return state
+
+
+# Small notes next to the Confirm button of a dialog
+NEW_GROUP_NOTE = "The selected card will be added to the new group."
+ADD_TO_GROUP_NOTE = "Membership and color of the previously assigned group will remain until removed from the other group."
+DELETE_GROUP_NOTE = "Connections of member cards will remain."
+REMOVE_DECK_NOTE = "Settings of all deck member cards will be erased."
+
+
+def _dialog_note(text):
+    return [html.Span(text, className="dialog-note")] if text else []
+
+
+def deck_filter_options(state=None) -> list[dict[str, str]]:
+    return [{"label": "None", "value": runtime.NONE_DECK}, {"label": "All decks", "value": "all"}] + [
+        {"label": deck, "value": deck}
+        for deck in sorted(_state(state).enabled_decks)
+    ]
 
 
 def card_panel(card: Flashcard | None, revealed: bool = False) -> html.Div:
@@ -26,9 +49,10 @@ def card_panel(card: Flashcard | None, revealed: bool = False) -> html.Div:
     )
 
 
-def difficulty_control(card: Flashcard | None) -> html.Div:
-    is_flipped = bool(card and runtime.PROGRESS[card.id].read)
-    current_value = runtime.PROGRESS[card.id].difficulty if card and card.id in runtime.PROGRESS else 1
+def difficulty_control(card: Flashcard | None, state=None) -> html.Div:
+    state = _state(state)
+    is_flipped = bool(card and state.progress[card.id].read)
+    current_value = state.progress[card.id].difficulty if card and card.id in state.progress else 1
     progress_percent = (current_value - 1) / 99 * 100
     return html.Div(
         [
@@ -55,8 +79,8 @@ def difficulty_control(card: Flashcard | None) -> html.Div:
     )
 
 
-def position_control(card: Flashcard | None, drag_enabled: bool = False) -> html.Div:
-    position = runtime.POSITION_BY_ID.get(card.id) if card else None
+def position_control(card: Flashcard | None, drag_enabled: bool = False, state=None) -> html.Div:
+    position = _state(state).position_by_id.get(card.id) if card else None
     x_value = round(position.x, 3) if position else 0
     y_value = round(position.y, 3) if position else 0
     z_value = round(position.z, 3) if position else 0
@@ -88,14 +112,24 @@ def position_control(card: Flashcard | None, drag_enabled: bool = False) -> html
     )
 
 
-def group_control(card: Flashcard | None, dialog: str | None = None) -> html.Div:
-    selected_groups = [group.id for group in runtime.GROUPS if card and card.id in group.card_ids]
+def group_control(card: Flashcard | None, dialog: str | None = None, state=None, focused_group: str | None = None) -> html.Div:
+    state = _state(state)
+    # The swatches of the selected card's groups glow, except the group that gives the card its colour on the map
+    deciding = state.deciding_group(card.id, focused_group) if card else None
+    shares_members = {
+        id(group) for group in state.groups
+        if card and card.id in group.card_ids and group is not deciding
+    }
+    selected_groups = [group.id for group in state.groups if card and card.id in group.card_ids]
     dialog_options = [
         {"label": group.name, "value": group.id}
-        for group in runtime.GROUPS
+        for group in state.groups
         if dialog != "remove" or card is None or card.id in group.card_ids
     ]
     dialog_title = {"new": "New group", "add": "Add to group", "remove": "Remove from group", "delete": "Delete group", "focus": "Focus group"}.get(dialog)
+    note = {"new": NEW_GROUP_NOTE, "delete": DELETE_GROUP_NOTE}.get(dialog)
+    if dialog == "add" and card is not None and any(card.id in group.card_ids for group in state.groups):
+        note = ADD_TO_GROUP_NOTE
     dialog_body = [
         dcc.Input(id="dialog-group-name", type="text", placeholder="Group name", style={"display": "block" if dialog == "new" else "none"}),
         daq.ColorPicker(id="dialog-group-color", value={"hex": "#f5b942"}, size=140, style={"display": "block" if dialog == "new" else "none"}),
@@ -118,7 +152,7 @@ def group_control(card: Flashcard | None, dialog: str | None = None) -> html.Div
                     html.Button("Delete", id="delete-group", n_clicks=0, disabled=card is None, className="tool-button"),
                     html.Button("Add", id="add-group", n_clicks=0, disabled=card is None, className="tool-button"),
                     html.Button("Remove", id="remove-group", n_clicks=0, disabled=card is None, className="tool-button"),
-                    html.Button("Focus", id="focus-group", n_clicks=0, disabled=not runtime.GROUPS, className="tool-button"),
+                    html.Button("Focus", id="focus-group", n_clicks=0, disabled=not state.groups, className="tool-button"),
                     html.Button("All", id="all-groups", n_clicks=0, className="tool-button"),
                 ],
                 className="tool-row control-actions",
@@ -126,10 +160,10 @@ def group_control(card: Flashcard | None, dialog: str | None = None) -> html.Div
             html.Div(
                 [
                     html.Div(
-                        [html.Span(className="group-color-swatch", style={"backgroundColor": group.color}), html.Span(group.name), html.Span(f"{len(group.card_ids)} cards", className="group-member-count")],
+                        [html.Span(className="group-color-swatch group-color-swatch-shared" if id(group) in shares_members else "group-color-swatch", style={"backgroundColor": group.color, "color": group.color}), html.Span(group.name), html.Span(f"{len(group.card_ids)} cards", className="group-member-count")],
                         className="group-list-item",
                     )
-                    for group in runtime.GROUPS
+                    for group in state.groups
                 ] or [html.Div("No saved groups yet.", className="tool-status")],
                 className="group-list",
             ),
@@ -141,7 +175,7 @@ def group_control(card: Flashcard | None, dialog: str | None = None) -> html.Div
                         [
                             html.Button("Confirm", id="group-dialog-submit", n_clicks=0, className="tool-button"),
                             html.Button("Cancel", id="group-dialog-cancel", n_clicks=0, className="tool-button"),
-                        ],
+                        ] + _dialog_note(note),
                         className="tool-row",
                     ),
                 ],
@@ -153,15 +187,17 @@ def group_control(card: Flashcard | None, dialog: str | None = None) -> html.Div
     )
 
 
-def deck_control(dialog: str | None = None, selected_deck: str | None = runtime.NONE_DECK) -> html.Div:
-    current_decks = runtime.available_decks()
+def deck_control(dialog: str | None = None, selected_deck: str | None = runtime.NONE_DECK, state=None) -> html.Div:
+    state = _state(state)
+    current_decks = state.available_decks()
     dialog_options = [
         {"label": deck, "value": deck}
         for deck in current_decks
-        if (dialog == "add" and deck not in runtime.ENABLED_DECKS)
-        or (dialog in {"remove", "focus"} and deck in runtime.ENABLED_DECKS)
+        if (dialog == "add" and deck not in state.enabled_decks)
+        or (dialog in {"remove", "focus"} and deck in state.enabled_decks)
     ]
     dialog_title = {"add": "Add deck", "remove": "Remove deck", "focus": "Focus deck"}.get(dialog)
+    note = REMOVE_DECK_NOTE if dialog == "remove" else None
     return html.Div(
         [
             html.Div("Deck", className="card-label"),
@@ -178,7 +214,7 @@ def deck_control(dialog: str | None = None, selected_deck: str | None = runtime.
             dcc.Dropdown(
                 id="deck-filter",
                 className="closed-dropdown",
-                options=deck_filter_options(),
+                options=deck_filter_options(state),
                 value=selected_deck,
                 clearable=False,
                 style={"display": "none"},
@@ -197,7 +233,7 @@ def deck_control(dialog: str | None = None, selected_deck: str | None = runtime.
                         [
                             html.Button("Confirm", id="deck-dialog-submit", n_clicks=0, className="tool-button"),
                             html.Button("Cancel", id="deck-dialog-cancel", n_clicks=0, className="tool-button"),
-                        ],
+                        ] + _dialog_note(note),
                         className="tool-row",
                     ),
                 ],
@@ -208,12 +244,8 @@ def deck_control(dialog: str | None = None, selected_deck: str | None = runtime.
     )
 
 
-def connection_control(card: Flashcard | None, deck: str = "all", focused_group: str | None = None) -> html.Div:
-    candidate_cards = [entry for entry in runtime.CARDS if deck == "all" or entry.deck == deck]
-    if focused_group:
-        group = next((item for item in runtime.GROUPS if item.id == focused_group), None)
-        if group:
-            candidate_cards = [entry for entry in candidate_cards if entry.id in group.card_ids]
+def connection_control(card: Flashcard | None, candidate_cards: list[Flashcard]) -> html.Div:
+    """`candidate_cards` are the cards the map shows: the deck focus and the group focus are already applied."""
     options = [
         {"label": other.question[:55], "value": other.id}
         for other in candidate_cards

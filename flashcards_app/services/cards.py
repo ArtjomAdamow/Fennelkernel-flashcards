@@ -1,4 +1,3 @@
-from flashcards_app import runtime
 from flashcards_app.models import CardProgress, Flashcard
 
 
@@ -25,20 +24,3 @@ def select_from_click(click_data: dict, hover_data: dict | None) -> str | None:
     hovered_points = (hover_data or {}).get("points", [])
     hovered_id = hovered_points[0].get("customdata") if hovered_points else None
     return hovered_id or click_data["points"][0].get("customdata")
-
-
-def toggle_reveal(selected_id: str, revealed: bool) -> bool:
-    revealed = not revealed
-    if revealed and selected_id in runtime.PROGRESS:
-        runtime.PROGRESS[selected_id].read = True
-    return revealed
-
-
-def pick_random(cards: list[Flashcard], rng) -> str | None:
-    selected = choose_random_card(cards, runtime.PROGRESS, rng)
-    return selected.id if selected else None
-
-
-def pick_adjacent(cards: list[Flashcard], selected_id: str | None, direction: int) -> str | None:
-    selected = adjacent_card(cards, selected_id, direction)
-    return selected.id if selected else None

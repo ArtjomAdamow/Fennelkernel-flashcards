@@ -1,4 +1,9 @@
+from types import SimpleNamespace
+
 from flashcards_app.visualization.panels import deck_control, group_control
+
+# Stand-in for the UserStateService: only what deck_control and group_control(None) read
+STATE = SimpleNamespace(enabled_decks=[], groups=[], available_decks=lambda: [])
 
 
 def test_deck_and_group_actions_are_single_rows():
@@ -12,8 +17,8 @@ def test_deck_and_group_actions_are_single_rows():
             if hasattr(child, "to_plotly_json"):
                 yield from nodes(child)
 
-    deck_nodes = list(nodes(deck_control()))
-    group_nodes = list(nodes(group_control(None)))
+    deck_nodes = list(nodes(deck_control(state=STATE)))
+    group_nodes = list(nodes(group_control(None, state=STATE)))
     deck_ids = {node.get("props", {}).get("id") for node in deck_nodes}
     group_ids = {node.get("props", {}).get("id") for node in group_nodes}
 

@@ -1,13 +1,19 @@
 __pycache__/
 .pytest_cache/
 .venv/
+.vscode/
+.claude
+Python/
 
-image/presentations/1787319510739.png
-archive/*.md
-archive/update_index*.py
 
-data/positions.json
+data/
+book/
+archive/
+image/
+docs/
+plans/
 
-INDEX_bak_*.md
-INDEX.md
-update_index.py
+modules/
+tools/
+scripts/
+

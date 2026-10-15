@@ -1,6 +1,3 @@
-from flashcards_app import runtime
-
-
 def hex_to_rgb(value: str) -> tuple[int, int, int]:
     value = value.lstrip("#")
     return tuple(int(value[i : i + 2], 16) for i in (0, 2, 4))
@@ -21,9 +18,15 @@ def interpolate_color(start: str, end: str, progress: float) -> str:
     return rgb_to_hex(mixed)
 
 
-def progress_color(value_or_card_id: str | int) -> str:
+def _state(state):
+    if state is None:
+        raise TypeError("state is required: pass the UserStateService")
+    return state
+
+
+def progress_color(value_or_card_id: str | int, state=None) -> str:
     if isinstance(value_or_card_id, str):
-        progress = runtime.PROGRESS.get(value_or_card_id)
+        progress = _state(state).progress.get(value_or_card_id)
         if progress is None or not progress.read:
             return "#7c8b99"
         value = progress.difficulty
@@ -31,14 +34,12 @@ def progress_color(value_or_card_id: str | int) -> str:
         value = int(value_or_card_id)
     value = max(1, min(100, value))
     if value < 35:
-        return interpolate_color("#e76f51", "#f5b942", (value - 1) / 34)
+        return interpolate_color("#ff6b6b", "#a020f0", (value - 1) / 34)
     if value < 70:
-        return interpolate_color("#f5b942", "#69c6a5", (value - 35) / 35)
-    return "#69c6a5"
+        return interpolate_color("#a020f0", "#20b2aa", (value - 35) / 35)
+    return "#20b2aa"
 
 
-def group_color(card_id: str) -> str:
-    for group in runtime.GROUPS:
-        if card_id in group.card_ids:
-            return group.color
-    return "#7c8b99"
+def group_color(card_id: str, state=None, focused_group: str | None = None) -> str:
+    group = _state(state).deciding_group(card_id, focused_group)
+    return group.color if group is not None else "#7c8b99"
