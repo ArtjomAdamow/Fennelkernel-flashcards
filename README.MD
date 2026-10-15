@@ -3,12 +3,9 @@
 <details>
 <summary>The magic has not arrived yet</summary>
 
-... but the manual experience is as cool as it gets. All decks can be added from the app, just click the `"Add"` button in the DECK section. No input files needed, all flashcards and quizzes are included. **Quizes are flattened and represented with the correct answer only**. Flashcards are shown as dots on on a rotating 3-D map and coordinates for cards from new loaded decks are still created at random.
+... but the manual experience is as cool as it gets.
 
 </details>
-
-[The quiz content was not hidden that well to prevent accidental exposure]:#
-
 
 ## Run locally
 
@@ -43,24 +40,3 @@ Open the **local URL** printed by Dash.
 9. Change coordinates of cards (only flipped cards) to **arrange** their positions in the 3D space using the `"Change"` button.
 10. The button `"Random card"` will only select flipped cards and will **prefer cards with low progress**.
 11. The button `"Reset"` removes all settings for a fresh start.
-
-
-### Improvements
-
-- workflow
-  - state management cleaned of transitive shared mutable globals
-  - mutation authority centralized in user_state_service
-  - read models/snapshots feed other consumers
-  - ownership boundaries separate source / state / persistence / UI
-  - deck scope is properly first-class
-  - no more duplicate id's
-- usability 
-  - deck state is saved, at startup only added decks are loaded
-  - groups are ranked, group color is updated when focused on a group
-  - connections only visible for visible cards
-- connectivity
-  - the app is now evolving modular
-  - interfaces for recommender system are prepared
-  - RAG-state -> own states 
-  - RAG-comprehension -> shared state with user state
-  - scripted self updating indexing tool for backend development
