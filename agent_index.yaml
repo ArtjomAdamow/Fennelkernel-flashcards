@@ -1,0 +1,538 @@
+# **Important:**
+#   line_numbers: 1-based, inclusive, blank lines counted
+#   line_start: first decorator line (e.g. @dataclass) or def/class line
+#   line_end: last line of the body
+# Never edit this file.
+---
+component_id: parser:parse_json_deck
+type: function
+file: flashcards_app/parser.py
+line_start: 214
+line_end: 245
+tags: []
+used_in: ["parser:cards_file"]
+used_in_transitive: []
+---
+component_id: parser:cards_file
+type: class
+file: flashcards_app/parser.py
+line_start: 248
+line_end: 294
+tags: []
+used_in: ["app:compose", "deck_catalog:json_deck_catalog"]
+used_in_transitive: []
+---
+component_id: deck_catalog:json_deck_catalog
+type: class
+file: flashcards_app/deck_catalog.py
+line_start: 36
+line_end: 51
+tags: []
+used_in: ["app:compose", "app:composition", "user_state_service:user_state_service"]
+used_in_transitive: []
+---
+component_id: parser:_text
+type: function
+file: flashcards_app/parser.py
+line_start: 169
+line_end: 173
+tags: []
+used_in: ["parser:_optional_text", "parser:parse_json_deck", "parser:read_decks"]
+used_in_transitive: []
+---
+component_id: parser:_optional_text
+type: function
+file: flashcards_app/parser.py
+line_start: 175
+line_end: 176
+tags: []
+used_in: ["parser:parse_json_deck"]
+used_in_transitive: []
+---
+component_id: parser:card_stack
+type: function
+file: flashcards_app/parser.py
+line_start: 178
+line_end: 183
+tags: []
+used_in: ["parser:parse_json_deck"]
+used_in_transitive: []
+---
+component_id: parser:comb_id
+type: function
+file: flashcards_app/parser.py
+line_start: 185
+line_end: 186
+tags: []
+used_in: ["parser:parse_json_deck"]
+used_in_transitive: []
+---
+component_id: parser:read_decks
+type: function
+file: flashcards_app/parser.py
+line_start: 188
+line_end: 212
+tags: []
+used_in: ["parser:cards_file"]
+used_in_transitive: []
+---
+component_id: parser:_clean_markdown
+type: function
+file: flashcards_app/parser.py
+line_start: 162
+line_end: 167
+tags: []
+used_in: ["parser:parse_json_deck"]
+used_in_transitive: []
+---
+component_id: catalog:DeckCatalog
+type: class
+file: flashcards_app/deck_catalog.py
+line_start: 17
+line_end: 33
+tags: [catalog, stateless, glob, exclusions]
+used_in: []
+used_in_transitive: []
+---
+component_id: parser:parse_deck
+type: function
+file: flashcards_app/parser.py
+line_start: 86
+line_end: 120
+tags: [catalog, stateless, glob, exclusions]
+used_in: ["parser:load_decks"]
+used_in_transitive: []
+---
+component_id: parser:load_decks
+type: function
+file: flashcards_app/parser.py
+line_start: 122
+line_end: 137
+tags: [existing, markdown, source]
+used_in: []
+used_in_transitive: []
+---
+component_id: parser:format_markdown_terms
+type: function
+file: flashcards_app/parser.py
+line_start: 154
+line_end: 160
+tags: []
+used_in: ["parser:_clean_markdown"]
+used_in_transitive: []
+---
+component_id: parser:_clean_question
+type: function
+file: flashcards_app/parser.py
+line_start: 70
+line_end: 78
+tags: []
+used_in: ["parser:parse_deck"]
+used_in_transitive: []
+---
+component_id: parser:_clean_answer
+type: function
+file: flashcards_app/parser.py
+line_start: 80
+line_end: 84
+tags: []
+used_in: ["parser:parse_deck"]
+used_in_transitive: []
+---
+component_id: parser:format_technical_terms
+type: function
+file: flashcards_app/parser.py
+line_start: 62
+line_end: 68
+tags: []
+used_in: ["parser:_clean_answer", "parser:_clean_question"]
+used_in_transitive: []
+---
+component_id: parser:require_md_source
+type: function
+file: flashcards_app/parser.py
+line_start: 41
+line_end: 44
+tags: []
+used_in: ["catalog:DeckCatalog", "parser:load_decks", "parser:parse_deck"]
+used_in_transitive: []
+---
+component_id: parser:markdown_source_disabled
+type: class
+file: flashcards_app/parser.py
+line_start: 37
+line_end: 38
+tags: []
+used_in: ["parser:require_md_source"]
+used_in_transitive: []
+---
+component_id: panels:card_panel
+type: function
+file: flashcards_app/visualization/panels.py
+line_start: 32
+line_end: 49
+tags: []
+used_in: ["callbacks:register_callbacks", "server:create_app"]
+used_in_transitive: []
+---
+component_id: panels:difficulty_control
+type: function
+file: flashcards_app/visualization/panels.py
+line_start: 52
+line_end: 79
+tags: []
+used_in: ["callbacks:register_callbacks", "server:create_app"]
+used_in_transitive: []
+---
+component_id: panels:position_control
+type: function
+file: flashcards_app/visualization/panels.py
+line_start: 82
+line_end: 112
+tags: []
+used_in: ["callbacks:register_callbacks", "server:create_app"]
+used_in_transitive: []
+---
+component_id: panels:group_control
+type: function
+file: flashcards_app/visualization/panels.py
+line_start: 115
+line_end: 187
+tags: []
+used_in: ["callbacks:register_callbacks", "server:create_app"]
+used_in_transitive: []
+---
+component_id: panels:connection_control
+type: function
+file: flashcards_app/visualization/panels.py
+line_start: 247
+line_end: 279
+tags: []
+used_in: ["callbacks:register_callbacks", "server:create_app"]
+used_in_transitive: []
+---
+component_id: panels:_state
+type: function
+file: flashcards_app/visualization/panels.py
+line_start: 8
+line_end: 11
+tags: []
+used_in: ["panels:deck_control", "panels:deck_filter_options", "panels:difficulty_control", "panels:group_control", "panels:position_control"]
+used_in_transitive: []
+---
+component_id: panels:_dialog_note
+type: function
+file: flashcards_app/visualization/panels.py
+line_start: 21
+line_end: 22
+tags: []
+used_in: ["panels:deck_control", "panels:group_control"]
+used_in_transitive: []
+---
+component_id: panels:deck_filter_options
+type: function
+file: flashcards_app/visualization/panels.py
+line_start: 25
+line_end: 29
+tags: []
+used_in: ["callbacks:register_callbacks", "panels:deck_control"]
+used_in_transitive: []
+---
+component_id: panels:deck_control
+type: function
+file: flashcards_app/visualization/panels.py
+line_start: 190
+line_end: 244
+tags: []
+used_in: ["callbacks:register_callbacks", "server:create_app"]
+used_in_transitive: []
+---
+component_id: geometry:sphere_positions
+type: function
+file: flashcards_app/geometry.py
+line_start: 7
+line_end: 32
+tags: []
+used_in: ["app:compose"]
+used_in_transitive: []
+---
+component_id: map:make_figure
+type: function
+file: flashcards_app/visualization/map.py
+line_start: 9
+line_end: 138
+tags: []
+used_in: ["callbacks:register_callbacks", "server:create_app"]
+used_in_transitive: []
+---
+component_id: colors:progress_color
+type: function
+file: flashcards_app/visualization/colors.py
+line_start: 27
+line_end: 40
+tags: []
+used_in: ["map:make_figure"]
+used_in_transitive: []
+---
+component_id: colors:group_color
+type: function
+file: flashcards_app/visualization/colors.py
+line_start: 43
+line_end: 45
+tags: []
+used_in: ["map:make_figure"]
+used_in_transitive: []
+---
+component_id: colors:interpolate_color
+type: function
+file: flashcards_app/visualization/colors.py
+line_start: 10
+line_end: 18
+tags: []
+used_in: ["colors:progress_color"]
+used_in_transitive: []
+---
+component_id: colors:_state
+type: function
+file: flashcards_app/visualization/colors.py
+line_start: 21
+line_end: 24
+tags: []
+used_in: ["colors:group_color", "colors:progress_color"]
+used_in_transitive: []
+---
+component_id: colors:hex_to_rgb
+type: function
+file: flashcards_app/visualization/colors.py
+line_start: 1
+line_end: 3
+tags: []
+used_in: ["colors:interpolate_color"]
+used_in_transitive: []
+---
+component_id: colors:rgb_to_hex
+type: function
+file: flashcards_app/visualization/colors.py
+line_start: 6
+line_end: 7
+tags: []
+used_in: ["colors:interpolate_color"]
+used_in_transitive: []
+---
+component_id: map:color_legend
+type: function
+file: flashcards_app/visualization/map.py
+line_start: 141
+line_end: 151
+tags: []
+used_in: ["server:create_app"]
+used_in_transitive: []
+---
+component_id: runtime:runtime
+type: dataclass
+file: flashcards_app/runtime.py
+line_start: 16
+line_end: 18
+tags: []
+used_in: ["app:compose", "app:composition"]
+used_in_transitive: []
+---
+component_id: state_core:state_core
+type: class
+file: flashcards_app/state_core.py
+line_start: 46
+line_end: 280
+tags: []
+used_in: ["app:compose", "app:composition", "user_state_service:user_state_service"]
+used_in_transitive: []
+---
+component_id: user_state_service:user_state_service
+type: class
+file: flashcards_app/user_state_service.py
+line_start: 18
+line_end: 128
+tags: []
+used_in: ["app:compose", "app:composition", "runtime:runtime"]
+used_in_transitive: []
+---
+component_id: state_core:state_persistence
+type: class
+file: flashcards_app/state_core.py
+line_start: 31
+line_end: 36
+tags: []
+used_in: ["state_core:state_core"]
+used_in_transitive: []
+---
+component_id: state:json_state_store
+type: class
+file: flashcards_app/state.py
+line_start: 112
+line_end: 130
+tags: []
+used_in: ["app:compose"]
+used_in_transitive: []
+---
+component_id: state:raw_state
+type: dataclass
+file: flashcards_app/state.py
+line_start: 27
+line_end: 33
+tags: []
+used_in: ["state:json_state_store", "state:read_state_file", "state:save_state", "state:write_state_file", "state_core:state_core", "state_core:state_persistence"]
+used_in_transitive: []
+---
+component_id: state:read_state_file
+type: function
+file: flashcards_app/state.py
+line_start: 36
+line_end: 83
+tags: []
+used_in: ["state:json_state_store"]
+used_in_transitive: []
+---
+component_id: state:write_state_file
+type: function
+file: flashcards_app/state.py
+line_start: 86
+line_end: 109
+tags: []
+used_in: ["state:json_state_store", "state:save_state"]
+used_in_transitive: []
+---
+component_id: state:state_file_error
+type: class
+file: flashcards_app/state.py
+line_start: 23
+line_end: 24
+tags: []
+used_in: ["state:read_state_file"]
+used_in_transitive: []
+---
+component_id: state:save_state
+type: function
+file: flashcards_app/state.py
+line_start: 133
+line_end: 150
+tags: []
+used_in: []
+used_in_transitive: []
+---
+component_id: callbacks:register_callbacks
+type: function
+file: flashcards_app/callbacks.py
+line_start: 11
+line_end: 239
+tags: []
+used_in: ["app:compose"]
+used_in_transitive: []
+---
+component_id: cards:choose_random_card
+type: function
+file: flashcards_app/services/cards.py
+line_start: 4
+line_end: 11
+tags: []
+used_in: ["callbacks:register_callbacks"]
+used_in_transitive: []
+---
+component_id: cards:adjacent_card
+type: function
+file: flashcards_app/services/cards.py
+line_start: 14
+line_end: 20
+tags: []
+used_in: ["callbacks:register_callbacks"]
+used_in_transitive: []
+---
+component_id: cards:select_from_click
+type: function
+file: flashcards_app/services/cards.py
+line_start: 23
+line_end: 26
+tags: []
+used_in: ["callbacks:register_callbacks"]
+used_in_transitive: []
+---
+component_id: models:flashcard
+type: dataclass
+file: flashcards_app/models.py
+line_start: 4
+line_end: 22
+tags: []
+used_in: ["cards:adjacent_card", "cards:choose_random_card", "map:make_figure", "panels:card_panel", "panels:connection_control", "panels:difficulty_control", "panels:group_control", "panels:position_control", "parser:cards_file", "parser:load_decks", "parser:parse_deck", "parser:parse_json_deck", "state_core:state_core", "user_state_service:user_state_service"]
+used_in_transitive: []
+---
+component_id: models:card_position
+type: dataclass
+file: flashcards_app/models.py
+line_start: 24
+line_end: 32
+tags: []
+used_in: ["geometry:sphere_positions", "state:raw_state", "state:read_state_file", "state:save_state", "state_core:state_core", "user_state_service:user_state_service"]
+used_in_transitive: []
+---
+component_id: models:card_progress
+type: dataclass
+file: flashcards_app/models.py
+line_start: 34
+line_end: 41
+tags: []
+used_in: ["cards:choose_random_card", "state:raw_state", "state:read_state_file", "state:save_state", "state_core:state_core", "user_state_service:user_state_service"]
+used_in_transitive: []
+---
+component_id: models:card_group
+type: dataclass
+file: flashcards_app/models.py
+line_start: 43
+line_end: 49
+tags: []
+used_in: ["state:raw_state", "state:read_state_file", "state:save_state", "state_core:state_core", "user_state_service:user_state_service"]
+used_in_transitive: []
+---
+component_id: models:card_link
+type: dataclass
+file: flashcards_app/models.py
+line_start: 51
+line_end: 54
+tags: []
+used_in: ["state:raw_state", "state:read_state_file", "state:save_state", "state_core:state_core", "user_state_service:user_state_service"]
+used_in_transitive: []
+---
+component_id: app:main
+type: function
+file: app.py
+line_start: 59
+line_end: 62
+tags: []
+used_in: []
+used_in_transitive: []
+---
+component_id: app:composition
+type: dataclass
+file: app.py
+line_start: 24
+line_end: 34
+tags: []
+used_in: ["app:compose"]
+used_in_transitive: []
+---
+component_id: app:compose
+type: function
+file: app.py
+line_start: 37
+line_end: 52
+tags: []
+used_in: []
+used_in_transitive:
+  - "app:main":
+      flows_to: "app.py -> composition"
+---
+component_id: server:create_app
+type: function
+file: flashcards_app/server.py
+line_start: 11
+line_end: 99
+tags: []
+used_in: ["app:compose"]
+used_in_transitive: []
