@@ -3,7 +3,7 @@ from dash import Input, Output, State
 from flashcards_app.services import cards as cards_service
 from flashcards_app.visualization.map import make_figure
 from flashcards_app.visualization.panels import (
-    card_panel, connection_control, deck_control, deck_filter_options, difficulty_control,
+    card_panel, connection_control, deck_control, deck_filter_options, delete_constellation, difficulty_control,
     group_control, position_control,
 )
 
@@ -69,6 +69,9 @@ def register_callbacks(app, state, none_deck="None"):
         Input("all-decks", "n_clicks"),
         Input("deck-dialog-submit", "n_clicks"),
         Input("deck-dialog-cancel", "n_clicks"),
+        Input("delete-constellation", "n_clicks"),
+        Input("constellation-dialog-submit", "n_clicks"),
+        Input("constellation-dialog-cancel", "n_clicks"),
         State("selected-id", "data"),
         State("revealed", "data"),
         State("link-target", "value"),
@@ -82,6 +85,8 @@ def register_callbacks(app, state, none_deck="None"):
         State("dialog-group-select", "value"),
         State("deck-dialog-state", "data"),
         State("deck-dialog-select", "value"),
+        State("constellation-dialog", "data"),
+        State("constellation-select", "value"),
     )
     def update_card(
         click_data, panel_clicks, random_clicks, deck, difficulty, save_position_clicks, new_group_clicks,
@@ -89,9 +94,10 @@ def register_callbacks(app, state, none_deck="None"):
         delete_group_clicks, focus_group_clicks, all_groups_clicks, dialog_submit_clicks, dialog_cancel_clicks,
         toggle_drag_clicks, drag_x, drag_y, drag_z, keyboard_nav, reset_clicks, reset_submit_clicks,
         add_deck_clicks, remove_deck_clicks, focus_deck_clicks, all_decks_clicks, deck_dialog_submit_clicks,
-        deck_dialog_cancel_clicks, selected_id, revealed, link_target, relayout_data, hover_data,
+        deck_dialog_cancel_clicks, delete_constellation_clicks, constellation_submit_clicks,
+        constellation_cancel_clicks, selected_id, revealed, link_target, relayout_data, hover_data,
         drag_enabled, group_dialog, focused_group, dialog_group_name, dialog_group_color,
-        dialog_group_select, deck_dialog_state, deck_dialog_select
+        dialog_group_select, deck_dialog_state, deck_dialog_select, constellation_dialog, constellation_select
     ):
         from dash import ctx
         import random
@@ -103,6 +109,9 @@ def register_callbacks(app, state, none_deck="None"):
         next_focused_group = focused_group
         next_deck_dialog = deck_dialog_state
         next_deck = deck
+        # phase 4: constellations
+        next_constellation_dialog = constellation_dialog
+        deleted_links = False
 
         if trigger == "reset-cards":
             reset_dialog = True
@@ -203,6 +212,15 @@ def register_callbacks(app, state, none_deck="None"):
             next_group_dialog = None
         elif trigger == "delete-group" and selected_id:
             next_group_dialog = "delete"
+        elif trigger == "delete-constellation":
+            next_constellation_dialog = "delete"
+        elif trigger == "constellation-dialog-cancel":
+            next_constellation_dialog = None
+        elif trigger == "constellation-dialog-submit" and constellation_dialog == "delete" and constellation_select:
+            # Delete: the state core removes the links between the members and saves that by itself
+            delete_constellation(state, constellation_select)
+            deleted_links = True
+            next_constellation_dialog = None
         elif trigger == "deck-filter":
             if selected_id not in {card.id for card in cards}:
                 selected_id = None
@@ -212,17 +230,20 @@ def register_callbacks(app, state, none_deck="None"):
         if selected_id not in {card.id for card in cards}:
             selected_id = None
             revealed = False
+        # phase 4: constellations follow the cards the map shows: links, deck focus and group focus
+        state.refresh_constellations(cards)
 
         selected_card = state.card_by_id.get(selected_id)
-        state.save()
+        if not deleted_links:
+            state.save()
         return (
             make_figure(cards, selected_id, (relayout_data or {}).get("scene.camera"), state, next_focused_group),
             card_panel(selected_card, revealed),
             difficulty_control(selected_card, state),
             position_control(selected_card, bool(drag_enabled), state),
             group_control(selected_card, next_group_dialog, state, next_focused_group),
-            connection_control(selected_card, cards),
-            "Saved" if trigger in {"save-position", "create-link", "disconnect-link", "group-dialog-submit", "delete-group"} else "",
+            connection_control(selected_card, cards, state, next_constellation_dialog),
+            "Saved" if trigger in {"save-position", "create-link", "disconnect-link", "group-dialog-submit", "delete-group", "constellation-dialog-submit"} else "",
             selected_id,
             revealed,
             f"{len(cards)} cards mapped",

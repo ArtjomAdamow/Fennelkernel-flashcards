@@ -7,7 +7,8 @@ persistence, card source and position source are injected.
 Rules that keep the data flow one-directional:
   * load() is passive: it only reads. No defaults, no position generation, nothing stripped.
   * refresh_deck_state() is the only place that derives or strips state (as before).
-  * save() is the only place that writes. Nothing here calls save() by itself.
+  * save() is the only place that writes. Nothing here calls save() by itself, with one deliberate
+    exception: delete_links_for_members() persists its bulk link deletion at once (phase 4: constellations).
 
 The containers (cards, positions, progress, groups, links, enabled_decks, card_by_id,
 position_by_id) are created once and only ever changed in place, because consumers
@@ -16,7 +17,7 @@ hold references to them.
 
 import re
 import time
-from typing import Callable, Optional, Protocol
+from typing import Callable, Iterable, Optional, Protocol
 
 from .models import CardGroup, CardLink, CardPosition, CardProgress, Flashcard
 from .state import RawState
@@ -241,6 +242,26 @@ class StateCore:
                 or (link.source_id == target_id and link.target_id == source_id)
             )
         ]
+
+    # phase 4: constellations
+    def delete_links_for_members(self, member_ids: Iterable[str]) -> int:
+        """Remove every stored link between two of the given members, and persist the result at once.
+
+        Used by the constellation Delete action; the members are the visible cards of the constellation. A link
+        to a card that is not a member (e.g. hidden by a deck or group focus) stays. Nothing is written when no
+        link matched. Only ordinary state is saved: constellations themselves are runtime-only.
+        Returns the number of links removed.
+        """
+        members = set(member_ids)
+        kept = [
+            link for link in self.links
+            if not (link.source_id in members and link.target_id in members)
+        ]
+        removed = len(self.links) - len(kept)
+        if removed:
+            self.links[:] = kept  # in place: consumers hold a reference to the list
+            self.save()
+        return removed
 
     # --- internals ---------------------------------------------------------
 

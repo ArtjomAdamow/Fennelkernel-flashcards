@@ -16,6 +16,8 @@ NEW_GROUP_NOTE = "The selected card will be added to the new group."
 ADD_TO_GROUP_NOTE = "Membership and color of the previously assigned group will remain until removed from the other group."
 DELETE_GROUP_NOTE = "Connections of member cards will remain."
 REMOVE_DECK_NOTE = "Settings of all deck member cards will be erased."
+# phase 4: constellations
+DELETE_CONSTELLATION_NOTE = "Deleting a constellation will disconnect all members"
 
 
 def _dialog_note(text):
@@ -27,6 +29,21 @@ def deck_filter_options(state=None) -> list[dict[str, str]]:
         {"label": deck, "value": deck}
         for deck in sorted(_state(state).enabled_decks)
     ]
+
+
+def constellation_options(state=None) -> list[dict[str, str]]:
+    """Dropdown options of the Delete dialog: the runtime constellations, valued by const_id."""
+    return [{"label": item.name, "value": item.const_id} for item in _state(state).constellations]
+
+
+def delete_constellation(state, const_id: str) -> int:
+    """The Delete action of the Connections panel: disconnect all members of the constellation from each other.
+
+    The members are the visible cards of the runtime constellation `const_id`; the service removes the stored links
+    between them (links to hidden cards stay) and the state core saves that at once. Returns the number of links
+    removed. Ordinary Disconnect is something else: it removes only the one selected link.
+    """
+    return _state(state).delete_constellation_links(const_id)
 
 
 def card_panel(card: Flashcard | None, revealed: bool = False) -> html.Div:
@@ -244,8 +261,14 @@ def deck_control(dialog: str | None = None, selected_deck: str | None = runtime.
     )
 
 
-def connection_control(card: Flashcard | None, candidate_cards: list[Flashcard]) -> html.Div:
-    """`candidate_cards` are the cards the map shows: the deck focus and the group focus are already applied."""
+def connection_control(card: Flashcard | None, candidate_cards: list[Flashcard], state=None, dialog: str | None = None) -> html.Div:
+    """`candidate_cards` are the cards the map shows: the deck focus and the group focus are already applied.
+
+    `state` supplies the runtime constellations (the first layout is built without it: empty list, Delete
+    disabled); `dialog` is "delete" while the Delete dialog is open. The dialog state is kept in a store inside this
+    panel, because the layout of the server has no store for it.
+    """
+    constellations = state.constellations if state is not None else []
     options = [
         {"label": other.question[:55], "value": other.id}
         for other in candidate_cards
@@ -260,6 +283,7 @@ def connection_control(card: Flashcard | None, candidate_cards: list[Flashcard])
                         [
                             html.Button("Connect", id="create-link", n_clicks=0, disabled=card is None, className="tool-button"),
                             html.Button("Disconnect", id="disconnect-link", n_clicks=0, disabled=card is None, className="tool-button"),
+                            html.Button("Delete", id="delete-constellation", n_clicks=0, disabled=not constellations, className="tool-button"),
                         ],
                         className="connection-buttons",
                     ),
@@ -274,6 +298,37 @@ def connection_control(card: Flashcard | None, candidate_cards: list[Flashcard])
                 ],
                 className="connection-actions",
             ),
+            html.Div(
+                [
+                    html.Div(
+                        [html.Span(item.name), html.Span(f"{len(item.members)} cards", className="group-member-count")],
+                        className="group-list-item",
+                    )
+                    for item in constellations
+                ] or [html.Div("No visible constellations.", className="tool-status")],
+                className="group-list",
+            ),
+            html.Div(
+                [
+                    html.Div("Delete constellation", className="dialog-title"),
+                    dcc.Dropdown(
+                        id="constellation-select",
+                        className="closed-dropdown",
+                        options=constellation_options(state) if state is not None else [],
+                        placeholder="Select a constellation",
+                        clearable=True,
+                    ),
+                    html.Div(
+                        [
+                            html.Button("Confirm", id="constellation-dialog-submit", n_clicks=0, className="tool-button"),
+                            html.Button("Cancel", id="constellation-dialog-cancel", n_clicks=0, className="tool-button"),
+                        ] + _dialog_note(DELETE_CONSTELLATION_NOTE),
+                        className="tool-row",
+                    ),
+                ],
+                className="group-dialog" if dialog else "group-dialog group-dialog-hidden",
+            ),
+            dcc.Store(id="constellation-dialog", data=dialog),
         ],
         className="tool-panel compact-panel",
     )
