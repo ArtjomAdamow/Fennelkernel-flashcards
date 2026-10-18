@@ -335,6 +335,8 @@ graph LR
         n_panels__dialog_note["panels:_dialog_note"]
         n_panels_deck_filter_options["panels:deck_filter_options"]
         n_panels_deck_control["panels:deck_control"]
+        n_panels_constellation_options["panels:constellation_options"]
+        n_panels_delete_constellation["panels:delete_constellation"]
     end
     style sg_section_2 color: #3b82f6, fill: #000000ff
     n_callbacks_register_callbacks["callbacks:register_callbacks"]:::ext
@@ -345,10 +347,13 @@ graph LR
     n_models_flashcard --> n_panels_difficulty_control
     n_models_flashcard --> n_panels_group_control
     n_models_flashcard --> n_panels_position_control
+    n_panels__dialog_note --> n_panels_connection_control
     n_panels__dialog_note --> n_panels_deck_control
     n_panels__dialog_note --> n_panels_group_control
+    n_panels__state --> n_panels_constellation_options
     n_panels__state --> n_panels_deck_control
     n_panels__state --> n_panels_deck_filter_options
+    n_panels__state --> n_panels_delete_constellation
     n_panels__state --> n_panels_difficulty_control
     n_panels__state --> n_panels_group_control
     n_panels__state --> n_panels_position_control
@@ -356,10 +361,12 @@ graph LR
     n_panels_card_panel --> n_server_create_app
     n_panels_connection_control --> n_callbacks_register_callbacks
     n_panels_connection_control --> n_server_create_app
+    n_panels_constellation_options --> n_panels_connection_control
     n_panels_deck_control --> n_callbacks_register_callbacks
     n_panels_deck_control --> n_server_create_app
     n_panels_deck_filter_options --> n_callbacks_register_callbacks
     n_panels_deck_filter_options --> n_panels_deck_control
+    n_panels_delete_constellation --> n_callbacks_register_callbacks
     n_panels_difficulty_control --> n_callbacks_register_callbacks
     n_panels_difficulty_control --> n_server_create_app
     n_panels_group_control --> n_callbacks_register_callbacks
@@ -369,35 +376,35 @@ graph LR
 ```
 <!-- diagram:end -->
 
-<details><Summary><a href="./flashcards_app/visualization/panels.py#L32-50" title="panels:card_panel">Card panel</a></Summary>
+<details><Summary><a href="./flashcards_app/visualization/panels.py#L49-67" title="panels:card_panel">Card panel</a></Summary>
 
 ```yaml
 tags: []
 ```
 </details>
 
-<details><Summary><a href="./flashcards_app/visualization/panels.py#L52-80" title="panels:difficulty_control">Difficulty control</a></Summary>
+<details><Summary><a href="./flashcards_app/visualization/panels.py#L69-97" title="panels:difficulty_control">Difficulty control</a></Summary>
 
 ```yaml
 tags: []
 ```
 </details>
 
-<details><Summary><a href="./flashcards_app/visualization/panels.py#L82-113" title="panels:position_control">Position control</a></Summary>
+<details><Summary><a href="./flashcards_app/visualization/panels.py#L99-130" title="panels:position_control">Position control</a></Summary>
 
 ```yaml
 tags: []
 ```
 </details>
 
-<details><Summary><a href="./flashcards_app/visualization/panels.py#L115-188" title="panels:group_control">Group control</a></Summary>
+<details><Summary><a href="./flashcards_app/visualization/panels.py#L132-205" title="panels:group_control">Group control</a></Summary>
 
 ```yaml
 tags: []
 ```
 </details>
 
-<details><Summary><a href="./flashcards_app/visualization/panels.py#L247-280" title="panels:connection_control">Connection control</a></Summary>
+<details><Summary><a href="./flashcards_app/visualization/panels.py#L264-335" title="panels:connection_control">Connection control</a></Summary>
 
 ```yaml
 tags: []
@@ -411,26 +418,42 @@ tags: []
 ```
 </details>
 
-<details><Summary><a href="./flashcards_app/visualization/panels.py#L21-23" title="panels:_dialog_note">Dialog note</a></Summary>
+<details><Summary><a href="./flashcards_app/visualization/panels.py#L23-25" title="panels:_dialog_note">Dialog note</a></Summary>
 
 ```yaml
 tags: []
 ```
 </details>
 
-<details><Summary><a href="./flashcards_app/visualization/panels.py#L25-30" title="panels:deck_filter_options">Deck filter options</a></Summary>
+<details><Summary><a href="./flashcards_app/visualization/panels.py#L27-32" title="panels:deck_filter_options">Deck filter options</a></Summary>
 
 ```yaml
 tags: []
 ```
 </details>
 
-<details><Summary><a href="./flashcards_app/visualization/panels.py#L190-245" title="panels:deck_control">Deck control</a></Summary>
+<details><Summary><a href="./flashcards_app/visualization/panels.py#L207-262" title="panels:deck_control">Deck control</a></Summary>
 
 ```yaml
 tags: []
 ```
 </details>
+
+
+<details><Summary><a href="./flashcards_app/visualization/panels.py#L34-37" title="panels:constellation_options">Constellation options</a></Summary>
+
+```yaml
+tags: []
+```
+</details>
+
+<details><Summary><a href="./flashcards_app/visualization/panels.py#L39-47" title="panels:delete_constellation">Delete constellation</a></Summary>
+
+```yaml
+tags: []
+```
+</details>
+
 
 ### Map visualization
 
@@ -562,6 +585,8 @@ graph LR
         n_state_core_state_core["state_core:state_core"]
         n_user_state_service_user_state_service["user_state_service:user_state_service"]
         n_state_core_state_persistence["state_core:state_persistence"]
+        n_user_state_service_derive_components["user_state_service:derive_components"]
+        n_user_state_service_reconcile_constellations["user_state_service:reconcile_constellations"]
     end
     style sg_section_4 color: #3b82f6, fill: #000000ff
     n_app_compose["app:compose"]:::ext
@@ -571,17 +596,21 @@ graph LR
     n_models_card_link["models:card_link"]:::ext
     n_models_card_position["models:card_position"]:::ext
     n_models_card_progress["models:card_progress"]:::ext
+    n_models_constellation["models:constellation"]:::ext
     n_models_flashcard["models:flashcard"]:::ext
     n_state_raw_state["state:raw_state"]:::ext
     n_deck_catalog_json_deck_catalog --> n_user_state_service_user_state_service
     n_models_card_group --> n_state_core_state_core
     n_models_card_group --> n_user_state_service_user_state_service
     n_models_card_link --> n_state_core_state_core
+    n_models_card_link --> n_user_state_service_derive_components
     n_models_card_link --> n_user_state_service_user_state_service
     n_models_card_position --> n_state_core_state_core
     n_models_card_position --> n_user_state_service_user_state_service
     n_models_card_progress --> n_state_core_state_core
     n_models_card_progress --> n_user_state_service_user_state_service
+    n_models_constellation --> n_user_state_service_reconcile_constellations
+    n_models_constellation --> n_user_state_service_user_state_service
     n_models_flashcard --> n_state_core_state_core
     n_models_flashcard --> n_user_state_service_user_state_service
     n_runtime_runtime --> n_app_compose
@@ -592,6 +621,8 @@ graph LR
     n_state_core_state_core --> n_app_composition
     n_state_core_state_core --> n_user_state_service_user_state_service
     n_state_core_state_persistence --> n_state_core_state_core
+    n_user_state_service_derive_components --> n_user_state_service_user_state_service
+    n_user_state_service_reconcile_constellations --> n_user_state_service_user_state_service
     n_user_state_service_user_state_service --> n_app_compose
     n_user_state_service_user_state_service --> n_app_composition
     n_user_state_service_user_state_service --> n_runtime_runtime
@@ -607,27 +638,41 @@ tags: []
 </details>
 
 
-<details><Summary><a href="./flashcards_app/state_core.py#L46-281" title="state_core:state_core">State core</a></Summary>
+<details><Summary><a href="./flashcards_app/state_core.py#L47-302" title="state_core:state_core">State core</a></Summary>
 
 ```yaml
 tags: []
 ```
 </details>
 
-<details><Summary><a href="./flashcards_app/user_state_service.py#L18-129" title="user_state_service:user_state_service">User state service</a></Summary>
+<details><Summary><a href="./flashcards_app/user_state_service.py#L95-244" title="user_state_service:user_state_service">User state service</a></Summary>
 
 ```yaml
 tags: []
 ```
 </details>
 
-<details><Summary><a href="./flashcards_app/state_core.py#L31-37" title="state_core:state_persistence">State persistence</a></Summary>
+<details><Summary><a href="./flashcards_app/state_core.py#L32-38" title="state_core:state_persistence">State persistence</a></Summary>
 
 ```yaml
 tags: []
 ```
 </details>
 
+
+<details><Summary><a href="./flashcards_app/user_state_service.py#L24-53" title="user_state_service:derive_components">Derive components</a></Summary>
+
+```yaml
+tags: []
+```
+</details>
+
+<details><Summary><a href="./flashcards_app/user_state_service.py#L55-93" title="user_state_service:reconcile_constellations">Reconcile constellations</a></Summary>
+
+```yaml
+tags: []
+```
+</details>
 
 
 <font color="#3b82f6">********************************************************</font>
@@ -760,6 +805,7 @@ graph LR
     n_panels_connection_control["panels:connection_control"]:::ext
     n_panels_deck_control["panels:deck_control"]:::ext
     n_panels_deck_filter_options["panels:deck_filter_options"]:::ext
+    n_panels_delete_constellation["panels:delete_constellation"]:::ext
     n_panels_difficulty_control["panels:difficulty_control"]:::ext
     n_panels_group_control["panels:group_control"]:::ext
     n_panels_position_control["panels:position_control"]:::ext
@@ -775,13 +821,14 @@ graph LR
     n_panels_connection_control --> n_callbacks_register_callbacks
     n_panels_deck_control --> n_callbacks_register_callbacks
     n_panels_deck_filter_options --> n_callbacks_register_callbacks
+    n_panels_delete_constellation --> n_callbacks_register_callbacks
     n_panels_difficulty_control --> n_callbacks_register_callbacks
     n_panels_group_control --> n_callbacks_register_callbacks
     n_panels_position_control --> n_callbacks_register_callbacks
 ```
 <!-- diagram:end -->
 
-<details><Summary><a href="./flashcards_app/callbacks.py#L11-240" title="callbacks:register_callbacks">Register callbacks</a></Summary>
+<details><Summary><a href="./flashcards_app/callbacks.py#L11-261" title="callbacks:register_callbacks">Register callbacks</a></Summary>
 
 ```yaml
 tags: []
@@ -825,6 +872,7 @@ graph LR
     classDef default fill: #000000ff, stroke: #3b82f6, color: #ffffffff
 
     subgraph sg_section_7["Models"]
+        n_models_constellation["models:constellation"]
         n_models_flashcard["models:flashcard"]
         n_models_card_position["models:card_position"]
         n_models_card_progress["models:card_progress"]
@@ -849,6 +897,8 @@ graph LR
     n_state_read_state_file["state:read_state_file"]:::ext
     n_state_save_state["state:save_state"]:::ext
     n_state_core_state_core["state_core:state_core"]:::ext
+    n_user_state_service_derive_components["user_state_service:derive_components"]:::ext
+    n_user_state_service_reconcile_constellations["user_state_service:reconcile_constellations"]:::ext
     n_user_state_service_user_state_service["user_state_service:user_state_service"]:::ext
     n_models_card_group --> n_state_raw_state
     n_models_card_group --> n_state_read_state_file
@@ -859,6 +909,7 @@ graph LR
     n_models_card_link --> n_state_read_state_file
     n_models_card_link --> n_state_save_state
     n_models_card_link --> n_state_core_state_core
+    n_models_card_link --> n_user_state_service_derive_components
     n_models_card_link --> n_user_state_service_user_state_service
     n_models_card_position --> n_geometry_sphere_positions
     n_models_card_position --> n_state_raw_state
@@ -872,6 +923,8 @@ graph LR
     n_models_card_progress --> n_state_save_state
     n_models_card_progress --> n_state_core_state_core
     n_models_card_progress --> n_user_state_service_user_state_service
+    n_models_constellation --> n_user_state_service_reconcile_constellations
+    n_models_constellation --> n_user_state_service_user_state_service
     n_models_flashcard --> n_cards_adjacent_card
     n_models_flashcard --> n_cards_choose_random_card
     n_models_flashcard --> n_map_make_figure
@@ -888,6 +941,14 @@ graph LR
     n_models_flashcard --> n_user_state_service_user_state_service
 ```
 <!-- diagram:end -->
+
+<details><Summary><a href="./flashcards_app/models.py#L56-71" title="models:constellation">Constellation</a></Summary>
+
+```yaml
+tags: []
+```
+</details>
+
 
 <details><Summary><a href="./flashcards_app/models.py#L4-23" title="models:flashcard">Flashcard</a></Summary>
 

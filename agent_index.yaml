@@ -169,8 +169,8 @@ used_in_transitive: []
 component_id: panels:card_panel
 type: function
 file: flashcards_app/visualization/panels.py
-line_start: 32
-line_end: 49
+line_start: 49
+line_end: 66
 tags: []
 used_in: ["callbacks:register_callbacks", "server:create_app"]
 used_in_transitive: []
@@ -178,8 +178,8 @@ used_in_transitive: []
 component_id: panels:difficulty_control
 type: function
 file: flashcards_app/visualization/panels.py
-line_start: 52
-line_end: 79
+line_start: 69
+line_end: 96
 tags: []
 used_in: ["callbacks:register_callbacks", "server:create_app"]
 used_in_transitive: []
@@ -187,8 +187,8 @@ used_in_transitive: []
 component_id: panels:position_control
 type: function
 file: flashcards_app/visualization/panels.py
-line_start: 82
-line_end: 112
+line_start: 99
+line_end: 129
 tags: []
 used_in: ["callbacks:register_callbacks", "server:create_app"]
 used_in_transitive: []
@@ -196,8 +196,8 @@ used_in_transitive: []
 component_id: panels:group_control
 type: function
 file: flashcards_app/visualization/panels.py
-line_start: 115
-line_end: 187
+line_start: 132
+line_end: 204
 tags: []
 used_in: ["callbacks:register_callbacks", "server:create_app"]
 used_in_transitive: []
@@ -205,8 +205,8 @@ used_in_transitive: []
 component_id: panels:connection_control
 type: function
 file: flashcards_app/visualization/panels.py
-line_start: 247
-line_end: 279
+line_start: 264
+line_end: 334
 tags: []
 used_in: ["callbacks:register_callbacks", "server:create_app"]
 used_in_transitive: []
@@ -217,23 +217,23 @@ file: flashcards_app/visualization/panels.py
 line_start: 8
 line_end: 11
 tags: []
-used_in: ["panels:deck_control", "panels:deck_filter_options", "panels:difficulty_control", "panels:group_control", "panels:position_control"]
+used_in: ["panels:constellation_options", "panels:deck_control", "panels:deck_filter_options", "panels:delete_constellation", "panels:difficulty_control", "panels:group_control", "panels:position_control"]
 used_in_transitive: []
 ---
 component_id: panels:_dialog_note
 type: function
 file: flashcards_app/visualization/panels.py
-line_start: 21
-line_end: 22
+line_start: 23
+line_end: 24
 tags: []
-used_in: ["panels:deck_control", "panels:group_control"]
+used_in: ["panels:connection_control", "panels:deck_control", "panels:group_control"]
 used_in_transitive: []
 ---
 component_id: panels:deck_filter_options
 type: function
 file: flashcards_app/visualization/panels.py
-line_start: 25
-line_end: 29
+line_start: 27
+line_end: 31
 tags: []
 used_in: ["callbacks:register_callbacks", "panels:deck_control"]
 used_in_transitive: []
@@ -241,10 +241,28 @@ used_in_transitive: []
 component_id: panels:deck_control
 type: function
 file: flashcards_app/visualization/panels.py
-line_start: 190
-line_end: 244
+line_start: 207
+line_end: 261
 tags: []
 used_in: ["callbacks:register_callbacks", "server:create_app"]
+used_in_transitive: []
+---
+component_id: panels:constellation_options
+type: function
+file: flashcards_app/visualization/panels.py
+line_start: 34
+line_end: 36
+tags: []
+used_in: ["panels:connection_control"]
+used_in_transitive: []
+---
+component_id: panels:delete_constellation
+type: function
+file: flashcards_app/visualization/panels.py
+line_start: 39
+line_end: 46
+tags: []
+used_in: ["callbacks:register_callbacks"]
 used_in_transitive: []
 ---
 component_id: geometry:sphere_positions
@@ -340,8 +358,8 @@ used_in_transitive: []
 component_id: state_core:state_core
 type: class
 file: flashcards_app/state_core.py
-line_start: 46
-line_end: 280
+line_start: 47
+line_end: 301
 tags: []
 used_in: ["app:compose", "app:composition", "user_state_service:user_state_service"]
 used_in_transitive: []
@@ -349,8 +367,8 @@ used_in_transitive: []
 component_id: user_state_service:user_state_service
 type: class
 file: flashcards_app/user_state_service.py
-line_start: 18
-line_end: 128
+line_start: 95
+line_end: 243
 tags: []
 used_in: ["app:compose", "app:composition", "runtime:runtime"]
 used_in_transitive: []
@@ -358,10 +376,28 @@ used_in_transitive: []
 component_id: state_core:state_persistence
 type: class
 file: flashcards_app/state_core.py
-line_start: 31
-line_end: 36
+line_start: 32
+line_end: 37
 tags: []
 used_in: ["state_core:state_core"]
+used_in_transitive: []
+---
+component_id: user_state_service:derive_components
+type: function
+file: flashcards_app/user_state_service.py
+line_start: 24
+line_end: 52
+tags: []
+used_in: ["user_state_service:user_state_service"]
+used_in_transitive: []
+---
+component_id: user_state_service:reconcile_constellations
+type: function
+file: flashcards_app/user_state_service.py
+line_start: 55
+line_end: 92
+tags: []
+used_in: ["user_state_service:user_state_service"]
 used_in_transitive: []
 ---
 component_id: state:json_state_store
@@ -422,7 +458,7 @@ component_id: callbacks:register_callbacks
 type: function
 file: flashcards_app/callbacks.py
 line_start: 11
-line_end: 239
+line_end: 260
 tags: []
 used_in: ["app:compose"]
 used_in_transitive: []
@@ -452,6 +488,15 @@ line_start: 23
 line_end: 26
 tags: []
 used_in: ["callbacks:register_callbacks"]
+used_in_transitive: []
+---
+component_id: models:constellation
+type: dataclass
+file: flashcards_app/models.py
+line_start: 56
+line_end: 70
+tags: []
+used_in: ["user_state_service:reconcile_constellations", "user_state_service:user_state_service"]
 used_in_transitive: []
 ---
 component_id: models:flashcard
@@ -496,7 +541,7 @@ file: flashcards_app/models.py
 line_start: 51
 line_end: 54
 tags: []
-used_in: ["state:raw_state", "state:read_state_file", "state:save_state", "state_core:state_core", "user_state_service:user_state_service"]
+used_in: ["state:raw_state", "state:read_state_file", "state:save_state", "state_core:state_core", "user_state_service:derive_components", "user_state_service:user_state_service"]
 used_in_transitive: []
 ---
 component_id: app:main
