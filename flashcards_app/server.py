@@ -1,3 +1,8 @@
+from __future__ import annotations
+
+import shutil
+from pathlib import Path
+
 from dash import Dash, dcc, html
 from flask import jsonify
 
@@ -8,23 +13,49 @@ from flashcards_app.visualization.panels import (
 )
 
 
+# changes/server.py -> changes -> constellations -> modules -> repository root
+MODULE_ROOT = Path(__file__).resolve().parents[3]
+MODULE_ASSETS_DIR = MODULE_ROOT / "modules" / "constellations" / "assets"
+
+
+def build_assets_overlay(base_dir, module_assets_dir=None) -> Path:
+    """Copy root assets, then overlay module assets, without modifying either source.
+
+    The overlay is rebuilt deterministically at tools/loader/scratch/assets_overlay
+    for each app startup, making repeated debug-reloader startups safe.
+    """
+    base_dir = Path(base_dir)
+    root_assets = base_dir / "assets"
+    overlay = base_dir / "tools" / "loader" / "scratch" / "assets_overlay"
+    module_assets = Path(module_assets_dir) if module_assets_dir is not None else MODULE_ASSETS_DIR
+
+    if overlay.exists():
+        shutil.rmtree(overlay)
+    overlay.mkdir(parents=True, exist_ok=True)
+
+    if root_assets.is_dir():
+        shutil.copytree(root_assets, overlay, dirs_exist_ok=True)
+    if module_assets.is_dir():
+        shutil.copytree(module_assets, overlay, dirs_exist_ok=True)
+    return overlay
+
+
 def create_app(base_dir, server_boot_id, state):
-    """Build the Dash app: layout, assets folder and the boot-id route that reload-guard.js polls.
+    """Build Dash with isolated assets and transient navigation stores.
 
     `state` is the UserStateService the initial panels and the empty map are built from.
     """
-    app = Dash(__name__, assets_folder=str(base_dir / "assets"))
+    assets_overlay = build_assets_overlay(base_dir)
+    app = Dash(__name__, assets_folder=str(assets_overlay))
     app.title = "Spatial Flashcards"
     app.index_string = app.index_string.replace(
         "{%app_entry%}",
         f'<script>window.__SERVER_BOOT_ID__ = "{server_boot_id}";</script>{{%app_entry%}}',
     )
 
-
     @app.server.route("/boot-id")
     def boot_id():
         return jsonify({"bootId": server_boot_id})
-
 
     app.layout = html.Main(
         [
@@ -87,6 +118,8 @@ def create_app(base_dir, server_boot_id, state):
             dcc.Store(id="group-dialog", data=None),
             dcc.Store(id="deck-dialog-state", data=None),
             dcc.Store(id="focused-group", data=None),
+            dcc.Store(id="nav-state", data=None, storage_type="memory"),
+            dcc.Store(id="nav-view", data=None, storage_type="memory"),
             dcc.Input(id="keyboard-nav", value="", type="text", className="keyboard-nav"),
             dcc.ConfirmDialog(
                 id="reset-confirm",

@@ -337,6 +337,8 @@ graph LR
         n_panels_deck_control["panels:deck_control"]
         n_panels_constellation_options["panels:constellation_options"]
         n_panels_delete_constellation["panels:delete_constellation"]
+        n_panels_navigation_options["panels:navigation_options"]
+        n_panels_navigation_readout["panels:navigation_readout"]
     end
     style sg_section_2 color: #3b82f6, fill: #000000ff
     n_callbacks_register_callbacks["callbacks:register_callbacks"]:::ext
@@ -346,6 +348,7 @@ graph LR
     n_models_flashcard --> n_panels_connection_control
     n_models_flashcard --> n_panels_difficulty_control
     n_models_flashcard --> n_panels_group_control
+    n_models_flashcard --> n_panels_navigation_readout
     n_models_flashcard --> n_panels_position_control
     n_panels__dialog_note --> n_panels_connection_control
     n_panels__dialog_note --> n_panels_deck_control
@@ -371,6 +374,8 @@ graph LR
     n_panels_difficulty_control --> n_server_create_app
     n_panels_group_control --> n_callbacks_register_callbacks
     n_panels_group_control --> n_server_create_app
+    n_panels_navigation_options --> n_panels_connection_control
+    n_panels_navigation_readout --> n_panels_connection_control
     n_panels_position_control --> n_callbacks_register_callbacks
     n_panels_position_control --> n_server_create_app
 ```
@@ -404,7 +409,7 @@ tags: []
 ```
 </details>
 
-<details><Summary><a href="./flashcards_app/visualization/panels.py#L264-335" title="panels:connection_control">Connection control</a></Summary>
+<details><Summary><a href="./flashcards_app/visualization/panels.py#L287-404" title="panels:connection_control">Connection control</a></Summary>
 
 ```yaml
 tags: []
@@ -448,6 +453,21 @@ tags: []
 </details>
 
 <details><Summary><a href="./flashcards_app/visualization/panels.py#L39-47" title="panels:delete_constellation">Delete constellation</a></Summary>
+
+```yaml
+tags: []
+```
+</details>
+
+
+<details><Summary><a href="./flashcards_app/visualization/panels.py#L264-270" title="panels:navigation_options">Navigation options</a></Summary>
+
+```yaml
+tags: []
+```
+</details>
+
+<details><Summary><a href="./flashcards_app/visualization/panels.py#L272-285" title="panels:navigation_readout">Navigation readout</a></Summary>
 
 ```yaml
 tags: []
@@ -508,7 +528,7 @@ tags: []
 </details>
 
 
-<details><Summary><a href="./flashcards_app/visualization/map.py#L9-139" title="map:make_figure">Make figure</a></Summary>
+<details><Summary><a href="./flashcards_app/visualization/map.py#L11-205" title="map:make_figure">Make figure</a></Summary>
 
 ```yaml
 tags: []
@@ -558,7 +578,7 @@ tags: []
 ```
 </details>
 
-<details><Summary><a href="./flashcards_app/visualization/map.py#L141-152" title="map:color_legend">Color legend</a></Summary>
+<details><Summary><a href="./flashcards_app/visualization/map.py#L207-218" title="map:color_legend">Color legend</a></Summary>
 
 ```yaml
 tags: []
@@ -795,6 +815,7 @@ graph LR
         n_cards_choose_random_card["cards:choose_random_card"]
         n_cards_adjacent_card["cards:adjacent_card"]
         n_cards_select_from_click["cards:select_from_click"]
+        n_callbacks__load_navigation["callbacks:_load_navigation"]
     end
     style sg_section_6 color: #3b82f6, fill: #000000ff
     n_app_compose["app:compose"]:::ext
@@ -825,10 +846,11 @@ graph LR
     n_panels_difficulty_control --> n_callbacks_register_callbacks
     n_panels_group_control --> n_callbacks_register_callbacks
     n_panels_position_control --> n_callbacks_register_callbacks
+    n_callbacks__load_navigation -.-> n_callbacks_register_callbacks
 ```
 <!-- diagram:end -->
 
-<details><Summary><a href="./flashcards_app/callbacks.py#L11-261" title="callbacks:register_callbacks">Register callbacks</a></Summary>
+<details><Summary><a href="./flashcards_app/callbacks.py#L39-541" title="callbacks:register_callbacks">Register callbacks</a></Summary>
 
 ```yaml
 tags: []
@@ -856,6 +878,12 @@ tags: []
 ```
 </details>
 
+<details><Summary><a href="./flashcards_app/callbacks.py#L15-34" title="callbacks:_load_navigation">Load navigation</a></Summary>
+
+```yaml
+tags: []
+```
+</details>
 
 
 <font color="#3b82f6">********************************************************</font>
@@ -888,6 +916,7 @@ graph LR
     n_panels_connection_control["panels:connection_control"]:::ext
     n_panels_difficulty_control["panels:difficulty_control"]:::ext
     n_panels_group_control["panels:group_control"]:::ext
+    n_panels_navigation_readout["panels:navigation_readout"]:::ext
     n_panels_position_control["panels:position_control"]:::ext
     n_parser_cards_file["parser:cards_file"]:::ext
     n_parser_load_decks["parser:load_decks"]:::ext
@@ -932,6 +961,7 @@ graph LR
     n_models_flashcard --> n_panels_connection_control
     n_models_flashcard --> n_panels_difficulty_control
     n_models_flashcard --> n_panels_group_control
+    n_models_flashcard --> n_panels_navigation_readout
     n_models_flashcard --> n_panels_position_control
     n_models_flashcard --> n_parser_cards_file
     n_models_flashcard --> n_parser_load_decks
@@ -1007,6 +1037,7 @@ graph LR
         n_app_composition["app:composition"]
         n_app_compose["app:compose"]
         n_server_create_app["server:create_app"]
+        n_server_build_assets_overlay["server:build_assets_overlay"]
     end
     style sg_section_8 color: #3b82f6, fill: #000000ff
     n_callbacks_register_callbacks["callbacks:register_callbacks"]:::ext
@@ -1041,6 +1072,7 @@ graph LR
     n_parser_cards_file --> n_app_compose
     n_runtime_runtime --> n_app_compose
     n_runtime_runtime --> n_app_composition
+    n_server_build_assets_overlay --> n_server_create_app
     n_server_create_app --> n_app_compose
     n_state_json_state_store --> n_app_compose
     n_state_core_state_core --> n_app_compose
@@ -1075,7 +1107,14 @@ tags: []
 </details>
 
 
-<details><Summary><a href="./flashcards_app/server.py#L11-100" title="server:create_app">Create app</a></Summary>
+<details><Summary><a href="./flashcards_app/server.py#L43-133" title="server:create_app">Create app</a></Summary>
+
+```yaml
+tags: []
+```
+</details>
+
+<details><Summary><a href="./flashcards_app/server.py#L21-41" title="server:build_assets_overlay">Build assets overlay</a></Summary>
 
 ```yaml
 tags: []

@@ -4,15 +4,37 @@ from dash import html
 from flashcards_app.models import Flashcard
 from flashcards_app.visualization.colors import group_color, progress_color
 
+NAV_DIM_OPACITY = 0.3
+
 
 # phase 1: positions are addressed by their comb_id (was card_id)
-def make_figure(cards: list[Flashcard], selected_id: str | None = None, camera: dict | None = None, state=None, focused_group: str | None = None) -> go.Figure:
+def make_figure(
+    cards: list[Flashcard],
+    selected_id: str | None = None,
+    camera: dict | None = None,
+    state=None,
+    focused_group: str | None = None,
+    *,
+    preview_id: str | None = None,
+    scrolled_id: str | None = None,
+    nav_members: set[str] | list[str] | tuple[str, ...] | None = None,
+    map_token: str | None = None,
+) -> go.Figure:
     if state is None:
         raise TypeError("state is required: pass the UserStateService")
     visible_ids = {card.id for card in cards}
     points = [position for position in state.positions if position.comb_id in visible_ids]
     selected = [position for position in points if position.comb_id == selected_id]
     regular = [position for position in points if position.comb_id != selected_id]
+
+    # With nav_members omitted, retain the original trace composition and properties.
+    if nav_members is None:
+        member_regular = regular
+        nonmember_regular = []
+    else:
+        members = set(nav_members)
+        member_regular = [point for point in regular if point.comb_id in members]
+        nonmember_regular = [point for point in regular if point.comb_id not in members]
 
     figure = go.Figure()
     position_by_id = {position.comb_id: position for position in points}
@@ -52,39 +74,66 @@ def make_figure(cards: list[Flashcard], selected_id: str | None = None, camera: 
             )
         )
 
-    # Draw regular cards
-    if regular:
+    # A separate overlay emphasizes only the currently scrolled direct link.
+    if preview_id and scrolled_id and preview_id in position_by_id and scrolled_id in position_by_id:
+        origin = position_by_id[preview_id]
+        target = position_by_id[scrolled_id]
         figure.add_trace(
             go.Scatter3d(
-                x=[point.x for point in regular],
-                y=[point.y for point in regular],
-                z=[point.z for point in regular],
-                mode="markers",
-                marker={
-                    "size": 7 * 1.4,
-                    "color": [progress_color(point.comb_id, state) for point in regular],
-                },
+                x=[origin.x, target.x, None],
+                y=[origin.y, target.y, None],
+                z=[origin.z, target.z, None],
+                mode="lines",
+                line={"color": "#ffffff", "width": 7},
                 hoverinfo="skip",
                 showlegend=False,
-                name="Card progress",
+                name="Navigation link",
+            )
+        )
+
+    def add_regular_traces(regular_points, *, dimmed: bool = False) -> None:
+        if not regular_points:
+            return
+        progress_marker = {
+            "size": 7 * 1.4,
+            "color": [progress_color(point.comb_id, state) for point in regular_points],
+        }
+        card_marker = {
+            "size": 7,
+            "color": [group_color(point.comb_id, state, focused_group) for point in regular_points],
+        }
+        if dimmed:
+            progress_marker["opacity"] = NAV_DIM_OPACITY
+            card_marker["opacity"] = NAV_DIM_OPACITY
+        suffix = " (dimmed)" if dimmed else ""
+        figure.add_trace(
+            go.Scatter3d(
+                x=[point.x for point in regular_points],
+                y=[point.y for point in regular_points],
+                z=[point.z for point in regular_points],
+                mode="markers",
+                marker=progress_marker,
+                hoverinfo="skip",
+                showlegend=False,
+                name=f"Card progress{suffix}",
             )
         )
         figure.add_trace(
             go.Scatter3d(
-                x=[point.x for point in regular],
-                y=[point.y for point in regular],
-                z=[point.z for point in regular],
+                x=[point.x for point in regular_points],
+                y=[point.y for point in regular_points],
+                z=[point.z for point in regular_points],
                 mode="markers",
-                customdata=[point.comb_id for point in regular],
-                text=[state.card_by_id[point.comb_id].question for point in regular],
+                customdata=[point.comb_id for point in regular_points],
+                text=[state.card_by_id[point.comb_id].question for point in regular_points],
                 hovertemplate="%{text}<extra></extra>",
-                marker={
-                    "size": 7,
-                    "color": [group_color(point.comb_id, state, focused_group) for point in regular],
-                },
-                name="Cards",
+                marker=card_marker,
+                name=f"Cards{suffix}",
             )
         )
+
+    add_regular_traces(member_regular)
+    add_regular_traces(nonmember_regular, dimmed=True)
 
     # Draw selected card with highlight
     if selected:
@@ -118,6 +167,21 @@ def make_figure(cards: list[Flashcard], selected_id: str | None = None, camera: 
             )
         )
 
+    if preview_id and preview_id in position_by_id:
+        preview = position_by_id[preview_id]
+        figure.add_trace(
+            go.Scatter3d(
+                x=[preview.x],
+                y=[preview.y],
+                z=[preview.z],
+                mode="markers",
+                marker={"symbol": "cross", "size": 18, "color": "#ffffff"},
+                hoverinfo="skip",
+                showlegend=False,
+                name="Navigation preview",
+            )
+        )
+
     figure.update_layout(
         uirevision="spatial-flashcards",
         paper_bgcolor="#102a43",
@@ -135,6 +199,8 @@ def make_figure(cards: list[Flashcard], selected_id: str | None = None, camera: 
     )
     if camera:
         figure.update_layout(scene_camera=camera)
+    if map_token is not None:
+        figure.update_layout(meta={"map_token": map_token})
     return figure
 
 

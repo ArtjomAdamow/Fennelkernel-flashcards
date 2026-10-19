@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """Sync a Markdown component index with the real code.
 
+Run the script with:
+.venv/Scripts/python.exe tools/update_index.py
+
 Standalone tool: standard library only, never imports project code
 (files are only parsed with `ast`), so it is not part of the main app.
 
@@ -1872,9 +1875,9 @@ def main(argv: list[str] | None = None) -> int:
                     help="do not list unindexed components that depend on indexed ones")
     ap.add_argument("--include-tests", action="store_true",
                     help="also scan test files/folders (skipped by default)")
-    ap.add_argument("--agent-file", default="agent_index.yaml", metavar="PATH",
+    ap.add_argument("--agent-file", default="./tools/agent_index.yaml", metavar="PATH",
                     help="agent-only index, relative to the index folder; 'none' = off "
-                         "(default: agent_index.yaml; a .md name writes fenced yaml blocks)")
+                         "(default: ./tools/agent_index.yaml; a .md name writes fenced yaml blocks)")
     ap.add_argument("--diagrams", choices=("file", "inline", "off"), default="inline",
                     help="Mermaid diagram per section: inside the index, own file, or off (default: inline)")
     ap.add_argument("--diagram-file", metavar="PATH",

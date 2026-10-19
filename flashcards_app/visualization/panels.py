@@ -261,14 +261,51 @@ def deck_control(dialog: str | None = None, selected_deck: str | None = runtime.
     )
 
 
-def connection_control(card: Flashcard | None, candidate_cards: list[Flashcard], state=None, dialog: str | None = None) -> html.Div:
-    """`candidate_cards` are the cards the map shows: the deck focus and the group focus are already applied.
+def navigation_options() -> list[dict[str, str]]:
+    """Modes available in the Navigation dialog."""
+    return [
+        {"label": "By card order", "value": "card_order"},
+        {"label": "Within constellation", "value": "constellation"},
+    ]
 
-    `state` supplies the runtime constellations (the first layout is built without it: empty list, Delete
-    disabled); `dialog` is "delete" while the Delete dialog is open. The dialog state is kept in a store inside this
-    panel, because the layout of the server has no store for it.
-    """
+
+def navigation_readout(card: Flashcard | None = None) -> html.Div:
+    """Preview question and id; hidden when no card is being previewed."""
+    if card is None:
+        return html.Div(id="nav-preview", className="nav-preview nav-preview-hidden")
+    return html.Div(
+        [
+            html.Div("Keyboard preview", className="card-label"),
+            dcc.Markdown(card.question, className="nav-preview-question"),
+            html.Div(card.id, className="nav-preview-id"),
+        ],
+        id="nav-preview",
+        className="nav-preview",
+    )
+
+
+def connection_control(
+    card: Flashcard | None,
+    candidate_cards: list[Flashcard],
+    state=None,
+    dialog: str | None = None,
+    navigation=None,
+) -> html.Div:
+    """Connections panel, retaining its existing positional-compatible Delete flow."""
     constellations = state.constellations if state is not None else []
+    navigation = navigation if isinstance(navigation, dict) else {}
+    mode = navigation.get("mode", "card_order")
+    navigation_dialog = navigation.get("dialog") == "navigation"
+    message = navigation.get("message")
+    message_text = {
+        "unconnected": "Navigation with arrow keys within constellations toggled on.",
+        "hit_space": "Hit Space key to start navigation",
+        "no_candidate": "Try scrolling in a different direction.",
+    }.get(message, "")
+    preview_card = navigation.get("preview_card")
+    if navigation.get("preview_id") == (card.id if card else None):
+        preview_card = None
+    preview_id = navigation.get("preview_id")
     options = [
         {"label": other.question[:55], "value": other.id}
         for other in candidate_cards
@@ -284,6 +321,7 @@ def connection_control(card: Flashcard | None, candidate_cards: list[Flashcard],
                             html.Button("Connect", id="create-link", n_clicks=0, disabled=card is None, className="tool-button"),
                             html.Button("Disconnect", id="disconnect-link", n_clicks=0, disabled=card is None, className="tool-button"),
                             html.Button("Delete", id="delete-constellation", n_clicks=0, disabled=not constellations, className="tool-button"),
+                            html.Button("Navigation", id="navigation-open", n_clicks=0, className="tool-button"),
                         ],
                         className="connection-buttons",
                     ),
@@ -327,6 +365,37 @@ def connection_control(card: Flashcard | None, candidate_cards: list[Flashcard],
                     ),
                 ],
                 className="group-dialog" if dialog else "group-dialog group-dialog-hidden",
+            ),
+            html.Div(
+                [
+                    html.Div("Navigation", className="dialog-title"),
+                    dcc.Dropdown(
+                        id="navigation-select",
+                        className="closed-dropdown",
+                        options=navigation_options(),
+                        value=mode,
+                        clearable=False,
+                    ),
+                    html.Div(
+                        [
+                            html.Button("Confirm", id="navigation-dialog-submit", n_clicks=0, className="tool-button"),
+                            html.Button("Cancel", id="navigation-dialog-cancel", n_clicks=0, className="tool-button"),
+                        ],
+                        className="tool-row",
+                    ),
+                ],
+                className="group-dialog" if navigation_dialog else "group-dialog group-dialog-hidden",
+            ),
+            html.Div(message_text, id="nav-message", className="tool-status nav-message"),
+            navigation_readout(preview_card),
+            html.Div(
+                id="nav-config",
+                hidden=True,
+                **{
+                    "data-mode": mode,
+                    "data-preview": "1" if preview_id else "",
+                    "data-selected": "1" if card is not None else "",
+                },
             ),
             dcc.Store(id="constellation-dialog", data=dialog),
         ],

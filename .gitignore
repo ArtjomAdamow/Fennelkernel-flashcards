@@ -3,16 +3,11 @@ __pycache__/
 .venv/
 .vscode/
 .claude
-Python/
-
 
 data/
-book/
 archive/
 image/
 docs/
-plans/
-
 
 modules/
 tools/
