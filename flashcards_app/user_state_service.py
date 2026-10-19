@@ -6,19 +6,99 @@ It adds the one rule that needs the catalog: only decks that exist can be enable
 
 The containers it exposes are the core's own live objects (same object on every access), because
 panels, map, colors and callbacks read them directly and rely on in-place changes.
+
+Constellations (runtime only, never saved): the connected groups of visible cards, derived from the links.
+refresh_constellations(cards) derives them again for the cards the map shows; Connect, Disconnect and a reset
+refresh them for the cards of the last refresh. Delete (delete_constellation_links) is the one action that
+removes the links between all members; links to hidden cards stay; StateCore saves that change at once.
 """
 
-from typing import Optional
+from typing import Iterable, Optional, Sequence
 
 from .deck_catalog import JsonDeckCatalog
-from .models import CardGroup, CardLink, CardPosition, CardProgress, Flashcard
+from .models import CardGroup, CardLink, CardPosition, CardProgress, Constellation, Flashcard
 from .state_core import StateCore
+
+
+# phase 4: constellations (derive_components, reconcile_constellations and the constellation API below)
+def derive_components(visible_ids: Iterable[str], links: Iterable[CardLink]) -> list[list[str]]:
+    """Connected groups of at least two cards, over the links whose two ends are both visible.
+
+    Hidden cards and their links are ignored, never deleted. Every group is a sorted list of card ids.
+    """
+    visible = set(visible_ids)
+    adjacency: dict[str, set[str]] = {}
+    for link in links:
+        source, target = link.source_id, link.target_id
+        if source != target and source in visible and target in visible:
+            adjacency.setdefault(source, set()).add(target)
+            adjacency.setdefault(target, set()).add(source)
+
+    components: list[list[str]] = []
+    seen: set[str] = set()
+    for start in sorted(adjacency):
+        if start in seen:
+            continue
+        seen.add(start)
+        stack, members = [start], []
+        while stack:
+            current = stack.pop()
+            members.append(current)
+            for neighbour in adjacency[current]:
+                if neighbour not in seen:
+                    seen.add(neighbour)
+                    stack.append(neighbour)
+        components.append(sorted(members))
+    return components
+
+
+def reconcile_constellations(previous: Sequence[Constellation], components: Sequence[Sequence[str]]) -> list[Constellation]:
+    """Give the new groups their ids, keeping the previous ids where the groups continue.
+
+    * Every previous id follows the largest new group it shares cards with (a tie goes to the group whose card
+      ids sort first). A split therefore leaves the id with the largest branch.
+    * A new group that is followed by several ids (a merge) keeps the lowest; the others become free.
+    * Groups without an id (the smaller branches of a split, brand new groups) get the lowest free numbers,
+      the larger group first. Free numbers include the gaps of ids that disappeared.
+    The result is sorted by number.
+    """
+    groups = sorted((list(group) for group in components), key=lambda group: (-len(group), group))
+    claims: dict[int, list[int]] = {}
+    for old in previous:
+        old_members = set(old.members)
+        best_index, best_key = None, None
+        for index, group in enumerate(groups):
+            overlap = len(old_members.intersection(group))
+            if overlap == 0:
+                continue
+            key = (len(group), overlap)
+            if best_key is None or key > best_key:  # strict: the first group wins a tie
+                best_index, best_key = index, key
+        if best_index is not None:
+            claims.setdefault(best_index, []).append(int(old.const_id))
+
+    numbers = {index: min(ids) for index, ids in claims.items()}
+    used = set(numbers.values())
+    result = []
+    for index, group in enumerate(groups):
+        number = numbers.get(index)
+        if number is None:
+            number = 1
+            while number in used:
+                number += 1
+            used.add(number)
+        result.append(Constellation(const_id=str(number), members=group))
+    result.sort(key=lambda constellation: int(constellation.const_id))
+    return result
 
 
 class UserStateService:
     def __init__(self, core: StateCore, catalog: JsonDeckCatalog) -> None:
         self._core = core
         self._catalog = catalog
+        # phase 4: runtime only, never part of the state file. Ids may differ from session to session.
+        self._constellations: list[Constellation] = []
+        self._visible_ids: list[str] = []
 
     # --- live containers ---------------------------------------------------
 
@@ -87,6 +167,31 @@ class UserStateService:
     def deciding_group(self, card_id: str, focused_group: Optional[str] = None) -> Optional[CardGroup]:
         return self._core.deciding_group(card_id, focused_group)
 
+    # --- constellations (runtime only) -------------------------------------
+
+    @property
+    def constellations(self) -> list[Constellation]:
+        """The constellations of the last refresh (copies; reading never recalculates)."""
+        return [Constellation(item.const_id, item.name, list(item.members)) for item in self._constellations]
+
+    def refresh_constellations(self, visible_cards: Iterable[Flashcard]) -> list[Constellation]:
+        """Derive the constellations again for the cards the map shows (deck and group focus already applied)."""
+        self._derive([card.id for card in visible_cards])
+        return self.constellations
+
+    def delete_constellation_links(self, const_id: str) -> int:
+        """Delete: remove the stored links between the members of the constellation and save at once.
+
+        The members are the visible cards of the current runtime constellation; links to hidden cards stay.
+        Returns the number of links removed (0 for an unknown id: nothing is changed or written).
+        """
+        constellation = next((item for item in self._constellations if item.const_id == str(const_id)), None)
+        if constellation is None:
+            return 0
+        removed = self._core.delete_links_for_members(constellation.members)
+        self._derive(self._visible_ids)
+        return removed
+
     # --- mutations ---------------------------------------------------------
 
     def set_position(self, card_id: str, x: float, y: float, z: float) -> None:
@@ -112,9 +217,11 @@ class UserStateService:
 
     def create_link(self, source_id: str, target_id: str) -> None:
         self._core.create_link(source_id, target_id)
+        self._derive(self._visible_ids)
 
     def disconnect_link(self, source_id: str, target_id: str) -> None:
         self._core.disconnect_link(source_id, target_id)
+        self._derive(self._visible_ids)
 
     # --- lifecycle ---------------------------------------------------------
 
@@ -123,6 +230,14 @@ class UserStateService:
 
     def reset_all_state(self, seed: Optional[int] = None) -> None:
         self._core.reset_all_state(seed)
+        self._derive(self._visible_ids)
 
     def save(self) -> None:
         self._core.save()
+
+    # --- internals ---------------------------------------------------------
+
+    def _derive(self, visible_ids: list[str]) -> None:
+        self._visible_ids = list(visible_ids)
+        components = derive_components(self._visible_ids, self._core.links)
+        self._constellations = reconcile_constellations(self._constellations, components)

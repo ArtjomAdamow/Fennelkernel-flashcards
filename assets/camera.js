@@ -14,6 +14,16 @@
   let cameraWritePromise = Promise.resolve();
   let motionGeneration = 0;
 
+  // Constellation navigation (additive, transient, never persisted).
+  const gestureQuietMs = 200;
+  const stopTimeoutMs = 1000;
+  let viewGeneration = 0;
+  let pointerIsDown = false;
+  let lastGestureAt = -Infinity;
+  let navSent = false;
+  let invalidateTimer = null;
+  let cameraSource = "layout";
+
   function defaultCamera() {
     return {
       eye: { x: 1.25, y: 1.25, z: 1.25 },
@@ -169,6 +179,7 @@
   }
 
   function moveCamera(graph, selection) {
+    noteViewChange();
     const camera = selection.camera && selection.camera.eye && selection.camera.center
       && ["x", "y", "z"].every(function (axis) {
         return Number.isFinite(selection.camera.eye[axis]) && Number.isFinite(selection.camera.center[axis]);
@@ -240,8 +251,233 @@
     }
   }
 
-  function mapHasFocus(graph, event) {
-    return event.target === graph || graph.contains(event.target) || document.activeElement === graph;
+  // ---------------------------------------------------------------------------
+  // Constellation navigation (architecture.md section 12.2). Everything below is
+  // additive: the selection/orbit path above is not changed in meaning or lifecycle.
+  // ---------------------------------------------------------------------------
+
+  function nowMs() {
+    return typeof window !== "undefined" && window.performance && typeof window.performance.now === "function"
+      ? window.performance.now()
+      : Date.now();
+  }
+
+  // Every camera change that is not this script's own centering/orbit write counts.
+  function noteViewChange() {
+    viewGeneration += 1;
+  }
+
+  function plain(value) {
+    return value == null ? value : JSON.parse(JSON.stringify(value, function (key, item) {
+      return ArrayBuffer.isView(item) ? Array.from(item) : item;
+    }));
+  }
+
+  function numberList(value) {
+    return Array.isArray(value) || ArrayBuffer.isView(value) ? Array.from(value) : null;
+  }
+
+  // Min and max of the invisible AnchorBounds trace per axis, or null when it cannot be read.
+  function anchorExtents(graph) {
+    const trace = (graph.data || []).find(function (item) { return item && item.name === "AnchorBounds"; });
+    if (!trace) {
+      return null;
+    }
+    const columns = [trace.x, trace.y, trace.z].map(numberList);
+    if (columns.some(function (column) { return !column || !column.length || !column.every(Number.isFinite); })) {
+      return null;
+    }
+    return {
+      min: columns.map(function (column) { return Math.min.apply(null, column); }),
+      max: columns.map(function (column) { return Math.max.apply(null, column); }),
+    };
+  }
+
+  function readCamera(scene, internalScene) {
+    // Gate 2 (tranche 4): if graph._fullLayout.scene.camera lags behind a mouse rotation,
+    // constellationNav.setCameraSource("scene") reads the scene's own getter instead.
+    if (cameraSource === "scene" && internalScene && typeof internalScene.getCamera === "function") {
+      try {
+        return plain(internalScene.getCamera());
+      } catch (error) {
+        // fall through to the layout camera
+      }
+    }
+    return plain(scene && scene.camera);
+  }
+
+  // Separate from collectSelectionSnapshot: no point, no rectangles, no image.
+  function collectNavigationSnapshot(graph) {
+    const layout = graph && graph._fullLayout;
+    const scene = layout && layout.scene;
+    if (!scene) {
+      return null;
+    }
+    const internalScene = scene._scene;
+    const meta = layout.meta;
+    return {
+      camera: readCamera(scene, internalScene),
+      dataScale: plain(internalScene && internalScene.dataScale),
+      axisRanges: {
+        x: plain(scene.xaxis && scene.xaxis.range),
+        y: plain(scene.yaxis && scene.yaxis.range),
+        z: plain(scene.zaxis && scene.zaxis.range),
+      },
+      sceneDomain: plain(scene.domain),
+      cameraMatrix: plain(internalScene && internalScene.camera && internalScene.camera.matrix),
+      aspectmode: scene.aspectmode == null ? null : scene.aspectmode,
+      anchor: anchorExtents(graph),
+      generation: viewGeneration,
+      map_token: meta && meta.map_token != null ? meta.map_token : null,
+    };
+  }
+
+  function sendInvalidate() {
+    invalidateTimer = null;
+    if (!navSent) {
+      return;
+    }
+    const keys = typeof window !== "undefined" ? window.constellationKeys : null;
+    if (!keys || typeof keys.sendCommand !== "function") {
+      return;
+    }
+    navSent = false;
+    keys.sendCommand({ cmd: "invalidate", generation: viewGeneration });
+  }
+
+  // 200 ms debounce: the invalidate goes out once the gesture has been quiet, and only if a view was sent.
+  function scheduleInvalidate() {
+    if (invalidateTimer !== null) {
+      window.clearTimeout(invalidateTimer);
+    }
+    invalidateTimer = window.setTimeout(sendInvalidate, gestureQuietMs);
+  }
+
+  function noteGesture() {
+    noteViewChange();
+    lastGestureAt = nowMs();
+    scheduleInvalidate();
+  }
+
+  function onPointerEnd() {
+    if (!pointerIsDown) {
+      return;
+    }
+    pointerIsDown = false;
+    lastGestureAt = nowMs();
+    scheduleInvalidate();
+  }
+
+  // A camera relayout this script did not write: no write pending or in flight and no motion.
+  function isForeignCameraRelayout(eventData) {
+    if (!eventData || typeof eventData !== "object") {
+      return false;
+    }
+    const touchesCamera = Object.keys(eventData).some(function (key) {
+      return key.indexOf("scene.camera") === 0;
+    });
+    return touchesCamera && !cameraWriteInFlight && pendingCameraWrite === null && !motionActive;
+  }
+
+  function attachNavigation(graph) {
+    ["pointerdown", "wheel", "touchstart", "dblclick"].forEach(function (eventName) {
+      graph.addEventListener(eventName, function () {
+        if (eventName === "pointerdown") {
+          pointerIsDown = true;
+        }
+        noteGesture();
+      }, { passive: true });
+    });
+    ["pointerup", "pointercancel", "blur"].forEach(function (eventName) {
+      window.addEventListener(eventName, onPointerEnd, true);
+    });
+    graph.on("plotly_relayout", function (eventData) {
+      if (isForeignCameraRelayout(eventData)) {
+        noteGesture();
+      }
+    });
+  }
+
+  function viewIsQuiet() {
+    return !motionActive
+      && pendingCameraWrite === null
+      && !cameraWriteInFlight
+      && !pointerIsDown
+      && nowMs() - lastGestureAt >= gestureQuietMs;
+  }
+
+  // Resolves true after the view has been quiet for one more animation frame, false on timeout.
+  function waitForStoppedView(timeoutMs) {
+    return new Promise(function (resolve) {
+      let finished = false;
+      let quietSeen = false;
+      const timer = window.setTimeout(function () {
+        finish(false);
+      }, timeoutMs);
+
+      function finish(result) {
+        if (finished) {
+          return;
+        }
+        finished = true;
+        window.clearTimeout(timer);
+        resolve(result);
+      }
+
+      function check() {
+        if (finished) {
+          return;
+        }
+        if (viewIsQuiet()) {
+          if (quietSeen) {
+            finish(true);
+            return;
+          }
+          quietSeen = true;
+        } else {
+          quietSeen = false;
+        }
+        window.requestAnimationFrame(check);
+      }
+
+      window.requestAnimationFrame(check);
+    });
+  }
+
+  // Called by Space from keyboard.js. Stop centering/orbit, wait until pending Plotly writes
+  // and any manual gesture have settled, then capture the view. Arrows never call this path.
+  function captureView() {
+    const graph = attachedGraph;
+    if (!graph) {
+      return Promise.resolve({ ignored: true });
+    }
+    if (pointerIsDown) {
+      return Promise.resolve({ ignored: true });
+    }
+    if (motionActive) {
+      cancelMotion(graph);
+    }
+    const startGeneration = viewGeneration;
+    return waitForStoppedView(stopTimeoutMs).then(function (stopped) {
+      if (!stopped || viewGeneration !== startGeneration) {
+        return { ignored: true };
+      }
+      const view = collectNavigationSnapshot(graph);
+      if (!view) {
+        return { ignored: true };
+      }
+      navSent = true;
+      return { view: view };
+    });
+  }
+
+  const constellationNav = {
+    captureView: captureView,
+    getGeneration: function () { return viewGeneration; },
+    setCameraSource: function (source) { cameraSource = source === "scene" ? "scene" : "layout"; },
+  };
+  if (typeof window !== "undefined") {
+    window.constellationNav = constellationNav;
   }
 
   function attach(graph) {
@@ -262,11 +498,7 @@
       }, { passive: true });
     });
 
-    graph.addEventListener("keydown", function (event) {
-      if (mapHasFocus(graph, event)) {
-        cancelMotion(graph);
-      }
-    });
+    attachNavigation(graph);
 
     window.setInterval(function () {
       onFigureUpdated(graph);
@@ -287,7 +519,20 @@
     return false;
   }
 
-  const observer = new MutationObserver(watchForGraph);
-  observer.observe(document.body, { childList: true, subtree: true });
-  watchForGraph();
+  if (typeof document !== "undefined" && typeof MutationObserver !== "undefined") {
+    const observer = new MutationObserver(watchForGraph);
+    observer.observe(document.body, { childList: true, subtree: true });
+    watchForGraph();
+  }
+
+  if (typeof module !== "undefined" && module.exports) {
+    module.exports = {
+      attach: attach,
+      collectSelectionSnapshot: collectSelectionSnapshot,
+      collectNavigationSnapshot: collectNavigationSnapshot,
+      constellationNav: constellationNav,
+      moveCamera: moveCamera,
+      onFigureUpdated: onFigureUpdated,
+    };
+  }
 })();

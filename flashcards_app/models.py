@@ -52,3 +52,19 @@ class CardGroup:
 class CardLink:
     source_id: str
     target_id: str
+
+@dataclass
+class Constellation:
+    # phase 4: constellations. Runtime-only: derived from the links between visible cards (see UserStateService.refresh_constellations).
+    # Never part of RawState or the state file; ids may be reassigned between sessions.
+    # const_id: numeric string ("1", "2", ...), also the value of the delete dropdown.
+    const_id: str
+    # Visible name; defaults to "constellation <const_id>"
+    name: str = ""
+    # Member card ids (comb_ids), at least two connected cards
+    members: List[str] = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        self.const_id = str(self.const_id)
+        if not self.name:
+            self.name = f"constellation {self.const_id}"
