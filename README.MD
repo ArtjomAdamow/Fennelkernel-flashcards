@@ -19,7 +19,7 @@ Open the **local URL** printed by Dash.
 
 ## Quick start:
 
-1. Flashcards content is loaded in `data/cards.json`. Only Version 2 data is supported. **Important: ask for permission for content, it may not be shared in public.**
+1. Flashcards content is loaded in `data/cards.json`. Only Version 2 data is supported. <font color= "#bf9a67">**Important: ask for permission for content, it may not be shared in public.**</font> 
 
 2. Use `"Add"` button in the DECK section to load flashcards. Select `"All"` or `"Focus"` to show only a specific deck. Select your first flashcard-dot on the 3D-map. Click on the question in the text box to flip to the answer.
 
