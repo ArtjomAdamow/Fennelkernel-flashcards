@@ -197,12 +197,3 @@ h1 { margin: 2px 0 0; font-size: clamp(1.8rem, 4vw, 3.4rem); line-height: 0.98; 
   .portrait .workspace { grid-template-areas: 'map' 'window-b' 'window-a'; }
   .window-b, .portrait .window-b { grid-template-columns: 1fr; }
 }
-
-/* Tranche 3: constellation navigation preview and status. */
-.nav-preview { margin-top: 0.65rem; padding: 0.7rem 0.85rem; border-left: 2px solid #8bd3dd; background: rgba(139, 211, 221, 0.08); }
-.nav-preview-hidden { display: none; }
-.nav-preview-question { margin: 0.35rem 0; color: #f7f2e8; }
-.nav-preview-id { color: #9fb3c8; font-size: 0.75rem; }
-.nav-message:empty { display: none; }
-.nav-message { color: #f5b942; }
-#nav-config[hidden] { display: none !important; }

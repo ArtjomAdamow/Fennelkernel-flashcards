@@ -4,6 +4,8 @@ from dash import html
 from flashcards_app.models import Flashcard
 from flashcards_app.visualization.colors import group_color, progress_color
 
+NAV_DIM_OPACITY = 0.3
+
 
 # phase 1: positions are addressed by their comb_id (was card_id)
 def make_figure(
@@ -14,6 +16,7 @@ def make_figure(
     focused_group: str | None = None,
     *,
     preview_id: str | None = None,
+    scrolled_id: str | None = None,
     nav_members: set[str] | list[str] | tuple[str, ...] | None = None,
     map_token: str | None = None,
 ) -> go.Figure:
@@ -71,6 +74,23 @@ def make_figure(
             )
         )
 
+    # A separate overlay emphasizes only the currently scrolled direct link.
+    if preview_id and scrolled_id and preview_id in position_by_id and scrolled_id in position_by_id:
+        origin = position_by_id[preview_id]
+        target = position_by_id[scrolled_id]
+        figure.add_trace(
+            go.Scatter3d(
+                x=[origin.x, target.x, None],
+                y=[origin.y, target.y, None],
+                z=[origin.z, target.z, None],
+                mode="lines",
+                line={"color": "#ffffff", "width": 7},
+                hoverinfo="skip",
+                showlegend=False,
+                name="Navigation link",
+            )
+        )
+
     def add_regular_traces(regular_points, *, dimmed: bool = False) -> None:
         if not regular_points:
             return
@@ -83,8 +103,8 @@ def make_figure(
             "color": [group_color(point.comb_id, state, focused_group) for point in regular_points],
         }
         if dimmed:
-            progress_marker["opacity"] = 0.5
-            card_marker["opacity"] = 0.5
+            progress_marker["opacity"] = NAV_DIM_OPACITY
+            card_marker["opacity"] = NAV_DIM_OPACITY
         suffix = " (dimmed)" if dimmed else ""
         figure.add_trace(
             go.Scatter3d(
@@ -147,7 +167,7 @@ def make_figure(
             )
         )
 
-    if preview_id and preview_id != selected_id and preview_id in position_by_id:
+    if preview_id and preview_id in position_by_id:
         preview = position_by_id[preview_id]
         figure.add_trace(
             go.Scatter3d(

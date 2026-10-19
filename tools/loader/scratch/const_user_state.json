@@ -13470,7 +13470,7 @@
     },
     {
       "comb_id": "118001",
-      "read": false,
+      "read": true,
       "difficulty": 1
     },
     {
@@ -13480,7 +13480,7 @@
     },
     {
       "comb_id": "118003",
-      "read": false,
+      "read": true,
       "difficulty": 1
     },
     {
@@ -13500,12 +13500,12 @@
     },
     {
       "comb_id": "118007",
-      "read": false,
+      "read": true,
       "difficulty": 1
     },
     {
       "comb_id": "118008",
-      "read": false,
+      "read": true,
       "difficulty": 1
     },
     {
@@ -13550,7 +13550,7 @@
     },
     {
       "comb_id": "118017",
-      "read": false,
+      "read": true,
       "difficulty": 1
     },
     {
@@ -21737,6 +21737,16 @@
         "118017"
       ],
       "rank": 2
+    },
+    {
+      "id": "group-3",
+      "name": "j",
+      "color": "#4252f5",
+      "card_ids": [
+        "118021",
+        "118029"
+      ],
+      "rank": 3
     }
   ],
   "links": [
@@ -21755,6 +21765,22 @@
     {
       "source_id": "118008",
       "target_id": "318037"
+    },
+    {
+      "source_id": "318037",
+      "target_id": "118001"
+    },
+    {
+      "source_id": "118001",
+      "target_id": "118007"
+    },
+    {
+      "source_id": "118007",
+      "target_id": "118021"
+    },
+    {
+      "source_id": "118021",
+      "target_id": "118029"
     }
   ],
   "decks": [

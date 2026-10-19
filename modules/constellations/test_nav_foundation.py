@@ -160,8 +160,8 @@ def test_map_dims_nonmembers_and_preserves_member_selected_anchor_and_links(map_
     figure = changed.make_figure(cards, "a", state=state, nav_members={"a", "b"})
     traces = {trace.name: trace for trace in figure.data}
 
-    assert traces["Cards (dimmed)"].marker.opacity == 0.5
-    assert traces["Card progress (dimmed)"].marker.opacity == 0.5
+    assert traces["Cards (dimmed)"].marker.opacity == 0.3
+    assert traces["Card progress (dimmed)"].marker.opacity == 0.3
     assert list(traces["Cards (dimmed)"].customdata) == ["c"]
     assert "opacity" not in traces["Cards"].marker.to_plotly_json()
     assert "opacity" not in traces["Card progress"].marker.to_plotly_json()
@@ -174,18 +174,27 @@ def test_map_dims_nonmembers_and_preserves_member_selected_anchor_and_links(map_
     assert not any(trace.name.endswith("(dimmed)") for trace in all_members.data)
 
 
-def test_navigation_preview_cross_is_visible_only_for_visible_nonselected_card(map_modules):
+def test_navigation_preview_cross_is_visible_for_visible_card_including_selected(map_modules):
     changed, _ = map_modules
     cards, state = _map_state()
+    nav_members = {"a", "b"}
 
-    previewed = changed.make_figure(cards, "a", state=state, preview_id="b", nav_members={"a", "b"})
+    previewed = changed.make_figure(cards, "a", state=state, preview_id="b", nav_members=nav_members)
     cross = next(trace for trace in previewed.data if trace.name == "Navigation preview")
     assert (list(cross.x), list(cross.y), list(cross.z)) == ([-0.2], [0.4], [0.1])
     assert cross.marker.symbol == "cross"
     assert cross.hoverinfo == "skip"
 
-    for preview_id in (None, "a", "not-visible"):
-        figure = changed.make_figure(cards, "a", state=state, preview_id=preview_id, nav_members={"a", "b"})
+    # Navigation activation also marks the currently selected card. Only absent
+    # and non-visible preview IDs should omit the cross.
+    selected_preview = changed.make_figure(cards, "a", state=state, preview_id="a", nav_members=nav_members)
+    selected_cross = next(trace for trace in selected_preview.data if trace.name == "Navigation preview")
+    assert (list(selected_cross.x), list(selected_cross.y), list(selected_cross.z)) == ([0.1], [0.2], [0.3])
+    assert selected_cross.marker.symbol == "cross"
+    assert selected_cross.hoverinfo == "skip"
+
+    for preview_id in (None, "not-visible"):
+        figure = changed.make_figure(cards, "a", state=state, preview_id=preview_id, nav_members=nav_members)
         assert not any(trace.name == "Navigation preview" for trace in figure.data)
 
 

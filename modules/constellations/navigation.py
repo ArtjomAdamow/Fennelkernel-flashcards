@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from typing import Any, Iterable, Mapping, Sequence
 
 EPS_PRIMARY = 1e-9
+EPS_PLANE = 1e-9
 TOL_ANGLE = 1e-9
 TOL_DIST = 1e-9
 TOL_DEPTH = 1e-9
@@ -296,6 +297,21 @@ def direction_components(
     return primary, perpendicular, h, v, depth
 
 
+def screen_components(
+    basis: Basis | Mapping[str, Any], delta: Sequence[float]
+) -> tuple[float, float, float]:
+    """Project a camera-space delta to screen-right, screen-up, and depth.
+
+    ``delta`` must already be scaled componentwise into the same coordinate
+    frame as the camera basis (use :func:`scaled_delta`).
+    """
+    vector = _vector(delta)
+    if vector is None:
+        raise ValueError("delta must be a finite 3-vector")
+    forward, right, up = _basis_vectors(basis)
+    return _dot(vector, right), _dot(vector, up), _dot(vector, forward)
+
+
 def _position(value: Any) -> tuple[float, float, float] | None:
     """Read an xyz coordinate from a sequence, mapping, or position-like object."""
     if isinstance(value, Mapping):
@@ -330,6 +346,153 @@ def _tolerance_clusters(items: list[Any], value, tolerance: float) -> list[list[
 def _shuffle(cluster: list[Any], rng: Any) -> None:
     if len(cluster) > 1:
         rng.shuffle(cluster)
+
+
+def rank_ring(
+    origin: str,
+    previous: str | None,
+    positions: Mapping[str, Any],
+    neighbors: Iterable[str],
+    view: Mapping[str, Any],
+    rng: Any = None,
+) -> list[str]:
+    """Rank direct visible neighbors as a stable, camera-relative ring.
+
+    The first rank is the closest neighbor in camera-plane distance. A prior
+    navigation card, when it is still a candidate, takes rank 1 on subsequent
+    rings. The remaining candidates proceed clockwise from rank 1. Only
+    tolerance-equivalent final ties are shuffled, using ``rng`` when supplied.
+
+    This function does not own the navigation context: callers cache its return
+    value under ``(origin, previous)`` so a tie is shuffled only on the first
+    build of that ring in a context.
+    """
+    if not isinstance(positions, Mapping) or not isinstance(view, Mapping):
+        return []
+    basis = camera_basis(view)
+    scale = _vector(view.get("dataScale"))
+    origin_position = _position(positions.get(origin))
+    if basis is None or scale is None or any(component == 0 for component in scale) or origin_position is None:
+        return []
+    if rng is None:
+        rng = random
+
+    scored: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    try:
+        iterator = iter(neighbors)
+    except TypeError:
+        return []
+    for member in iterator:
+        if not isinstance(member, str) or member == origin or member in seen:
+            continue
+        seen.add(member)
+        if member not in positions:
+            continue
+        candidate_position = _position(positions[member])
+        if candidate_position is None:
+            continue
+        delta = scaled_delta(candidate_position, origin_position, scale)
+        h, v, depth = screen_components(basis, delta)
+        plane = math.hypot(h, v)
+        theta = math.atan2(v, h) if plane > EPS_PLANE else None
+        if not all(math.isfinite(value) for value in (plane, depth)) or (theta is not None and not math.isfinite(theta)):
+            continue
+        scored.append({"id": member, "plane": plane, "theta": theta, "depth": abs(depth)})
+
+    if not scored:
+        return []
+
+    # Prefer the smallest plane distance. Adjacent tolerance clusters preserve
+    # the specified hierarchical tie semantics without a non-transitive sort.
+    previous_is_candidate = previous is not None and any(item["id"] == previous for item in scored)
+    if previous_is_candidate:
+        first_id = previous
+    else:
+        closest_plane_group = _tolerance_clusters(scored, lambda item: item["plane"], TOL_DIST)[0]
+        closest_depth_group = _tolerance_clusters(closest_plane_group, lambda item: item["depth"], TOL_DEPTH)[0]
+        closest_tied_ids = [item["id"] for item in closest_depth_group]
+        _shuffle(closest_tied_ids, rng)
+        first_id = closest_tied_ids[0]
+
+    by_id = {item["id"]: item for item in scored}
+    first = by_id[first_id]
+    reference_angle = first["theta"] if first["theta"] is not None else math.pi / 2
+    others: list[dict[str, Any]] = []
+    for item in scored:
+        if item["id"] == first_id:
+            continue
+        theta = item["theta"]
+        sweep = 0.0 if theta is None else (reference_angle - theta) % (2 * math.pi)
+        if 2 * math.pi - sweep <= TOL_ANGLE:
+            sweep = 0.0
+        item["sweep"] = sweep
+        others.append(item)
+
+    ranked_others: list[str] = []
+    for angle_group in _tolerance_clusters(others, lambda item: item["sweep"], TOL_ANGLE):
+        plane_groups = _tolerance_clusters(angle_group, lambda item: item["plane"], TOL_DIST)
+        for plane_group in plane_groups:
+            depth_groups = _tolerance_clusters(plane_group, lambda item: item["depth"], TOL_DEPTH)
+            for depth_group in depth_groups:
+                tied_ids = [item["id"] for item in depth_group]
+                _shuffle(tied_ids, rng)
+                ranked_others.extend(tied_ids)
+    return [first_id, *ranked_others]
+
+
+def step_scroll(position: int | None, direction: str, count: int) -> int | None:
+    """Advance a one-based ring position, wrapping at either end.
+
+    ``None`` starts at rank 1 for right and at the last rank for left. Invalid
+    directions, counts, or positions return ``None`` rather than raising.
+    """
+    if direction not in ("left", "right") or isinstance(count, bool) or not isinstance(count, int) or count <= 0:
+        return None
+    if position is None:
+        return 1 if direction == "right" else count
+    if isinstance(position, bool) or not isinstance(position, int) or not 1 <= position <= count:
+        return None
+    if count == 1:
+        return 1
+    if direction == "right":
+        return position % count + 1
+    return count if position == 1 else position - 1
+
+
+def _link_endpoints(link: Any) -> tuple[Any, Any] | None:
+    """Extract two endpoint IDs from supported link records or pairs."""
+    if isinstance(link, Mapping):
+        for left, right in (("source_id", "target_id"), ("source", "target"), ("a", "b")):
+            if left in link and right in link:
+                return link[left], link[right]
+        return None
+    if hasattr(link, "source_id") and hasattr(link, "target_id"):
+        return getattr(link, "source_id"), getattr(link, "target_id")
+    if hasattr(link, "source") and hasattr(link, "target"):
+        return getattr(link, "source"), getattr(link, "target")
+    if isinstance(link, (list, tuple)) and len(link) == 2:
+        return link[0], link[1]
+    return None
+
+
+def links_token(visible_links: Any) -> str:
+    """Hash sorted, direction-independent endpoint pairs for visible links."""
+    if visible_links is None:
+        source = ()
+    elif isinstance(visible_links, Mapping):
+        source = (visible_links,) if _link_endpoints(visible_links) is not None else visible_links.values()
+    else:
+        source = visible_links
+    canonical: list[tuple[str, str]] = []
+    for link in source:
+        endpoints = _link_endpoints(link)
+        if endpoints is None:
+            raise ValueError("visible links must contain endpoint pairs")
+        left, right = (str(endpoints[0]), str(endpoints[1]))
+        canonical.append((left, right) if left <= right else (right, left))
+    encoded = json.dumps(sorted(canonical), ensure_ascii=False, separators=(",", ":"), allow_nan=False).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
 
 
 def rank_candidates(

@@ -299,9 +299,12 @@ def connection_control(
     message = navigation.get("message")
     message_text = {
         "unconnected": "Navigation with arrow keys within constellations toggled on.",
+        "hit_space": "Hit Space key to start navigation",
         "no_candidate": "Try scrolling in a different direction.",
     }.get(message, "")
     preview_card = navigation.get("preview_card")
+    if navigation.get("preview_id") == (card.id if card else None):
+        preview_card = None
     preview_id = navigation.get("preview_id")
     options = [
         {"label": other.question[:55], "value": other.id}

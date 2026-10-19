@@ -140,7 +140,8 @@ def register_callbacks(app, state, none_deck="None"):
         cards = visible_cards(deck, focused_group)
         trigger = ctx.triggered_id
         nav_state = dict(nav_state) if isinstance(nav_state, dict) else {
-            "mode": "card_order", "dialog": None, "preview_id": None, "message": None,
+            "mode": "card_order", "dialog": None, "preview_id": None, "previous_id": None,
+            "scroll_pos": None, "scrolled_id": None, "message": None,
             "message_selected_id": None, "context": None,
         }
         mode = nav_state.get("mode", "card_order")
@@ -157,7 +158,10 @@ def register_callbacks(app, state, none_deck="None"):
         mode_changed = False
         navigation_only_trigger = trigger in {
             "navigation-open", "navigation-dialog-submit", "navigation-dialog-cancel"
-        } or (trigger == "keyboard-nav" and mode == "constellation" and command != "space")
+        } or (
+            trigger == "keyboard-nav" and mode == "constellation"
+            and not (command == "enter" and payload is None)
+        )
         reset_dialog = False
         next_group_dialog = group_dialog
         next_focused_group = focused_group
@@ -217,11 +221,11 @@ def register_callbacks(app, state, none_deck="None"):
             selected_id = chosen.id if chosen else None
             revealed = False
         elif trigger == "keyboard-nav" and keyboard_nav:
-            if command == "space" and selected_id:
+            if command == "enter" and payload is None and selected_id:
                 revealed = not revealed
                 if revealed:
                     state.mark_read(selected_id)
-            elif mode == "card_order" and command in {"next", "right", "down", "previous", "prev", "left", "up"}:
+            elif mode == "card_order" and payload is None and command in {"next", "right", "down", "previous", "prev", "left", "up"}:
                 direction = 1 if command in {"next", "right", "down"} else -1
                 adjacent = cards_service.adjacent_card(cards, selected_id, direction)
                 selected_id = adjacent.id if adjacent else None
@@ -295,159 +299,219 @@ def register_callbacks(app, state, none_deck="None"):
             mode_changed = new_mode != mode
             mode = new_mode
             nav_state.update({"mode": mode, "dialog": None, "context": None,
-                              "preview_id": None, "message": None, "message_selected_id": None})
+                              "preview_id": None, "previous_id": None, "scroll_pos": None,
+                              "scrolled_id": None, "message": None, "message_selected_id": None})
 
         cards = visible_cards(next_deck, next_focused_group)
         if selected_id not in {card.id for card in cards}:
             selected_id = None
             revealed = False
-        # Runtime-only constellation refresh is permitted on navigation-only triggers.
+        # Constellations are runtime-derived from current visible cards and links.
         state.refresh_constellations(cards)
 
-        positions = [position for position in state.positions if position.comb_id in {card.id for card in cards}]
+        visible_ids = {card.id for card in cards}
+        positions = [position for position in state.positions if position.comb_id in visible_ids]
+        position_by_id = {
+            position.comb_id: (position.x, position.y, position.z) for position in positions
+        }
         current_token = navigation.map_token(positions)
+        visible_links = [
+            link for link in state.links
+            if link.source_id in visible_ids and link.target_id in visible_ids
+        ]
+        current_links_token = navigation.links_token(visible_links)
         selected_constellation = next(
             (item for item in state.constellations if selected_id and selected_id in item.members), None
         )
         context = nav_state.get("context") if isinstance(nav_state.get("context"), dict) else None
         preview_id = nav_state.get("preview_id")
+        previous_id = nav_state.get("previous_id")
+        scroll_pos = nav_state.get("scroll_pos")
+        scrolled_id = nav_state.get("scrolled_id")
         message = nav_state.get("message")
+        message_selected_id = nav_state.get("message_selected_id")
 
-        # Clear cached navigation whenever its selection, mode, members, token or source data changes.
         changed_data_triggers = {
             "drag-x", "drag-y", "drag-z", "save-position", "reset-confirm", "create-link",
             "disconnect-link", "constellation-dialog-submit", "deck-filter", "deck-dialog-submit",
-            "deck-dialog-cancel", "focus-group", "all-groups", "group-dialog-submit", "group-dialog-cancel",
+            "deck-dialog-cancel", "focus-group", "all-groups", "group-dialog-submit",
+            "group-dialog-cancel", "all-decks", "reset-confirm",
         }
-        clear_context = False if empty_nav_reset else (mode_changed or selected_id != selected_id_at_start)
+        clear_context = not empty_nav_reset and (mode_changed or selected_id != selected_id_at_start)
         if context and not empty_nav_reset:
-            context_members = context.get("members", [])
             current_members = sorted(selected_constellation.members) if selected_constellation else []
             current_const_id = selected_constellation.const_id if selected_constellation else None
-            view = context.get("view", {})
+            context_view = context.get("view", {})
             clear_context = clear_context or (
-                context_members != current_members
+                context.get("members") != current_members
                 or context.get("const_id") != current_const_id
-                or view.get("map_token") != current_token
+                or context_view.get("map_token") != current_token
+                or context.get("links_token") != current_links_token
                 or trigger in changed_data_triggers
             )
         if clear_context:
             context = None
-            preview_id = None
-            if message == "no_candidate":
-                message = None
+            preview_id = previous_id = scroll_pos = scrolled_id = None
         if mode != "constellation":
             context = None
-            preview_id = None
-            message = None
-        if not empty_nav_reset and message == "unconnected" and (
-            mode != "constellation" or selected_id != nav_state.get("message_selected_id")
-            or selected_constellation is not None
-        ):
-            message = None
+            preview_id = previous_id = scroll_pos = scrolled_id = None
+            message = message_selected_id = None
+
+        if not empty_nav_reset:
+            if selected_id != nav_state.get("message_selected_id"):
+                message = message_selected_id = None
+            if message == "unconnected" and selected_constellation is not None:
+                message = message_selected_id = None
+            if message == "hit_space" and selected_constellation is None:
+                message = message_selected_id = None
 
         if trigger == "keyboard-nav" and mode == "constellation" and not empty_nav_reset:
             if command == "invalidate" and payload is not None:
                 generation = payload.get("generation")
-                view = context.get("view", {}) if context else {}
-                if context and isinstance(generation, (int, float)) and generation > view.get("generation", -1):
+                context_view = context.get("view", {}) if context else {}
+                current_generation = context_view.get("generation")
+                if (context and isinstance(generation, int) and not isinstance(generation, bool)
+                        and isinstance(current_generation, int) and generation > current_generation):
                     context = None
-                    preview_id = None
-                    if message == "no_candidate":
-                        message = None
-            elif command == "enter" and payload is not None:
-                generation = payload.get("generation")
-                view = context.get("view", {}) if context else {}
-                if context and generation == view.get("generation"):
-                    if preview_id and preview_id != selected_id and selected_constellation and preview_id in selected_constellation.members:
-                        selected_id = preview_id
-                        revealed = False
-                        context = None
-                        preview_id = None
-                        message = None
-                elif context and isinstance(generation, (int, float)) and generation > view.get("generation", -1):
-                    # A newer Enter means the browser view has moved on; discard this preview.
-                    context = None
-                    preview_id = None
-                    message = None
-                # Older generations and Enter without a matching context are stale no-ops.
-            elif command in {"right", "left", "up", "down"} and payload is not None:
+                    preview_id = previous_id = scroll_pos = scrolled_id = None
+            elif command == "space" and payload is not None:
                 view = payload.get("view")
                 valid, checks = navigation.validate_view(view)
-                if not valid:
+                generation = view.get("generation") if isinstance(view, dict) else None
+                if not valid or not isinstance(generation, int) or isinstance(generation, bool):
                     print("Ignoring keyboard navigation command with invalid camera view", checks)
                 elif view.get("map_token") != current_token:
-                    # Stale rendered map: ignore this command and refresh the figure. Existing
-                    # context invalidation above independently compares its token to current state.
+                    # The rendered map is stale; refresh it without accepting the key.
                     pass
                 elif selected_constellation is None:
                     context = None
-                    preview_id = None
+                    preview_id = previous_id = scroll_pos = scrolled_id = None
                     message = "unconnected"
-                    nav_state["message_selected_id"] = selected_id
+                    message_selected_id = selected_id
                 else:
                     members = sorted(selected_constellation.members)
-                    old_generation = context.get("view", {}).get("generation") if context else None
-                    incoming_generation = view.get("generation")
-                    stale_generation = (
-                        context is not None
-                        and isinstance(old_generation, (int, float))
-                        and isinstance(incoming_generation, (int, float))
-                        and incoming_generation < old_generation
-                    )
-                    reusable = bool(context) and (
-                        old_generation == incoming_generation
-                        and context.get("view", {}).get("map_token") == view.get("map_token")
-                        and context.get("members") == members
-                        and context.get("const_id") == selected_constellation.const_id
-                        and context.get("selected_id") == selected_id
-                    )
-                    if stale_generation:
-                        # A late command from an earlier settled camera cannot replace a newer context.
+                    old_view = context.get("view", {}) if context else {}
+                    old_generation = old_view.get("generation")
+                    if (context and isinstance(old_generation, int) and generation < old_generation):
+                        # Ignore a late Space captured against an earlier camera view.
                         pass
-                    elif not reusable:
-                        context = {
-                            "const_id": selected_constellation.const_id,
-                            "members": members,
-                            "positions": {
-                                member: [state.position_by_id[member].x, state.position_by_id[member].y,
-                                         state.position_by_id[member].z]
-                                for member in members if member in state.position_by_id
-                            },
-                            "selected_id": selected_id,
-                            "view": view,
-                            "orders": [], "predefined": [], "history": [],
-                        }
-                        preview_id = None
-                    if not stale_generation:
-                        origin = preview_id or selected_id
-                        target, context = navigation.next_preview(
-                            context, origin, command, context.get("positions", {}), random
+                    else:
+                        current_const_id = selected_constellation.const_id
+                        reusable = bool(context) and (
+                            old_generation == generation
+                            and old_view.get("map_token") == view.get("map_token")
+                            and context.get("members") == members
+                            and context.get("const_id") == current_const_id
+                            and context.get("links_token") == current_links_token
+                            and context.get("selected_id") == selected_id
                         )
-                        if target is None:
-                            message = "no_candidate"
+                        if not reusable:
+                            adjacency = {member: set() for member in members}
+                            for link in visible_links:
+                                left, right = link.source_id, link.target_id
+                                if left in adjacency and right in adjacency and left != right:
+                                    adjacency[left].add(right)
+                                    adjacency[right].add(left)
+                            context = {
+                                "const_id": current_const_id,
+                                "members": members,
+                                "positions": {
+                                    member: list(position_by_id[member])
+                                    for member in members if member in position_by_id
+                                },
+                                "adjacency": {member: sorted(adjacency[member]) for member in members},
+                                "links_token": current_links_token,
+                                "selected_id": selected_id,
+                                "view": view,
+                                "rings": [],
+                            }
+                            preview_id = selected_id
+                            previous_id = scroll_pos = scrolled_id = None
+                            message = message_selected_id = None
+                        elif scrolled_id is not None:
+                            previous_id = preview_id
+                            preview_id = scrolled_id
+                            scroll_pos = scrolled_id = None
+                            message = message_selected_id = None
                         else:
-                            preview_id = None if target == selected_id else target
-                            message = None
-            # The empty reset, Space, bare arrows and unparsable values are no-op here.
+                            # Space with no highlighted connection selects the current navigated card.
+                            selection = cards_service.select_from_click(
+                                {"points": [{"customdata": preview_id}]}, None
+                            )
+                            if selection:
+                                selected_id = selection
+                            revealed = False
+                            context = None
+                            preview_id = previous_id = scroll_pos = scrolled_id = None
+                            message = message_selected_id = None
+                            navigation_only_trigger = False
+            elif command in {"left", "right", "up", "down"} and payload is not None:
+                generation = payload.get("generation")
+                if not isinstance(generation, int) or isinstance(generation, bool):
+                    pass
+                elif selected_constellation is None:
+                    context = None
+                    preview_id = previous_id = scroll_pos = scrolled_id = None
+                    message = "unconnected"
+                    message_selected_id = selected_id
+                else:
+                    context_view = context.get("view", {}) if context else {}
+                    context_generation = context_view.get("generation")
+                    if (context and isinstance(context_generation, int) and generation < context_generation):
+                        # A delayed key from an earlier camera state is harmless.
+                        pass
+                    elif (context is None or generation > context_generation):
+                        context = None
+                        preview_id = previous_id = scroll_pos = scrolled_id = None
+                        message = "hit_space"
+                        message_selected_id = selected_id
+                    elif command in {"left", "right"}:
+                        origin = preview_id
+                        if origin is not None:
+                            ring_entry = next((entry for entry in context.get("rings", [])
+                                               if entry.get("origin") == origin
+                                               and entry.get("previous") == previous_id), None)
+                            if ring_entry is None:
+                                order = navigation.rank_ring(
+                                    origin, previous_id, context.get("positions", {}),
+                                    context.get("adjacency", {}).get(origin, []),
+                                    context.get("view", {}), random,
+                                )
+                                ring_entry = {"origin": origin, "previous": previous_id, "order": order}
+                                context.setdefault("rings", []).append(ring_entry)
+                            order = ring_entry.get("order", [])
+                            next_position = navigation.step_scroll(scroll_pos, command, len(order))
+                            if next_position is not None:
+                                scroll_pos = next_position
+                                scrolled_id = order[next_position - 1]
+                    # Up and Down do nothing while a valid navigation context is active.
+            # JSON Enter is intentionally ignored. Bare Enter was handled above as the flip action.
 
         if not empty_nav_reset:
             nav_state.update({
                 "mode": mode,
                 "context": context,
                 "preview_id": preview_id,
+                "previous_id": previous_id,
+                "scroll_pos": scroll_pos,
+                "scrolled_id": scrolled_id,
                 "message": message,
-                "message_selected_id": nav_state.get("message_selected_id") if message == "unconnected" else None,
+                "message_selected_id": message_selected_id,
             })
         selected_card = state.card_by_id.get(selected_id)
-        preview_card = state.card_by_id.get(preview_id) if preview_id else None
+        preview_card = (
+            state.card_by_id.get(preview_id)
+            if preview_id and preview_id != selected_id else None
+        )
         context_members = context.get("members") if context else None
         if not deleted_links and not navigation_only_trigger:
             state.save()
         return (
             make_figure(
                 cards, selected_id, (relayout_data or {}).get("scene.camera"), state, next_focused_group,
-                preview_id=preview_id, nav_members=context_members, map_token=current_token,
+                preview_id=preview_id if context else None,
+                scrolled_id=scrolled_id if context else None,
+                nav_members=context_members, map_token=current_token,
             ),
             card_panel(selected_card, revealed),
             difficulty_control(selected_card, state),

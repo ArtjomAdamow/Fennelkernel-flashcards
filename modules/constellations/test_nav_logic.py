@@ -14,7 +14,6 @@ import random
 import sys
 import types
 from pathlib import Path
-from unittest import mock
 
 import pytest
 
@@ -176,149 +175,121 @@ def test_scaled_delta_applies_non_uniform_scale_componentwise():
         navigation.scaled_delta((1, 2, 3), (0, 0, 0), (1, 0, 1))
 
 
-def test_direction_components_reorients_left_and_down_and_uses_camera_depth():
+def test_screen_components_projects_right_up_and_camera_depth():
     basis = navigation.camera_basis(example_view())
     assert basis is not None
-    delta = (2, 3, -4)
-    assert navigation.direction_components(basis, delta, "right") == pytest.approx((2, -4, 2, -4, 3))
-    assert navigation.direction_components(basis, delta, "left") == pytest.approx((-2, -4, 2, -4, 3))
-    assert navigation.direction_components(basis, delta, "up") == pytest.approx((-4, 2, 2, -4, 3))
-    assert navigation.direction_components(basis, delta, "down") == pytest.approx((4, 2, 2, -4, 3))
+    assert navigation.screen_components(basis, (2, 3, -4)) == pytest.approx((2, -4, 3))
+    with pytest.raises(ValueError):
+        navigation.screen_components(basis, (1, float("nan"), 2))
 
 
-def test_eligibility_epsilon_is_strict_and_left_down_progress_is_reoriented():
-    positions = {"o": (0, 0, 0), "edge": (navigation.EPS_PRIMARY, 0, 0), "over": (1.01e-9, 0, 0)}
-    order, _ = navigation.rank_candidates("o", "right", positions, positions, example_view(), random.Random(2))
-    assert order == ["over"]
-
-    horizontal = {"o": (0, 0, 0), "left": (-1, 0, 0), "right": (1, 0, 0)}
-    left, _ = navigation.rank_candidates("o", "left", horizontal, horizontal, example_view(), random.Random(2))
-    assert left == ["left"]
-    vertical = {"o": (0, 0, 0), "up": (0, 0, 1), "down": (0, 0, -1)}
-    down, _ = navigation.rank_candidates("o", "down", vertical, vertical, example_view(), random.Random(2))
-    assert down == ["down"]
-
-
-def test_rank_candidates_orders_angle_then_distance_then_absolute_depth():
-    view = example_view()
-    positions = {
-        "o": (0, 0, 0),
-        "wide-angle": (1, 0, 0.2),
-        "straight-far": (2, 0, 0),
-        "straight-near": (1, 0, 0),
-        "same-plane-far-depth": (1, -0.2, 0),
-        "same-plane-near-depth": (1, -0.1, 0),
-    }
-    order, _ = navigation.rank_candidates("o", "right", positions, positions, view, random.Random(3))
-    # The two zero-angle candidates tie on angle, then the closer one wins;
-    # equal screen-plane values are finally ranked by abs(camera depth).
-    assert order[0] == "straight-near"
-    assert order.index("wide-angle") > order.index("straight-near")
-    assert order.index("same-plane-near-depth") < order.index("same-plane-far-depth")
-    assert order.index("straight-far") > order.index("straight-near")
-
-
-def test_hierarchical_tolerance_clusters_adjacent_near_ties():
-    # Three adjacent angular gaps are <= tolerance even though the end-to-end
-    # difference is > tolerance; hierarchical clustering must keep them together.
-    positions = {
-        "o": (0, 0, 0),
-        "a": (1, 0, 0),
-        "b": (1, 0, 0.75e-9),
-        "c": (1, 0, 1.5e-9),
-    }
-    order, tie = navigation.rank_candidates("o", "right", positions, positions, example_view(), random.Random(4))
-    assert set(order) == {"a", "b", "c"}
-    assert set(tie) == {"a", "b", "c"}
-
-
-def test_exact_ties_shuffle_once_and_order_is_repeatable_when_cached():
-    view = example_view()
-    positions = {"o": (0, 0, 0), "a": (1, 0, 0.5), "b": (1, 0, -0.5)}
-    rng = CountingRandom(reverse=True)
-    order, tie = navigation.rank_candidates("o", "right", positions, positions, view, rng)
-    assert order == ["b", "a"]
-    assert tie == ["b", "a"]
-    assert rng.calls == 1
-
-    context = {"view": view, "members": ["o", "a", "b"], "orders": [], "predefined": [], "history": []}
-    first_rng, second_rng = CountingRandom(), CountingRandom(reverse=True)
-    first, context = navigation.next_preview(context, "o", "right", positions, first_rng)
-    second, context = navigation.next_preview(context, "o", "right", positions, second_rng)
-    assert first in {"a", "b"}
-    assert second == first
-    assert first_rng.calls == 1
-    assert second_rng.calls == 0
-
-
-def test_next_preview_acceptance_tie_chain_backscroll_and_empty_result():
+def test_rank_ring_matches_architecture_clockwise_acceptance_example():
     positions = {
         "O": (0, 0, 0),
-        "A": (1, 0, 0.5),
-        "B": (1, 0, -0.5),
-        "C": (2, 0, 1.5),
+        "N1": (1, 0, 0),
+        "N2": (0, 0, -1.5),
+        "N3": (-2, 0, 0),
+        "N4": (0, 0, 3),
+        "P": (2, 0, 1),
     }
-    context = {"view": example_view(), "members": ["O", "A", "B", "C"]}
-    rng = random.Random(15)
-    origin = "O"
-    calls = 0
-    original_rank = navigation.rank_candidates
-
-    def counted_rank(*args, **kwargs):
-        nonlocal calls
-        calls += 1
-        return original_rank(*args, **kwargs)
-
-    with mock.patch.object(navigation, "rank_candidates", side_effect=counted_rank):
-        winner, context = navigation.next_preview(context, origin, "right", positions, rng)
-        assert winner in {"A", "B"}
-        loser, context = navigation.next_preview(context, winner, "right", positions, rng)
-        assert loser in {"A", "B"} - {winner}
-        target, context = navigation.next_preview(context, loser, "right", positions, rng)
-        assert target == "C"
-        calls_after_forward = calls
-        # Reverse through the three real edges, one stack pop each; no ranking call occurs.
-        back_from = "C"
-        back_from, context = navigation.next_preview(context, back_from, "left", positions, rng)
-        assert back_from == loser
-        back_from, context = navigation.next_preview(context, back_from, "left", positions, rng)
-        assert back_from == winner
-        back_from, context = navigation.next_preview(context, back_from, "left", positions, rng)
-        assert back_from == "O"
-        assert calls == calls_after_forward
-
-    # The cached order survives a different RNG, and back-scroll has drained history.
-    same_winner, context = navigation.next_preview(context, "O", "right", positions, random.Random(999))
-    assert same_winner == winner
-    no_candidate, context = navigation.next_preview(context, "O", "left", positions, rng)
-    assert no_candidate is None
+    ring = navigation.rank_ring("O", None, positions, ["N1", "N2", "N3", "N4"], example_view(), random.Random(8))
+    assert ring == ["N1", "N2", "N3", "N4"]
+    assert navigation.rank_ring("N1", "O", positions, ["O", "P"], example_view(), random.Random(8)) == ["O", "P"]
 
 
-def test_predefined_target_bypasses_directional_eligibility():
-    positions = {"o": (0, 0, 0), "winner": (1, 0, 0.5), "loser": (1, 0, -0.5)}
-    context = {
-        "view": example_view(), "members": ["o", "winner", "loser"],
-        "orders": [], "predefined": [{"origin": "winner", "direction": "right", "target": "loser"}],
-        "history": [],
+def test_rank_ring_uses_only_supplied_direct_neighbors_and_skips_bad_positions():
+    positions = {"o": (0, 0, 0), "near": (0.5, 0, 0), "far": (2, 0, 0), "bad": (float("nan"), 0, 0)}
+    ring = navigation.rank_ring("o", None, positions, ["o", "near", "far", "missing", "bad", "near"], example_view(), random.Random(1))
+    assert ring == ["near", "far"]
+    assert navigation.rank_ring("o", None, positions, ["far"], example_view(dataScale=[1, 0, 1])) == []
+    assert navigation.rank_ring("missing", None, positions, ["near"], example_view()) == []
+
+
+def test_rank_ring_closest_ties_break_by_absolute_depth_then_shuffle_once():
+    positions = {
+        "o": (0, 0, 0),
+        "depth-near": (1, 0.1, 0),
+        "depth-far": (1, 0.8, 0),
     }
-    # From winner to loser, rightward progress is zero, but the tie chain is intentional.
-    target, context = navigation.next_preview(context, "winner", "right", positions, random.Random(1))
-    assert target == "loser"
+    ring = navigation.rank_ring("o", None, positions, ["depth-far", "depth-near"], example_view(), random.Random(5))
+    assert ring[0] == "depth-near"
+
+    positions = {"o": (0, 0, 0), "a": (1, 0, 0.5), "b": (1, 0, -0.5)}
+    rng = CountingRandom(reverse=True)
+    ring = navigation.rank_ring("o", None, positions, ["a", "b"], example_view(), rng)
+    assert ring == ["b", "a"]
+    assert rng.calls == 1
 
 
-def test_history_only_opposite_of_top_edge_is_popped():
-    positions = {"a": (0, 0, 0), "b": (1, 0, 0), "c": (2, 0, 0)}
-    context = {
-        "view": example_view(), "members": ["a", "b", "c"],
-        "orders": [], "predefined": [],
-        "history": [{"from": "a", "to": "b", "direction": "right"}],
+def test_rank_ring_previous_card_takes_rank_one_even_when_not_closest():
+    positions = {"o": (0, 0, 0), "previous": (2, 0, 0), "closest": (0.25, 0, 0), "other": (0, 0, 1)}
+    ring = navigation.rank_ring("o", "previous", positions, ["closest", "previous", "other"], example_view(), random.Random(2))
+    assert ring[0] == "previous"
+    assert set(ring) == {"previous", "closest", "other"}
+    assert navigation.rank_ring("o", "not-a-neighbor", positions, ["closest", "previous"], example_view(), random.Random(2))[0] == "closest"
+
+
+def test_rank_ring_plane_epsilon_marks_near_origin_candidate_angle_undefined():
+    positions = {"o": (0, 0, 0), "near-origin": (0, 0, navigation.EPS_PLANE / 2), "right": (1, 0, 0)}
+    ring = navigation.rank_ring("o", "near-origin", positions, ["near-origin", "right"], example_view(), random.Random(3))
+    assert ring == ["near-origin", "right"]
+
+
+def test_rank_ring_uses_screen_up_when_rank_one_has_no_angle():
+    positions = {"o": (0, 0, 0), "along-depth": (0, 1, 0), "right": (1, 0, 0), "down": (0, 0, -1)}
+    ring = navigation.rank_ring("o", None, positions, ["along-depth", "right", "down"], example_view(), random.Random(3))
+    assert ring == ["along-depth", "right", "down"]
+
+
+def test_rank_ring_tolerance_groups_angle_then_plane_then_depth():
+    # Candidates lie on the same ray with tolerance-sized angular differences;
+    # the final ordering of an exact plane/depth tie is delegated to rng.
+    positions = {
+        "o": (0, 0, 0),
+        "first": (1, 0, 0),
+        "a": (2, 0, 1),
+        "b": (3, 0, 1.5),
+        "c": (4, 0, 2),
     }
-    target, context = navigation.next_preview(context, "b", "right", positions, random.Random(1))
-    assert target == "c"
-    assert context["history"][-1] == {"from": "b", "to": "c", "direction": "right"}
-    assert navigation.opposite("right") == "left"
-    assert navigation.opposite("up") == "down"
-    assert navigation.opposite("nonsense") is None
+    ring = navigation.rank_ring("o", None, positions, ["first", "a", "b", "c"], example_view(), random.Random(9))
+    assert ring[0] == "first"
+    assert set(ring) == {"first", "a", "b", "c"}
+
+
+def test_step_scroll_initial_direction_wrap_and_single_candidate():
+    assert navigation.step_scroll(None, "right", 4) == 1
+    assert navigation.step_scroll(None, "left", 4) == 4
+    assert navigation.step_scroll(1, "left", 4) == 4
+    assert navigation.step_scroll(4, "right", 4) == 1
+    assert navigation.step_scroll(2, "right", 4) == 3
+    assert navigation.step_scroll(3, "left", 4) == 2
+    assert navigation.step_scroll(None, "right", 1) == 1
+    assert navigation.step_scroll(1, "left", 1) == 1
+
+
+def test_step_scroll_rejects_invalid_inputs_without_raising():
+    for position, direction, count in [
+        (None, "up", 3), (None, "right", 0), (None, "left", -1),
+        (0, "right", 3), (4, "left", 3), (1.5, "right", 3),
+        (True, "right", 3), (None, "right", True),
+    ]:
+        assert navigation.step_scroll(position, direction, count) is None
+
+
+def test_links_token_is_order_and_direction_independent_and_tracks_topology():
+    links = [("b", "a"), ("c", "b")]
+    assert navigation.links_token(links) == navigation.links_token([("b", "c"), ("a", "b")])
+    assert navigation.links_token(links) != navigation.links_token([("a", "b")])
+    assert navigation.links_token([]) == navigation.links_token(None)
+
+
+def test_links_token_accepts_link_records_and_mapping_endpoints():
+    from types import SimpleNamespace
+
+    records = [SimpleNamespace(source_id="a", target_id="b"), {"source": "b", "target": "c"}, {"a": "d", "b": "e"}]
+    assert navigation.links_token(records) == navigation.links_token([("b", "a"), ("c", "b"), ("e", "d")])
+    with pytest.raises(ValueError):
+        navigation.links_token(["not-a-link"])
 
 
 def test_map_token_is_order_independent_and_tracks_rounded_visible_positions_only():
