@@ -300,12 +300,11 @@ def connection_control(
     message_text = {
         "unconnected": "Navigation with arrow keys within constellations toggled on.",
         "hit_space": "Hit Space key to start navigation",
-        "no_candidate": "Try scrolling in a different direction.",
     }.get(message, "")
     preview_card = navigation.get("preview_card")
     if navigation.get("preview_id") == (card.id if card else None):
         preview_card = None
-    preview_id = navigation.get("preview_id")
+    is_member = bool(card and any(card.id in item.members for item in constellations))
     options = [
         {"label": other.question[:55], "value": other.id}
         for other in candidate_cards
@@ -393,8 +392,9 @@ def connection_control(
                 hidden=True,
                 **{
                     "data-mode": mode,
-                    "data-preview": "1" if preview_id else "",
+                    "data-preview": "1" if preview_card is not None else "",
                     "data-selected": "1" if card is not None else "",
+                    "data-member": "1" if is_member else "",
                 },
             ),
             dcc.Store(id="constellation-dialog", data=dialog),

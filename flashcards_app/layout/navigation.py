@@ -1,4 +1,4 @@
-"""Pure, standard-library navigation logic for the constellations module.
+"""Pure, standard-library navigation logic for constellation navigation.
 
 This module deliberately has no dependency on Dash, Plotly, or the flashcards app.
 Navigation contexts are ordinary in-memory dictionaries owned by the callback layer.
@@ -21,8 +21,6 @@ TOL_DEPTH = 1e-9
 HALF_RANGE = 1.15
 SCREEN_RIGHT_SIGN = +1
 
-_DIRECTIONS = ("right", "left", "up", "down")
-_OPPOSITE = {"right": "left", "left": "right", "up": "down", "down": "up"}
 _AXES = ("x", "y", "z")
 
 
@@ -273,30 +271,6 @@ def _basis_vectors(basis: Basis | Mapping[str, Any] | Any) -> tuple[tuple[float,
     return vectors  # type: ignore[return-value]
 
 
-def direction_components(
-    basis: Basis | Mapping[str, Any], delta: Sequence[float], direction: str
-) -> tuple[float, float, float, float, float]:
-    """Return oriented primary/perpendicular progress and raw h, v, depth."""
-    if direction not in _DIRECTIONS:
-        raise ValueError(f"unsupported direction: {direction!r}")
-    vector = _vector(delta)
-    if vector is None:
-        raise ValueError("delta must be a finite 3-vector")
-    forward, right, up = _basis_vectors(basis)
-    h = _dot(vector, right)
-    v = _dot(vector, up)
-    depth = _dot(vector, forward)
-    if direction == "right":
-        primary, perpendicular = h, v
-    elif direction == "left":
-        primary, perpendicular = -h, v
-    elif direction == "up":
-        primary, perpendicular = v, h
-    else:  # down
-        primary, perpendicular = -v, h
-    return primary, perpendicular, h, v, depth
-
-
 def screen_components(
     basis: Basis | Mapping[str, Any], delta: Sequence[float]
 ) -> tuple[float, float, float]:
@@ -493,151 +467,6 @@ def links_token(visible_links: Any) -> str:
         canonical.append((left, right) if left <= right else (right, left))
     encoded = json.dumps(sorted(canonical), ensure_ascii=False, separators=(",", ":"), allow_nan=False).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
-
-
-def rank_candidates(
-    origin: str,
-    direction: str,
-    positions: Mapping[str, Any],
-    members: Iterable[str],
-    view: Mapping[str, Any],
-    rng: Any = None,
-) -> tuple[list[str], list[str]]:
-    """Rank eligible constellation members and shuffle only final exact-tie clusters.
-
-    Tolerance grouping is hierarchical (angle, then in-plane distance, then
-    absolute depth), so adjacent near-ties form a deterministic cluster even
-    when the first and last members differ by more than one tolerance.
-    """
-    if direction not in _DIRECTIONS:
-        raise ValueError(f"unsupported direction: {direction!r}")
-    basis = camera_basis(view)
-    scale = _vector(view.get("dataScale")) if isinstance(view, Mapping) else None
-    origin_position = _position(positions.get(origin)) if isinstance(positions, Mapping) else None
-    if basis is None or scale is None or any(component == 0 for component in scale) or origin_position is None:
-        return [], []
-
-    if rng is None:
-        rng = random
-    scored: list[dict[str, Any]] = []
-    for member in members:
-        if member == origin or member not in positions:
-            continue
-        candidate_position = _position(positions[member])
-        if candidate_position is None:
-            continue
-        delta = scaled_delta(candidate_position, origin_position, scale)
-        primary, perpendicular, h, v, depth = direction_components(basis, delta, direction)
-        if not math.isfinite(primary) or primary <= EPS_PRIMARY:
-            continue
-        angle = math.atan2(abs(perpendicular), primary)
-        distance = math.sqrt(h * h + v * v)
-        abs_depth = abs(depth)
-        if not all(math.isfinite(value) for value in (angle, distance, abs_depth)):
-            continue
-        scored.append({
-            "id": member,
-            "angle": angle,
-            "distance": distance,
-            "depth": abs_depth,
-        })
-
-    if not scored:
-        return [], []
-
-    ranked: list[str] = []
-    first_tie: list[str] = []
-    angle_groups = _tolerance_clusters(scored, lambda item: item["angle"], TOL_ANGLE)
-    for angle_group in angle_groups:
-        distance_groups = _tolerance_clusters(angle_group, lambda item: item["distance"], TOL_DIST)
-        for distance_group in distance_groups:
-            depth_groups = _tolerance_clusters(distance_group, lambda item: item["depth"], TOL_DEPTH)
-            for depth_group in depth_groups:
-                tied_ids = [item["id"] for item in depth_group]
-                _shuffle(tied_ids, rng)
-                if not ranked:
-                    first_tie = list(tied_ids)
-                ranked.extend(tied_ids)
-    return ranked, first_tie
-
-
-def opposite(direction: str) -> str | None:
-    """Return the opposite arrow direction, or None for an unknown direction."""
-    return _OPPOSITE.get(direction)
-
-
-def _cache_entry(entries: Any, origin: str, direction: str) -> dict[str, Any] | None:
-    if not isinstance(entries, list):
-        return None
-    for entry in entries:
-        if isinstance(entry, dict) and entry.get("origin") == origin and entry.get("direction") == direction:
-            return entry
-    return None
-
-
-def _store_predefined(context: dict[str, Any], tie: Sequence[str], direction: str) -> None:
-    entries = context.setdefault("predefined", [])
-    for source, target in zip(tie, tie[1:]):
-        existing = _cache_entry(entries, source, direction)
-        if existing is None:
-            entries.append({"origin": source, "direction": direction, "target": target})
-        else:
-            existing["target"] = target
-
-
-def _push_history(context: dict[str, Any], origin: str, target: str, direction: str) -> None:
-    context.setdefault("history", []).append({"from": origin, "to": target, "direction": direction})
-
-
-def next_preview(
-    context: dict[str, Any],
-    origin: str,
-    direction: str,
-    positions: Mapping[str, Any],
-    rng: Any = None,
-) -> tuple[str | None, dict[str, Any]]:
-    """Choose the next preview, updating the context's caches and history in place."""
-    if direction not in _DIRECTIONS or not isinstance(context, dict):
-        return None, context
-    context.setdefault("orders", [])
-    context.setdefault("predefined", [])
-    context.setdefault("history", [])
-
-    history = context["history"]
-    reverse = opposite(direction)
-    if history and isinstance(history[-1], dict):
-        top = history[-1]
-        if top.get("to") == origin and top.get("direction") == reverse:
-            target = top.get("from")
-            if target in positions:
-                history.pop()
-                return target, context
-
-    predefined = _cache_entry(context["predefined"], origin, direction)
-    members = context.get("members", ())
-    member_set = set(members) if isinstance(members, (list, tuple, set, frozenset)) else set()
-    if predefined is not None:
-        target = predefined.get("target")
-        if target in member_set and target in positions:
-            _push_history(context, origin, target, direction)
-            return target, context
-
-    entry = _cache_entry(context["orders"], origin, direction)
-    if entry is None:
-        view = context.get("view")
-        order, tie = rank_candidates(origin, direction, positions, member_set, view, rng)
-        entry = {"origin": origin, "direction": direction, "order": list(order), "tie": list(tie)}
-        context["orders"].append(entry)
-        if tie:
-            _store_predefined(context, tie, direction)
-    order = entry.get("order", [])
-    if not isinstance(order, list):
-        return None, context
-    target = next((candidate for candidate in order if candidate in member_set and candidate in positions), None)
-    if target is None:
-        return None, context
-    _push_history(context, origin, target, direction)
-    return target, context
 
 
 def _iter_visible_positions(visible_positions: Any) -> list[tuple[str, tuple[float, float, float]]]:

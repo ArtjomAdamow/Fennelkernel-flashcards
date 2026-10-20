@@ -252,7 +252,7 @@
   }
 
   // ---------------------------------------------------------------------------
-  // Constellation navigation (architecture.md section 12.2). Everything below is
+  // Constellation navigation. Everything below is
   // additive: the selection/orbit path above is not changed in meaning or lifecycle.
   // ---------------------------------------------------------------------------
 
@@ -294,7 +294,7 @@
   }
 
   function readCamera(scene, internalScene) {
-    // Gate 2 (tranche 4): if graph._fullLayout.scene.camera lags behind a mouse rotation,
+    // If graph._fullLayout.scene.camera lags behind a mouse rotation,
     // constellationNav.setCameraSource("scene") reads the scene's own getter instead.
     if (cameraSource === "scene" && internalScene && typeof internalScene.getCamera === "function") {
       try {
