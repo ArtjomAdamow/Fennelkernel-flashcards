@@ -24,10 +24,10 @@ import re
 from pathlib import Path
 from typing import List, Optional
 
-from .models import Flashcard
+from project.models import Flashcard
 
 
-# --- .md deck files (flashcards_app/parser.py, unchanged but for one keyword and the guard) ----
+# --- .md deck files (project/content/parser.py, unchanged but for one keyword and the guard) ----
 
 # phase 1: the .md source is switched off; the code below the guard is kept, it will be used for other content
 MD_SOURCE_ENABLED = False

@@ -1,4 +1,4 @@
-"""Imports the composition root (app.py) in a temporary project and records what it built.
+"""Imports the composition root (cards.py) in a temporary project and records what it built.
 
 Started by tests/test_composition.py with stand-ins for dash, plotly and flask (tests/stubs).
 Do not run it inside your real project.
@@ -17,20 +17,20 @@ time.time_ns = lambda: SEED[0]
 
 if len(sys.argv) > 1 and sys.argv[1] == "no_data":
     shutil.move("data", "data_moved_away")
-    from flashcards_app import runtime  # must not read or need anything
+    from project import runtime  # must not read or need anything
 
-    json.dump({"imported": True, "names": sorted(n for n in dir(runtime) if not n.startswith("_")), "app_imported": "app" in sys.modules}, sys.stdout)
+    json.dump({"imported": True, "names": sorted(n for n in dir(runtime) if not n.startswith("_")), "cards_imported": "cards" in sys.modules}, sys.stdout)
     sys.exit(0)
 
 if len(sys.argv) > 1 and sys.argv[1] == "enabled":
     # phase 2: only the enabled decks after the start (the precedence scenario went with LEGACY_STATE_PATH)
-    import app as application
+    import cards as application
 
     json.dump({"enabled": list(application.composition.user_state.enabled_decks)}, sys.stdout)
     sys.exit(0)
 
-import app as application  # noqa: E402  (composes at import)
-from flashcards_app import runtime  # noqa: E402
+import cards as application  # noqa: E402  (composes at import)
+from project import runtime  # noqa: E402
 
 comp = application.composition
 state = comp.user_state
@@ -46,7 +46,7 @@ out["startup"] = {
     "callback_registered": len(comp.dash_app.callbacks) == 1,
 }
 out["constants"] = {
-    "base_dir_holds_app_py": (application.BASE_DIR / "app.py").exists(),
+    "base_dir_holds_cards_py": (application.BASE_DIR / "cards.py").exists(),
     "state_path": application.STATE_PATH.relative_to(application.BASE_DIR).as_posix(),
     "cards_file": application.CARDS_FILE.relative_to(application.BASE_DIR).as_posix(),  # phase 2
     "has_legacy_state_path": hasattr(application, "LEGACY_STATE_PATH"),

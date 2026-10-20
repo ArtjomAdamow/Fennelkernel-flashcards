@@ -1,9 +1,9 @@
 from dash import Input, Output, State
 
-from flashcards_app.layout import navigation
-from flashcards_app.services import cards as cards_service
-from flashcards_app.visualization.map import make_figure
-from flashcards_app.visualization.panels import (
+from project.services import navigation
+from project.services import cards as cards_service
+from project.layout.map import make_figure
+from project.layout.panels import (
     card_panel, connection_control, deck_control, deck_filter_options, delete_constellation, difficulty_control,
     group_control, position_control,
 )

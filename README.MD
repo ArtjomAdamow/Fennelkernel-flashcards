@@ -11,7 +11,7 @@
 
 ```powershell
 uv sync
-uv run python app.py
+uv run python cards.py
 ```
 
 Open the **local URL** printed by Dash.

@@ -1,4 +1,4 @@
-"""Unit tests for flashcards_app.user_state_service (run from the project root).
+"""Unit tests for project.store.user_state_service (run from the project root).
 
     python -m unittest tests.test_user_state_service -v
 """
@@ -8,12 +8,12 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from flashcards_app.deck_catalog import JsonDeckCatalog
-from flashcards_app.parser import CardsFile
-from flashcards_app.models import CardGroup, CardPosition, Flashcard
-from flashcards_app.state import RawState
-from flashcards_app.state_core import StateCore
-from flashcards_app.user_state_service import UserStateService
+from project.content.deck_catalog import JsonDeckCatalog
+from project.content.parser import CardsFile
+from project.models import CardGroup, CardPosition, Flashcard
+from project.store.state import RawState
+from project.store.state_core import StateCore
+from project.store.user_state_service import UserStateService
 
 DECKS = {"alpha": ["alpha:1", "alpha:2"], "beta": ["beta:1"], "gamma": ["gamma:1"]}
 

@@ -1,7 +1,7 @@
 import random
 from typing import List
 
-from .models import CardPosition
+from project.models import CardPosition
 
 
 def sphere_positions(card_ids: List[str], seed: int = 42, radius: float = 1.0) -> List[CardPosition]:

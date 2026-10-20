@@ -1,12 +1,12 @@
-"""Unit tests for the pure card helpers in flashcards_app.services.cards (run from the project root).
+"""Unit tests for the pure card helpers in project.services.cards (run from the project root).
 
     python -m unittest tests.test_cards_helpers -v
 """
 
 import unittest
 
-from flashcards_app.models import CardProgress, Flashcard
-from flashcards_app.services.cards import adjacent_card, choose_random_card, select_from_click
+from project.models import CardProgress, Flashcard
+from project.services.cards import adjacent_card, choose_random_card, select_from_click
 
 
 def cards(*ids):

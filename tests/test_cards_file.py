@@ -1,4 +1,4 @@
-"""Tests for the course file data/cards.json: flashcards_app.parser.CardsFile (run from the project root).
+"""Tests for the course file data/cards.json: project.content.parser.CardsFile (run from the project root).
 
     python -m unittest tests.test_cards_file -v
 
@@ -13,10 +13,10 @@ from dataclasses import asdict
 from pathlib import Path
 from unittest import mock
 
-from flashcards_app import parser
-from flashcards_app.deck_catalog import DeckCatalog, JsonDeckCatalog
-from flashcards_app.models import CardPosition, CardProgress, Flashcard
-from flashcards_app.parser import CardsFile, MarkdownSourceDisabled, comb_id, format_markdown_terms, load_decks, parse_deck
+from project.content import parser
+from project.content.deck_catalog import DeckCatalog, JsonDeckCatalog
+from project.models import CardPosition, CardProgress, Flashcard
+from project.content.parser import CardsFile, MarkdownSourceDisabled, comb_id, format_markdown_terms, load_decks, parse_deck
 
 CARDS_FILE = Path(__file__).resolve().parents[1] / "data" / "cards.json"
 

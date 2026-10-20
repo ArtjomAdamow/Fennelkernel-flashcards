@@ -1,8 +1,8 @@
 import plotly.graph_objects as go
 from dash import html
 
-from flashcards_app.models import Flashcard
-from flashcards_app.visualization.colors import group_color, progress_color
+from project.models import Flashcard
+from project.layout.colors import group_color, progress_color
 
 NAV_DIM_OPACITY = 0.3
 

@@ -1,5 +1,5 @@
-from flashcards_app.models import CardProgress, Flashcard
-from flashcards_app.services.cards import choose_random_card
+from project.models import CardProgress, Flashcard
+from project.services.cards import choose_random_card
 
 
 def test_random_card_prefers_read_cards_and_low_difficulty():
