@@ -75,7 +75,10 @@ def make_figure(
         )
 
     # A separate overlay emphasizes only the currently scrolled direct link.
-    if preview_id and scrolled_id and preview_id in position_by_id and scrolled_id in position_by_id:
+    linked = bool(preview_id and scrolled_id) and any(
+        {link.source_id, link.target_id} == {preview_id, scrolled_id} for link in state.links
+    )
+    if linked and preview_id in position_by_id and scrolled_id in position_by_id:
         origin = position_by_id[preview_id]
         target = position_by_id[scrolled_id]
         figure.add_trace(

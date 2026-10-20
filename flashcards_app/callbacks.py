@@ -1,39 +1,12 @@
 from dash import Input, Output, State
-import importlib.util
-import sys
-from pathlib import Path
 
+from flashcards_app.layout import navigation
 from flashcards_app.services import cards as cards_service
 from flashcards_app.visualization.map import make_figure
 from flashcards_app.visualization.panels import (
     card_panel, connection_control, deck_control, deck_filter_options, delete_constellation, difficulty_control,
     group_control, position_control,
 )
-
-
-
-def _load_navigation():
-    """Load the pure helper from its module-relative path, not from sys.path."""
-    source = Path(__file__).resolve().parent.parent / "flashcards_app" / "layout" / "navigation.py"
-
-    alias = "_constellations_navigation"
-    existing = sys.modules.get(alias)
-    if existing is not None and Path(getattr(existing, "__file__", "")).resolve() == source.resolve():
-        return existing
-    spec = importlib.util.spec_from_file_location(alias, source)
-    if spec is None or spec.loader is None:
-        raise ImportError(f"Cannot load navigation logic from {source}")
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[alias] = module
-    try:
-        spec.loader.exec_module(module)
-    except BaseException:
-        sys.modules.pop(alias, None)
-        raise
-    return module
-
-
-navigation = _load_navigation()
 
 
 def register_callbacks(app, state, none_deck="None"):
@@ -377,18 +350,22 @@ def register_callbacks(app, state, none_deck="None"):
                     preview_id = previous_id = scroll_pos = scrolled_id = None
             elif command == "space" and payload is not None:
                 view = payload.get("view")
-                valid, checks = navigation.validate_view(view)
                 generation = view.get("generation") if isinstance(view, dict) else None
-                if not valid or not isinstance(generation, int) or isinstance(generation, bool):
-                    print("Ignoring keyboard navigation command with invalid camera view", checks)
+                if selected_constellation is None:
+                    # Non-member: message only, no view is read or validated.
+                    context = None
+                    preview_id = previous_id = scroll_pos = scrolled_id = None
+                    if selected_id is not None:
+                        message = "unconnected"
+                        message_selected_id = selected_id
+                elif not isinstance(view, dict):
+                    # A member's Space must carry a view; a malformed command is ignored.
+                    pass
+                elif not navigation.validate_view(view)[0] or not isinstance(generation, int) or isinstance(generation, bool):
+                    print("Ignoring keyboard navigation command with invalid camera view", navigation.validate_view(view)[1])
                 elif view.get("map_token") != current_token:
                     # The rendered map is stale; refresh it without accepting the key.
                     pass
-                elif selected_constellation is None:
-                    context = None
-                    preview_id = previous_id = scroll_pos = scrolled_id = None
-                    message = "unconnected"
-                    message_selected_id = selected_id
                 else:
                     members = sorted(selected_constellation.members)
                     old_view = context.get("view", {}) if context else {}

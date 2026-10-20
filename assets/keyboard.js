@@ -5,7 +5,7 @@
   // By card order arrows remain bare directions. Within constellation, arrows send a generation;
   // Space captures the settled camera view; Enter always flips the selected card.
 
-  const KEY_WINDOW_MS = 500;
+  const KEY_WINDOW_MS = 200;
   const ARROWS = { ArrowLeft: "left", ArrowRight: "right", ArrowUp: "up", ArrowDown: "down" };
 
   // Controls that own their arrow keys (dropdowns, sliders, text entry).
@@ -16,7 +16,7 @@
   ].join(", ");
   // Space and Enter also belong to buttons (native activation), so buttons are added here.
   // Arrow keys are NOT ignored on buttons: a Confirm button keeps focus after it is clicked and
-  // By card order never ignored buttons (see readme_tranche_4.md, open point 1).
+  // By card order never ignored buttons.
   const ACTION_IGNORED = ARROW_IGNORED + ", button";
 
   function isIgnoredTarget(target, selector) {
@@ -48,6 +48,7 @@
       mode: attribute("data-mode") === "constellation" ? "constellation" : "card_order",
       preview: attribute("data-preview") === "1",
       selected: attribute("data-selected") === "1",
+      member: attribute("data-member") === "1",
     };
   }
 
@@ -137,6 +138,13 @@
       }
       const now = env.now();
       if (spacePending || (lastSpaceAt !== null && now - lastSpaceAt < KEY_WINDOW_MS)) {
+        return;
+      }
+      if (!config.member) {
+        // Selected card is not a constellation member: show the message only.
+        // No camera stop, no view capture.
+        lastSpaceAt = now;
+        env.sender.sendCommand({ cmd: "space" });
         return;
       }
       const nav = env.getNav();
