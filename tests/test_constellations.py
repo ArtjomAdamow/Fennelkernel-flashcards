@@ -11,11 +11,11 @@ import unittest
 from types import SimpleNamespace
 from unittest import mock
 
-from flashcards_app import callbacks
-from flashcards_app.models import CardGroup, CardLink, CardProgress, Constellation, Flashcard
-from flashcards_app.state_core import StateCore
-from flashcards_app.user_state_service import UserStateService, derive_components
-from flashcards_app.visualization import panels
+from project import callbacks
+from project.models import CardGroup, CardLink, CardProgress, Constellation, Flashcard
+from project.store.state_core import StateCore
+from project.store.user_state_service import UserStateService, derive_components
+from project.layout import panels
 
 
 class RecordingPersistence:
@@ -302,6 +302,16 @@ def class_names(node):
     return [getattr(item, "className", None) or "" for item in components(node)]
 
 
+def delete_dialog(panel):
+    """The dialog container that holds the delete-constellation Confirm button."""
+    submit = by_id(panel, "constellation-dialog-submit")
+    return next(
+        item for item in components(panel)
+        if (getattr(item, "className", None) or "").startswith("group-dialog")
+        and any(child is submit for child in components(item))
+    )
+
+
 def constellation_state(*groups):
     """A stand-in for the service: runtime constellations and a recording Delete."""
     deleted = []
@@ -353,9 +363,9 @@ class ConnectionPanelTest(unittest.TestCase):
         state = constellation_state((1, ["a", "b"]))
         closed = panels.connection_control(None, [], state)
         opened = panels.connection_control(None, [], state, "delete")
-        self.assertIn("group-dialog group-dialog-hidden", class_names(closed))
-        self.assertIn("group-dialog", class_names(opened))
-        self.assertNotIn("group-dialog group-dialog-hidden", class_names(opened))
+        # The panel holds more than one dialog (delete and navigation): check the delete dialog itself.
+        self.assertEqual(delete_dialog(closed).className, "group-dialog group-dialog-hidden")
+        self.assertEqual(delete_dialog(opened).className, "group-dialog")
         self.assertIsNone(by_id(closed, "constellation-dialog").data)
         self.assertEqual(by_id(opened, "constellation-dialog").data, "delete")
 

@@ -15,7 +15,6 @@ modules/book/tests/
 modules/navigation/temp/
 modules/navigation/tests/
 
-tests/
 scripts/
 tools/
 INDEX.md

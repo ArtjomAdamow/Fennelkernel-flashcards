@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 
-from flashcards_app.visualization.panels import deck_control, group_control
+from project.layout.panels import deck_control, group_control
 
 # Stand-in for the UserStateService: only what deck_control and group_control(None) read
 STATE = SimpleNamespace(enabled_decks=[], groups=[], available_decks=lambda: [])

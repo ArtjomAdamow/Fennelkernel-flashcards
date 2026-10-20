@@ -1,8 +1,8 @@
-"""The composition root (app.py) and the hub (runtime.py) (run from the project root).
+"""The composition root (cards.py) and the hub (runtime.py) (run from the project root).
 
     python -m unittest tests.test_composition -v
 
-Imports app.py in a temporary project (fixture decks and state, stand-ins for dash/plotly/flask) and checks what it
+Imports cards.py in a temporary project (fixture decks and state, stand-ins for dash/plotly/flask) and checks what it
 builds, that the startup save keeps the enabled decks (fix F4), and, by reading the source files, that nothing in the
 package still uses what tranche 8 removed. Your real data folder is not touched.
 """
@@ -15,7 +15,7 @@ from pathlib import Path
 
 from tests.project_fixture import ROOT, STATE, check_test_files, make_project, run_script
 
-PACKAGE = ROOT / "flashcards_app"
+PACKAGE = ROOT / "project"
 
 REMOVED_FILES = [
     "callbacks_impl.py", "server_impl.py",
@@ -53,7 +53,7 @@ class CompositionTest(unittest.TestCase):
     def tearDownClass(cls) -> None:
         cls._tmp.cleanup()
 
-    # --- what app.py builds ----------------------------------------------------------------------
+    # --- what cards.py builds --------------------------------------------------------------------
 
     def test_startup_builds_one_connected_set_of_objects(self) -> None:
         startup = self.result["startup"]
@@ -63,7 +63,7 @@ class CompositionTest(unittest.TestCase):
 
     def test_configuration_lives_in_app_py(self) -> None:
         constants = self.result["constants"]
-        self.assertTrue(constants["base_dir_holds_app_py"])
+        self.assertTrue(constants["base_dir_holds_cards_py"])
         # phase 2: the course file instead of the cards folder, no positions.json fallback
         self.assertEqual((constants["state_path"], constants["cards_file"]), ("data/user_state.json", "data/cards.json"))
         self.assertFalse(constants["has_legacy_state_path"])
@@ -78,7 +78,7 @@ class CompositionTest(unittest.TestCase):
 
     def test_importing_the_hub_needs_no_data_and_composes_nothing(self) -> None:
         self.assertTrue(self.no_data["imported"])
-        self.assertFalse(self.no_data["app_imported"])
+        self.assertFalse(self.no_data["cards_imported"])
 
     # --- F4 ------------------------------------------------------------------------------------------
 
@@ -117,7 +117,7 @@ class CompositionTest(unittest.TestCase):
     def test_nothing_imports_what_was_removed(self) -> None:
         pattern = re.compile(r"callbacks_impl|server_impl|services(?:\.|\s+import\s+)(?:positions|progress|groups|connections|decks)\b")
         offenders = [str(path.relative_to(ROOT)) for path, text in package_sources().items() if pattern.search(text)]
-        offenders += [str(path.relative_to(ROOT)) for path in [ROOT / "app.py"] if pattern.search(path.read_text(encoding="utf-8"))]
+        offenders += [str(path.relative_to(ROOT)) for path in [ROOT / "cards.py"] if pattern.search(path.read_text(encoding="utf-8"))]
         self.assertEqual(offenders, [])
 
     def test_the_package_only_takes_the_hub_constants_from_runtime(self) -> None:
@@ -127,14 +127,14 @@ class CompositionTest(unittest.TestCase):
                 continue
             for name in re.findall(r"\bruntime\.([A-Za-z_]\w*)", text):
                 used.setdefault(name, []).append(path.name)
-            for block in re.findall(r"from flashcards_app\.runtime import \(([^)]*)\)|from flashcards_app\.runtime import ([^\n(]+)", text):
+            for block in re.findall(r"from project\.runtime import \(([^)]*)\)|from project\.runtime import ([^\n(]+)", text):
                 for name in re.split(r"[,\s]+", "".join(block).replace("\r", "")):
                     if name and not name.startswith("#"):
                         used.setdefault(name, []).append(path.name)
         self.assertEqual({k: v for k, v in used.items() if k not in ALLOWED_RUNTIME_NAMES}, {})
 
     def test_the_old_loaders_are_not_in_state_py_any_more(self) -> None:
-        text = (PACKAGE / "state.py").read_text(encoding="utf-8")
+        text = (PACKAGE / "store" / "state.py").read_text(encoding="utf-8")
         self.assertEqual(re.findall(r"def (load_\w+)\(", text), [])
 
     def test_the_services_folder_only_has_the_pure_card_helpers(self) -> None:

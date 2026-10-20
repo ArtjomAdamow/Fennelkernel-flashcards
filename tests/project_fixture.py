@@ -67,8 +67,8 @@ def check_test_files(required: dict) -> None:
 def make_project(base: Path, name: str, state=STATE, state_file: str = "user_state.json") -> Path:
     """Copy the package and the composition root, with the fixture course and state (phase 2: cards.json, user_state.json)."""
     project = base / name
-    shutil.copytree(ROOT / "flashcards_app", project / "flashcards_app", ignore=shutil.ignore_patterns("__pycache__"))
-    shutil.copy(ROOT / "app.py", project / "app.py")  # the composition root
+    shutil.copytree(ROOT / "project", project / "project", ignore=shutil.ignore_patterns("__pycache__"))
+    shutil.copy(ROOT / "cards.py", project / "cards.py")  # the composition root
     (project / "data").mkdir()
     (project / "data" / "cards.json").write_text(json.dumps(course(), indent=2), encoding="utf-8")
     (project / "data" / state_file).write_text(json.dumps(state, indent=2), encoding="utf-8")

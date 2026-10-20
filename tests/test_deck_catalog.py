@@ -1,4 +1,4 @@
-"""Tests for flashcards_app.deck_catalog (run from the project root).
+"""Tests for project.content.deck_catalog (run from the project root).
 
     python -m unittest tests.test_deck_catalog -v
 
@@ -11,9 +11,9 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from flashcards_app import parser
-from flashcards_app.deck_catalog import DeckCatalog, JsonDeckCatalog
-from flashcards_app.parser import CardsFile, MarkdownSourceDisabled
+from project.content import parser
+from project.content.deck_catalog import DeckCatalog, JsonDeckCatalog
+from project.content.parser import CardsFile, MarkdownSourceDisabled
 
 
 class DeckCatalogTest(unittest.TestCase):

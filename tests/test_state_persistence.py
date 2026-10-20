@@ -1,4 +1,4 @@
-"""Tests for the file-level persistence in flashcards_app.state (run from the project root).
+"""Tests for the file-level persistence in project.store.state (run from the project root).
 
     python -m unittest tests.test_state_persistence -v
 """
@@ -11,9 +11,9 @@ from dataclasses import asdict
 from pathlib import Path
 from unittest import mock
 
-from flashcards_app.models import CardGroup, CardLink, CardPosition, CardProgress
-from flashcards_app import state as state_module
-from flashcards_app.state import (
+from project.models import CardGroup, CardLink, CardPosition, CardProgress
+from project.store import state as state_module
+from project.store.state import (
     JsonStateStore,
     RawState,
     StateFileError,
@@ -83,7 +83,7 @@ class StatePersistenceTest(unittest.TestCase):
         positions, progress, groups, links = sample()
         save_state(self.path, positions, progress, groups, links, ["a"])
         before = self.path.read_bytes()
-        with mock.patch("flashcards_app.state.os.replace", side_effect=OSError("disk full")):
+        with mock.patch("project.store.state.os.replace", side_effect=OSError("disk full")):
             with self.assertRaises(OSError):
                 save_state(self.path, positions, progress, groups, links, ["a", "b"])
         self.assertEqual(self.path.read_bytes(), before)
@@ -93,7 +93,7 @@ class StatePersistenceTest(unittest.TestCase):
         positions, progress, groups, links = sample()
         save_state(self.path, positions, progress, groups, links)
         before = self.path.read_bytes()
-        with mock.patch("flashcards_app.state.json.dumps", side_effect=TypeError("boom")):
+        with mock.patch("project.store.state.json.dumps", side_effect=TypeError("boom")):
             with self.assertRaises(TypeError):
                 save_state(self.path, positions, progress, groups, links)
         self.assertEqual(self.path.read_bytes(), before)

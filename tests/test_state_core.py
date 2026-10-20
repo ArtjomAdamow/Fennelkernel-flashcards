@@ -1,4 +1,4 @@
-"""Unit tests for flashcards_app.state_core with fake sources (run from the project root).
+"""Unit tests for project.store.state_core with fake sources (run from the project root).
 
     python -m unittest tests.test_state_core -v
 """
@@ -8,9 +8,9 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from flashcards_app.models import CardGroup, CardLink, CardPosition, CardProgress, Flashcard
-from flashcards_app.state import JsonStateStore, RawState
-from flashcards_app.state_core import STARTUP_SEED, StateCore
+from project.models import CardGroup, CardLink, CardPosition, CardProgress, Flashcard
+from project.store.state import JsonStateStore, RawState
+from project.store.state_core import STARTUP_SEED, StateCore
 
 DECKS = {
     "alpha": ["alpha:1", "alpha:2"],
@@ -117,7 +117,7 @@ class LifecycleTest(unittest.TestCase):
 
     def test_refresh_without_seed_uses_the_clock(self) -> None:
         core, _, spy = make_core(None)
-        with mock.patch("flashcards_app.state_core.time.time_ns", return_value=12345):
+        with mock.patch("project.store.state_core.time.time_ns", return_value=12345):
             core.refresh_deck_state()
         self.assertEqual(spy.calls[-1][1], 12345)
 

@@ -1,4 +1,4 @@
-from flashcards_app.geometry import sphere_positions
+from project.services.geometry import sphere_positions
 
 
 def test_positions_are_deterministic_and_inside_sphere():
