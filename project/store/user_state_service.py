@@ -15,8 +15,8 @@ removes the links between all members; links to hidden cards stay; StateCore sav
 
 from typing import Iterable, Optional, Sequence
 
-from .deck_catalog import JsonDeckCatalog
-from .models import CardGroup, CardLink, CardPosition, CardProgress, Constellation, Flashcard
+from project.content.deck_catalog import JsonDeckCatalog
+from project.models import CardGroup, CardLink, CardPosition, CardProgress, Constellation, Flashcard
 from .state_core import StateCore
 
 

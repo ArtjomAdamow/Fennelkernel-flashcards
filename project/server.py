@@ -5,8 +5,8 @@ from pathlib import Path
 from dash import Dash, dcc, html
 from flask import jsonify
 
-from flashcards_app.visualization.map import color_legend, make_figure
-from flashcards_app.visualization.panels import (
+from project.layout.map import color_legend, make_figure
+from project.layout.panels import (
     card_panel, connection_control, deck_control, difficulty_control,
     group_control, position_control,
 )

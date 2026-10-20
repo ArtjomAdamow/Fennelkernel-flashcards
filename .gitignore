@@ -6,11 +6,17 @@ __pycache__/
 
 data/
 archive/
-image/
-docs/
-
+docs/draft/
+image/INDEX/
 backup/
-modules/
-tools/
+
+modules/book/temp/
+modules/book/tests/
+modules/navigation/temp/
+modules/navigation/tests/
+
+tests/
 scripts/
+tools/
+INDEX.md
 

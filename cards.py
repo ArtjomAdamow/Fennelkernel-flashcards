@@ -4,15 +4,15 @@ import uuid
 from dataclasses import dataclass
 from pathlib import Path
 
-from flashcards_app.callbacks import register_callbacks
-from flashcards_app.deck_catalog import JsonDeckCatalog
-from flashcards_app.geometry import sphere_positions
-from flashcards_app.parser import CardsFile
-from flashcards_app.runtime import NONE_DECK, Runtime
-from flashcards_app.server import create_app
-from flashcards_app.state import JsonStateStore
-from flashcards_app.state_core import STARTUP_SEED, StateCore
-from flashcards_app.user_state_service import UserStateService
+from project.callbacks import register_callbacks
+from project.content.deck_catalog import JsonDeckCatalog
+from project.services.geometry import sphere_positions
+from project.content.parser import CardsFile
+from project.runtime import NONE_DECK, Runtime
+from project.server import create_app
+from project.store.state import JsonStateStore
+from project.store.state_core import STARTUP_SEED, StateCore
+from project.store.user_state_service import UserStateService
 
 # Application configuration
 BASE_DIR = Path(__file__).resolve().parent

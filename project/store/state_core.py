@@ -19,7 +19,7 @@ import re
 import time
 from typing import Callable, Iterable, Optional, Protocol
 
-from .models import CardGroup, CardLink, CardPosition, CardProgress, Flashcard
+from project.models import CardGroup, CardLink, CardPosition, CardProgress, Flashcard
 from .state import RawState
 
 # Positions for cards without a stored one were generated with this seed at startup

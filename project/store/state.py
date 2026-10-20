@@ -6,7 +6,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from .models import CardGroup, CardLink, CardPosition, CardProgress
+from project.models import CardGroup, CardLink, CardPosition, CardProgress
 
 
 # ---------------------------------------------------------------------------

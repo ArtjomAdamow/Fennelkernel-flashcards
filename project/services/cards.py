@@ -1,4 +1,4 @@
-from flashcards_app.models import CardProgress, Flashcard
+from project.models import CardProgress, Flashcard
 
 
 def choose_random_card(cards: list[Flashcard], progress: dict, rng) -> Flashcard | None:

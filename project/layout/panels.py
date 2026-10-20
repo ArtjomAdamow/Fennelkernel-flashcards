@@ -1,8 +1,8 @@
 import dash_daq as daq
 from dash import dcc, html
 
-from flashcards_app import runtime
-from flashcards_app.models import Flashcard
+from project import runtime
+from project.models import Flashcard
 
 
 def _state(state):
