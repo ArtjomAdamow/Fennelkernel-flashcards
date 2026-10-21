@@ -12,8 +12,13 @@ backup/
 
 modules/book/temp/
 modules/book/tests/
+modules/book/data/
 modules/navigation/temp/
 modules/navigation/tests/
+modules/helper/temp/
+modules/helper/tests/
+modules/cluster/temp/
+modules/cluster/tests/
 
 scripts/
 tools/
