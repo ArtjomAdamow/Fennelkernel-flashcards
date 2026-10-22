@@ -277,7 +277,7 @@ def navigation_readout(card: Flashcard | None = None) -> html.Div:
         return html.Div(id="nav-preview", className="nav-preview nav-preview-hidden")
     return html.Div(
         [
-            html.Div("Keyboard preview", className="card-label"),
+            html.Div("navigation preview", className="card-label"),
             dcc.Markdown(card.question, className="nav-preview-question"),
             html.Div(card.id, className="nav-preview-id"),
         ],

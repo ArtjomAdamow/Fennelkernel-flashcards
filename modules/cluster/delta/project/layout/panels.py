@@ -12,6 +12,8 @@ Changes against the main file:
   * Connect and Disconnect open a dialog with the dropdown (as in the main project since 2026-10-22): Connect
     lists the dots not yet connected to the selected one, Disconnect only the connected ones; the dialog's state
     lives in the panel's `link-dialog` store, like the Delete dialog's.
+  * With no dot selected the progress slider becomes the cut-off line of the dendrogram (cutoff_control), and
+    overview_panel draws that line across the dendrogram.
 """
 
 import dash_daq as daq
@@ -93,11 +95,15 @@ def deck_panel(deck: Flashcard) -> html.Div:
     )
 
 
-def overview_panel(title: str, forest, label_of: dict[str, str], hint: str, subtitle: str | None = None) -> html.Div:
-    """No dot selected: the dendrogram of the view's connections (empty without connections)."""
-    if forest:
+def overview_panel(
+    title: str, forest, label_of: dict[str, str], hint: str, subtitle: str | None = None, cut: tuple[float, int] | None = None
+) -> html.Div:
+    """No dot selected: the dendrogram of the view's connections (empty without connections). `cut` is the
+    cut-off line (its height, the full tree's merges): drawn across the dendrogram, even when the line has cut
+    every connection away."""
+    if forest or cut:
         body = dcc.Graph(
-            figure=dendrogram_figure(forest, label_of),
+            figure=dendrogram_figure(forest, label_of, cut),
             config={"displayModeBar": False},
             className="dendrogram-graph",
         )
@@ -111,8 +117,42 @@ def overview_panel(title: str, forest, label_of: dict[str, str], hint: str, subt
     )
 
 
-def difficulty_control(card: Flashcard | None, state=None, hidden: bool = False) -> html.Div:
+def cutoff_control(cutoff: float) -> html.Div:
+    """The slider as the cut-off line of the dendrogram while no dot is selected (the same slider id: it is a
+    callback input). 100 % is the full tree; lower it and the tree falls apart below the line, on the map as
+    separate constellations. The value shows in the slider's box as a percentage."""
+    value = int(round(min(1.0, max(0.0, cutoff)) * 100))
+    return html.Div(
+        [
+            html.Label("Cut-off line", htmlFor="difficulty-slider", className="card-label"),
+            html.Div(
+                dcc.Slider(
+                    id="difficulty-slider",
+                    min=0,
+                    max=100,
+                    step=1,
+                    value=value,
+                    disabled=False,
+                    marks={
+                        0: {"label": "0 %", "style": {"color": "#ffffff"}},
+                        50: {"label": "50 %", "style": {"color": "#ffffff"}},
+                        100: {"label": "full tree", "style": {"color": "#ffffff"}},
+                    },
+                    tooltip={"placement": "bottom", "always_visible": True, "template": "{value} %"},
+                ),
+                className="progress-slider",
+                style={"--progress": f"{value}%"},
+            ),
+        ],
+        className="progress-control",
+    )
+
+
+def difficulty_control(card: Flashcard | None, state=None, hidden: bool = False, cutoff: float | None = None) -> html.Div:
+    """The progress slider of the selected card; with no card and a `cutoff`, the cut-off line slider instead."""
     state = _state(state)
+    if card is None and cutoff is not None and not hidden:
+        return cutoff_control(cutoff)
     is_flipped = bool(card and state.progress[card.id].read)
     current_value = state.progress[card.id].difficulty if card and card.id in state.progress else 1
     progress_percent = (current_value - 1) / 99 * 100

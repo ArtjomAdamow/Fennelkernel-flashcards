@@ -7,17 +7,24 @@
 The callback is written against one state service. The router forwards every attribute it does not define
 itself to the service of the current view, so selection, navigation, connections, groups and constellations
 work in both views through the same calls. The view lives here, server-side, like the rest of the state.
+
+The cut-off line (runtime only, one per view and entered deck, 1 = the full tree at every start): below 1 the
+router's `links` are only the connections below the line (services.dendrogram.cut_links), so the map draws the
+tree's lower part, the constellations fall apart accordingly, and the dendrogram shows the sub-trees side by
+side. The stored links are never touched.
 """
 
 from typing import Optional
 
 from project.content.decks import DeckIndex
 from project.models import Flashcard
+from project.services.dendrogram import cut_links
 from project.services.views import DECK, SPACE
 from project.store.user_state_service import UserStateService
 from project.store.view_settings import ViewSettings
 
-_OWN = {"space", "cards_state", "decks", "settings", "view", "entered_deck"}
+_OWN = {"space", "cards_state", "decks", "settings", "view", "entered_deck", "cutoffs"}
+FULL_TREE = 1.0
 
 
 class ViewRouter:
@@ -28,6 +35,7 @@ class ViewRouter:
         self.settings = settings
         self.view = SPACE
         self.entered_deck: Optional[str] = None  # deck id
+        self.cutoffs: dict[str, float] = {}  # view key -> the cut-off line (a share of the tree's height)
 
     def __getattr__(self, name):
         # Only called for names not found on the router: everything else is the active view's service
@@ -70,6 +78,35 @@ class ViewRouter:
         groups = [group for group in self.space.groups if deck_id and deck_id in group.card_ids]
         groups.sort(key=lambda group: (group.rank is None, group.rank if group.rank is not None else 0))
         return [group.color for group in groups]
+
+    # --- the cut-off line ---------------------------------------------------
+
+    def view_key(self) -> str:
+        """The space view, or the entered deck: each keeps its own cut-off line."""
+        return f"{DECK}:{self.entered_deck}" if self.view == DECK else SPACE
+
+    def cutoff(self) -> float:
+        """The view's cut-off line as a share of the tree's height; 1 is the full tree."""
+        return self.cutoffs.get(self.view_key(), FULL_TREE)
+
+    def set_cutoff(self, value: float) -> None:
+        self.cutoffs[self.view_key()] = min(FULL_TREE, max(0.0, float(value)))
+
+    @property
+    def links(self) -> list:
+        """The active view's connections below the cut-off line; at the full tree the stored list itself."""
+        stored = self.active.links
+        cutoff = self.cutoff()
+        if cutoff >= FULL_TREE:
+            return stored
+        return cut_links([card.id for card in self.visible_cards()], stored, cutoff)
+
+    def refresh_constellations(self, visible_cards) -> list:
+        """The active view's constellations over the connections below the cut-off line (the package's
+        refresh_constellations takes the links to consider)."""
+        if self.cutoff() >= FULL_TREE:
+            return self.active.refresh_constellations(visible_cards)
+        return self.active.refresh_constellations(visible_cards, links=self.links)
 
     # --- checked cards of the entered deck (the Cards dialog) ---------------
 

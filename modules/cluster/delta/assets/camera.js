@@ -12,7 +12,8 @@
   // the zoomed-out distance; a selected card is centred and the camera turns around it, as the main app does.
   // A mouse drag, a wheel or a double click pauses the motion; once the gesture is over, the motion goes on in
   // the direction the drag turned the camera, from where the gesture left it (in the planetarium: back on the
-  // line to the deck, at the zoom the gesture left). A sun with several group colours cycles through them.
+  // line to the deck, at the zoom the gesture left). Space (by card order, keyboard.js) stops the motion until
+  // the next selection or view change. A sun with several group colours cycles through them.
 
   const graphId = "sphere";
   const centeringDuration = 1800;
@@ -921,10 +922,21 @@
     });
   }
 
+  // Called by Space from keyboard.js in the by-card-order mode: stop the motion for good. It starts again with
+  // the next selection, constellation or view change, never by itself; a drag no longer resumes it.
+  function stopMotion() {
+    paused = null;
+    clearResume();
+    if (attachedGraph) {
+      cancelMotion(attachedGraph);
+    }
+  }
+
   const constellationNav = {
     captureView: captureView,
     getGeneration: function () { return viewGeneration; },
     setCameraSource: function (source) { cameraSource = source === "scene" ? "scene" : "layout"; },
+    stopMotion: stopMotion,
   };
   if (typeof window !== "undefined") {
     window.constellationNav = constellationNav;

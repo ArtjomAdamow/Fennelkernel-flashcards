@@ -6,6 +6,7 @@ from project.services.dendrogram import Node
 
 TREE_GAP = 0.8  # space between two trees, in leaf widths
 LABEL_LENGTH = 18
+CUT_COLOR = "#e06c75"
 
 
 def _short(text: str) -> str:
@@ -13,8 +14,10 @@ def _short(text: str) -> str:
     return text if len(text) <= LABEL_LENGTH else text[: LABEL_LENGTH - 1] + "…"
 
 
-def dendrogram_figure(forest: list[Node], label_of: dict[str, str]) -> go.Figure:
-    """Leaves left to right in tree order, U-shaped lines at the merge heights, trees side by side."""
+def dendrogram_figure(forest: list[Node], label_of: dict[str, str], cut: tuple[float, int] | None = None) -> go.Figure:
+    """Leaves left to right in tree order, U-shaped lines at the merge heights, trees side by side. With `cut`
+    (the line's height, the full tree's number of merges) a dashed cut-off line crosses the figure, and the
+    height axis keeps the full tree's range, so the line stays where it is while the trees below it change."""
     line_x: list = []
     line_y: list = []
     leaf_x: list[float] = []
@@ -57,6 +60,21 @@ def dendrogram_figure(forest: list[Node], label_of: dict[str, str]) -> go.Figure
             name="Leaves",
         )
     )
+    yaxis = {"title": {"text": "merge"}, "dtick": 1, "rangemode": "tozero", "gridcolor": "rgba(247, 242, 232, 0.12)", "zeroline": False, "fixedrange": True}
+    if cut is not None:
+        height, top = cut
+        right_edge = max(cursor - TREE_GAP, 1.0)
+        figure.add_trace(
+            go.Scatter(
+                x=[-0.5, right_edge - 0.5],
+                y=[height, height],
+                mode="lines",
+                line={"color": CUT_COLOR, "width": 2, "dash": "dash"},
+                hoverinfo="skip",
+                name="Cut-off",
+            )
+        )
+        yaxis["range"] = [0, top + 1]
     figure.update_layout(
         height=320,
         margin={"l": 34, "r": 10, "t": 10, "b": 110},
@@ -73,6 +91,6 @@ def dendrogram_figure(forest: list[Node], label_of: dict[str, str]) -> go.Figure
             "zeroline": False,
             "fixedrange": True,
         },
-        yaxis={"title": {"text": "merge"}, "dtick": 1, "rangemode": "tozero", "gridcolor": "rgba(247, 242, 232, 0.12)", "zeroline": False, "fixedrange": True},
+        yaxis=yaxis,
     )
     return figure

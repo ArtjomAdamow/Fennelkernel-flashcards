@@ -74,6 +74,7 @@ What a fresh start does (the pilot run): all 48 decks are checked and all 1,670 
 
 The views, keys and dialogs are the cluster module's (`modules/cluster/readme.md`), plus one button:
 
+- **Cut-off line** (the slider under the card panel while nothing is selected, from the cluster module): it cuts the clustering tree at a share of its height. At 100 % the whole tree of the deck (or of the decks) is one constellation; lower it and the tree falls apart into its topics, drawn as separate constellations on the map and side by side in the dendrogram. Nothing is stored; every start shows the whole tree.
 - **Helper** (top bar, left of Random) adds the model's missing connections to the current view: the entered deck's card connections in the deck view, the deck connections in the space view. Connections that exist already are kept. Unchecking a deck strips its cards' state, connections included; check the deck again, enter it, check its cards in the Cards dialog, and Helper brings its connections back.
 
 ## Run the tests
@@ -95,6 +96,6 @@ The tests are plain `unittest.TestCase` classes. `tests/helper_support.py` loads
 .\modules\helper\.venv\Scripts\python.exe modules/helper/evaluate.py
 ```
 
-It measures the random floor (B0), the TF-IDF variants (same-deck precision@5, coverage, distinct recommended cards) and the chosen model's map (trustworthiness and neighbour overlap of the deck layout, the within-deck overlap of the card layouts), appends one row per model and variant to `results/results.csv`, and writes the hand-check candidates for 20 NLP cards to `results/hand_check.md`, to be judged by hand. The numbers are in `docs/draft/helper/early.md`.
+It measures the random floor (B0), the TF-IDF variants (same-deck precision@5, coverage, distinct recommended cards) and the chosen model's map (trustworthiness and neighbour overlap of the deck layout, the within-deck overlap of the card layouts), appends one row per model and variant to `results/results.csv`, and writes the hand-check candidates for 20 NLP cards to `results/hand_check.md`, to be judged by hand: mark every relevant candidate with `x`, or the `none` line when nothing fits. Later runs keep the marks and add every variant's hand-judged precision@5 over the judged cards (`hand_precision` in the results). The numbers are in `docs/draft/helper/early.md`.
 
 Keep `temp/` and `results/` generated. Code belongs in `delta/`, tests in `tests/`.

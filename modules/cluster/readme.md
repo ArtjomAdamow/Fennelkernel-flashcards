@@ -50,6 +50,8 @@ The names in `delta/` match the main project: `delta/project/` stands for the pa
 - **Backspace:** unselects the selected dot; with nothing selected, it goes back from the deck view to the decks. It is ignored in text fields, dropdowns and while a dialog is open.
 - **Connect, Disconnect:** each opens a dialog with a dropdown: Connect lists the dots not yet connected to the selected one, Disconnect only the connected ones. Confirm applies, Cancel closes; selecting another dot or changing the view closes it too.
 - **Dendrogram:** with nothing selected, the card panel shows the dendrogram of the view's connections.
+- **Cut-off line:** with nothing selected, the slider under the card panel is the dendrogram's cut-off line, from 0 % to 100 % of the tree's height. At 100 % the tree is whole; lower it and the merges above the line are cut: the tree falls apart, the map draws only the connections below the line, and those parts are the constellations. Nothing is stored; every start shows the whole tree, and each view and deck keeps its own line while the app runs.
+- **Space** (navigation by card order): stops the camera's motion until the next selection or view change.
 - **Two states:** connections, groups and progress of decks (`temp/cluster_space_state.json`) and of cards (`temp/cluster_state.json`) are separate.
 
 ## Start the module build

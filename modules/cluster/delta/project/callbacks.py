@@ -19,6 +19,9 @@ Changes against the main file:
     window in the space view (the planetarium around the selected deck).
   * Connect and Disconnect open a dialog (link-dialog-submit/cancel, the link-dialog store), as in the main
     project since 2026-10-22; the dialog closes on a view change too, and the back key is blocked while it is open.
+  * With no dot selected the progress slider is the cut-off line of the view's dendrogram (ViewRouter.cutoff):
+    moving it cuts the tree, the map's connections and the constellations below the line; the dendrogram shows
+    the line. The cut-off is runtime only and starts at the full tree.
 """
 
 from dash import Input, Output, State
@@ -219,6 +222,8 @@ def register_callbacks(app, state, none_deck=None, action=None):
             # constellation refresh. Bare commands and malformed commands are ignored.
         elif trigger == "difficulty-slider" and selected_id and difficulty is not None and state.view == views.DECK:
             state.set_difficulty(selected_id, difficulty)
+        elif trigger == "difficulty-slider" and not selected_id and difficulty is not None:
+            state.set_cutoff(difficulty / 100)  # the slider is the cut-off line while nothing is selected
         elif trigger == "new-group" and selected_id:
             next_group_dialog = "new"
         elif trigger == "create-link" and selected_id:
@@ -517,12 +522,16 @@ def register_callbacks(app, state, none_deck=None, action=None):
         )
         context_members = context.get("members") if context else None
         if selected_card is None:
-            forest = dendrogram.build_forest([card.id for card in cards], state.links)
+            # state.links are the connections below the cut-off line; the line itself is measured on the full tree
+            dot_ids = [card.id for card in cards]
+            forest = dendrogram.build_forest(dot_ids, state.links)
+            cut = dendrogram.cut_line(dot_ids, state.active.links, state.cutoff())
             label_of = {card.id: card.question for card in cards}
             if space_view:
                 panel = overview_panel(
                     "Constellations of decks", forest, label_of,
                     "Select a deck to see its description. The Decks button chooses the decks on the map.",
+                    cut=cut,
                 )
             else:
                 info = state.decks.by_id.get(state.entered_deck)
@@ -530,6 +539,7 @@ def register_callbacks(app, state, none_deck=None, action=None):
                     state.entered_name or "", forest, label_of,
                     "Select a card to begin; the Cards button chooses the cards on the map. Backspace goes back to the decks.",
                     subtitle=info.description() if info else None,
+                    cut=cut,
                 )
         elif space_view:
             panel = deck_panel(selected_card)
@@ -549,7 +559,11 @@ def register_callbacks(app, state, none_deck=None, action=None):
                 constellation=sorted(selected_constellation.members) if selected_constellation else None,
             ),
             panel,
-            difficulty_control(selected_card, state, hidden=space_view),
+            # A selected card: its progress; a selected deck: nothing to rate; nothing selected: the cut-off line
+            difficulty_control(
+                selected_card, state, hidden=space_view and selected_card is not None,
+                cutoff=None if selected_card else state.cutoff(),
+            ),
             group_control(selected_card, next_group_dialog, state, next_focused_group),
             connection_control(
                 selected_card, cards, state, next_constellation_dialog,

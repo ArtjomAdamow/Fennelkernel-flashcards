@@ -3,7 +3,8 @@
 
   // Cluster module copy of assets/keyboard.js. Changes: Backspace sends the bare "back" command (Python decides:
   // unselect the dot, or leave the deck view; nothing while a dialog is open); the top bar buttons give up the
-  // focus after a click, so a following Enter flips the card instead of clicking the button again.
+  // focus after a click, so a following Enter flips the card instead of clicking the button again; by card
+  // order, Space stops the camera's motion (camera.js, constellationNav.stopMotion) and sends nothing.
   //
   // Browser key handling for constellation navigation.
   // By card order arrows remain bare directions. Within constellation, arrows send a generation;
@@ -142,9 +143,29 @@
       }
     }
 
+    // By card order: Space stops the camera's motion (the turn, the roll or the orbit), whatever is selected.
+    // Nothing goes to Python; the motion starts again with the next selection or view change.
+    function handleStop(event) {
+      event.preventDefault();  // never a page scroll
+      if (event.repeat) {
+        return;
+      }
+      const nav = env.getNav();
+      if (nav && typeof nav.stopMotion === "function") {
+        nav.stopMotion();
+      }
+    }
+
     function handleSpace(event) {
       const config = env.readConfig();
-      if (config.mode !== "constellation" || !config.selected || isIgnoredTarget(event.target, ACTION_IGNORED)) {
+      if (isIgnoredTarget(event.target, ACTION_IGNORED)) {
+        return;
+      }
+      if (config.mode !== "constellation") {
+        handleStop(event);
+        return;
+      }
+      if (!config.selected) {
         return;
       }
       event.preventDefault();
