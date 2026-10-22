@@ -1,6 +1,7 @@
 """What the deck view shows: the checked cards of each deck (the Cards dialog), kept in their own small file.
 
-The file lives next to the card state (VIEW_STATE_NAME; in the cluster module temp/cluster_view_state.json).
+The file lives next to the card state, named after it (view_state_path: cluster_state.json ->
+cluster_view_state.json; a module on top of this one, such as the helper, gets its own name the same way).
 A deck without an entry shows no card: a freshly checked deck starts with all its cards unchecked. Unchecking a
 deck drops its entry, together with its card state.
 """
@@ -11,8 +12,18 @@ import uuid
 from pathlib import Path
 from typing import Iterable
 
-VIEW_STATE_NAME = "cluster_view_state.json"
+VIEW_STATE_NAME = "cluster_view_state.json"  # the name next to a card state not named <name>_state.json
 VERSION = 1
+
+
+def view_state_path(card_state_path: Path) -> Path:
+    """The view state file next to a card state file: <name>_state.json -> <name>_view_state.json.
+    A card state with another name gets VIEW_STATE_NAME next to it."""
+    card_state_path = Path(card_state_path)
+    suffix = "_state.json"
+    if card_state_path.name.endswith(suffix) and len(card_state_path.name) > len(suffix):
+        return card_state_path.with_name(card_state_path.name[: -len(suffix)] + "_view_state.json")
+    return card_state_path.with_name(VIEW_STATE_NAME)
 
 
 class ViewSettings:

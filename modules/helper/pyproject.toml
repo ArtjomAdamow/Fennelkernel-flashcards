@@ -1,0 +1,24 @@
+# The helper module's own uv project: its env (.venv next to this file) holds the flashcards package
+# (the main project, editable, by path), scikit-learn and scipy. The launcher (helper.py) checks the
+# env at every start and restarts itself with the env's Python. The module itself is not a package.
+[project]
+name = "flashcards-helper"
+version = "0.1.0"
+description = "Helper module: model positions and connections on top of the cluster module"
+requires-python = ">=3.13"
+dependencies = [
+    "spatial-flashcards",
+    "scikit-learn>=1.7",
+    "scipy>=1.16",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0.0",
+]
+
+[tool.uv]
+package = false
+
+[tool.uv.sources]
+spatial-flashcards = { path = "../..", editable = true }

@@ -44,9 +44,11 @@ The names in `delta/` match the main project: `delta/project/` stands for the pa
 - **Decks** (top bar, space view): check the decks to work with. A fresh start has none checked. Unchecking a deck erases its cards' progress, positions, groups and connections.
 - **Cards** (top bar, deck view; the same button): check the cards of the open deck to show. A freshly checked deck shows none. Unchecking a card only hides it.
 - **Random** (deck view only) picks a random card among the shown ones.
-- **Space view:** the checked decks are stars, with a glow sized by their number of cards. Select a deck to see its description.
-- **Entering a deck:** Enter, or a click on the description, opens the deck view: the deck's cards around a sun, sized by difficulty, working as flashcards. The camera rotates around the sun.
+- **Space view:** the checked decks are stars, with a glow sized by their number of cards. With nothing selected the camera looks at the whole sphere from outside and turns around its centre. Select a deck to see its description and to enter the planetarium: the camera moves inside the sphere and looks at the deck, its constellation fills the window, and the picture rolls around the deck. Unselect to look at the whole sphere again.
+- **Entering a deck:** Enter, or a click on the description, opens the deck view: the deck's cards around a sun, sized by difficulty, working as flashcards. The camera turns around the sun; a selected card is centred and the camera turns around it, unselecting goes back to the sun.
+- **Mouse drag, wheel:** pause the turning. When you let go, it goes on from where you left the camera, in the direction of your drag.
 - **Backspace:** unselects the selected dot; with nothing selected, it goes back from the deck view to the decks. It is ignored in text fields, dropdowns and while a dialog is open.
+- **Connect, Disconnect:** each opens a dialog with a dropdown: Connect lists the dots not yet connected to the selected one, Disconnect only the connected ones. Confirm applies, Cancel closes; selecting another dot or changing the view closes it too.
 - **Dendrogram:** with nothing selected, the card panel shows the dendrogram of the view's connections.
 - **Two states:** connections, groups and progress of decks (`temp/cluster_space_state.json`) and of cards (`temp/cluster_state.json`) are separate.
 

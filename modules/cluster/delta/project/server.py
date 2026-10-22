@@ -5,7 +5,9 @@ Changes against the main file:
     Cards in the deck view), with its checkbox dialog under it;
   * window A: the card panel and the progress control (the position panel is gone);
   * window B: groups and connections (the deck panel is gone); assets/style.css puts it above the map;
-  * no reset confirmation and no drag store; a store for the choice dialog.
+  * no reset confirmation and no drag store; a store for the choice dialog;
+  * a module action button (services.actions) left of Random: a module on top of this one (the helper) gives it
+    a label and a function; without an action the button is there but hidden, so the callback's input exists.
 """
 
 from __future__ import annotations
@@ -19,12 +21,14 @@ from project.layout.map import color_legend, make_figure
 from project.layout.panels import (
     card_panel, choice_control, choice_label, connection_control, difficulty_control, group_control,
 )
+from project.services.actions import ACTION_ID
 
 
-def create_app(base_dir, server_boot_id, state):
+def create_app(base_dir, server_boot_id, state, action=None):
     """Build Dash with the project assets and transient navigation stores.
 
-    `state` is the ViewRouter the initial panels and the empty map are built from.
+    `state` is the ViewRouter the initial panels and the empty map are built from; `action` is a module's
+    ModuleAction for the top bar button, or None.
     """
     app = Dash(__name__, assets_folder=str(Path(base_dir) / "assets"))
     app.title = "Spatial Flashcards"
@@ -44,6 +48,10 @@ def create_app(base_dir, server_boot_id, state):
                     html.Div([html.P("SPATIAL STUDY", className="eyebrow"), html.H1("Arrange what you learn.")]),
                     html.Div(
                         [
+                            html.Button(
+                                action.label if action else "", id=ACTION_ID, className="random-button", n_clicks=0,
+                                title=action.title if action else "", style={} if action else {"display": "none"},
+                            ),
                             html.Button(
                                 "Random", id="random-card", className="random-button", n_clicks=0,
                                 style={"display": "none"} if state.view == "space" else {},

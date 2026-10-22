@@ -7,8 +7,9 @@ Changes against the main file:
     transparent markers) and grows with the deck's number of cards. Dots have no progress ring.
   * Deck view: the sun at the origin, in the colours of the deck's groups (grey without a group; several
     colours take turns in camera.js); card sizes come from the card's difficulty (easy, medium, hard).
-  * One uirevision per view, so switching views resets the camera; the view goes into the figure's meta
-    (camera.js keeps the rotation around the sun in the deck view).
+  * One uirevision per view, so switching views resets the camera; the view goes into the figure's meta, and so
+    does the constellation of the selected dot (camera.js fits the selected deck's constellation into the window
+    in the space view, and turns around the sun in the deck view).
 """
 
 import math
@@ -70,6 +71,7 @@ def make_figure(
     entered: str | None = None,
     deck_counts: dict[str, int] | None = None,
     sun_colors: list[str] | None = None,
+    constellation: list[str] | tuple[str, ...] | None = None,
 ) -> go.Figure:
     if state is None:
         raise TypeError("state is required: pass the UserStateService")
@@ -308,7 +310,8 @@ def make_figure(
             "zaxis": {"visible": False, "range": [-1.15, 1.15]},
             "bgcolor": "#102a43",
         },
-        meta={"view": view, "map_token": map_token},
+        # The selected dot's constellation (its member ids) for camera.js: the planetarium fits it into the window
+        meta={"view": view, "map_token": map_token, "constellation": list(constellation) if constellation else None},
     )
     if camera:
         figure.update_layout(scene_camera=camera)

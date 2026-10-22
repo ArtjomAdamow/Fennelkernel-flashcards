@@ -13,6 +13,12 @@ Changes against the main file:
   * The card count reads "N decks mapped" in the space view and the deck name in the deck view.
   * "Random" (random-card) is hidden in the space view; the sun takes the colours of the entered deck's groups.
   * Switching views resets the camera, the group focus, the open dialogs and the navigation context.
+  * A module action (services.actions): a click on the top bar button `module-action` runs the action's function
+    on the router; the change is then saved and drawn like any other (a hook for the helper module).
+  * The figure's meta carries the selected dot's constellation (its members), which camera.js fits into the
+    window in the space view (the planetarium around the selected deck).
+  * Connect and Disconnect open a dialog (link-dialog-submit/cancel, the link-dialog store), as in the main
+    project since 2026-10-22; the dialog closes on a view change too, and the back key is blocked while it is open.
 """
 
 from dash import Input, Output, State
@@ -24,13 +30,15 @@ from project.layout.panels import (
 )
 from project.services import cards as cards_service
 from project.services import dendrogram, navigation, views
+from project.services.actions import ACTION_ID
 
 
-def register_callbacks(app, state, none_deck=None):
+def register_callbacks(app, state, none_deck=None, action=None):
     """Register the card callback on `app`.
 
     `state` is the ViewRouter the callback reads and changes; `none_deck` is unused (kept for the main
-    signature). Returns the callback function (for tests).
+    signature); `action` is the module action of the top bar button, or None. Returns the callback function
+    (for tests).
     """
 
     @app.callback(
@@ -72,9 +80,12 @@ def register_callbacks(app, state, none_deck=None):
         Input("delete-constellation", "n_clicks"),
         Input("constellation-dialog-submit", "n_clicks"),
         Input("constellation-dialog-cancel", "n_clicks"),
+        Input("link-dialog-submit", "n_clicks"),
+        Input("link-dialog-cancel", "n_clicks"),
         Input("navigation-open", "n_clicks"),
         Input("navigation-dialog-submit", "n_clicks"),
         Input("navigation-dialog-cancel", "n_clicks"),
+        Input(ACTION_ID, "n_clicks"),
         State("selected-id", "data"),
         State("revealed", "data"),
         State("link-target", "value"),
@@ -89,6 +100,7 @@ def register_callbacks(app, state, none_deck=None):
         State("choice-checklist", "value"),
         State("constellation-dialog", "data"),
         State("constellation-select", "value"),
+        State("link-dialog", "data"),
         State("navigation-select", "value"),
         State("nav-state", "data"),
     )
@@ -98,10 +110,12 @@ def register_callbacks(app, state, none_deck=None):
         delete_group_clicks, focus_group_clicks, all_groups_clicks, dialog_submit_clicks, dialog_cancel_clicks,
         keyboard_nav, choice_open_clicks, choice_submit_clicks, choice_cancel_clicks,
         delete_constellation_clicks, constellation_submit_clicks,
-        constellation_cancel_clicks, navigation_open_clicks, navigation_submit_clicks, navigation_cancel_clicks,
+        constellation_cancel_clicks, link_submit_clicks, link_cancel_clicks,
+        navigation_open_clicks, navigation_submit_clicks, navigation_cancel_clicks,
+        action_clicks,
         selected_id, revealed, link_target, relayout_data, hover_data,
         group_dialog, focused_group, dialog_group_name, dialog_group_color,
-        dialog_group_select, choice_dialog, choice_checked, constellation_dialog, constellation_select,
+        dialog_group_select, choice_dialog, choice_checked, constellation_dialog, constellation_select, link_dialog,
         navigation_select, nav_state
     ):
         from dash import ctx
@@ -137,9 +151,10 @@ def register_callbacks(app, state, none_deck=None):
         next_choice_dialog = bool(choice_dialog)
         # phase 4: constellations
         next_constellation_dialog = constellation_dialog
+        next_link_dialog = link_dialog
         deleted_links = False
         view_before = (state.view, state.entered_deck)
-        dialog_open = bool(group_dialog or choice_dialog or constellation_dialog or nav_state.get("dialog"))
+        dialog_open = bool(group_dialog or choice_dialog or constellation_dialog or link_dialog or nav_state.get("dialog"))
 
         def current_view() -> views.ViewState:
             return views.ViewState(state.view, state.entered_deck, selected_id)
@@ -206,10 +221,18 @@ def register_callbacks(app, state, none_deck=None):
             state.set_difficulty(selected_id, difficulty)
         elif trigger == "new-group" and selected_id:
             next_group_dialog = "new"
-        elif trigger == "create-link" and selected_id and link_target and link_target != selected_id:
+        elif trigger == "create-link" and selected_id:
+            next_link_dialog = "connect"
+        elif trigger == "disconnect-link" and selected_id:
+            next_link_dialog = "disconnect"
+        elif trigger == "link-dialog-cancel":
+            next_link_dialog = None
+        elif trigger == "link-dialog-submit" and link_dialog == "connect" and selected_id and link_target and link_target != selected_id:
             state.create_link(selected_id, link_target)
-        elif trigger == "disconnect-link" and selected_id and link_target and link_target != selected_id:
+            next_link_dialog = None
+        elif trigger == "link-dialog-submit" and link_dialog == "disconnect" and selected_id and link_target and link_target != selected_id:
             state.disconnect_link(selected_id, link_target)
+            next_link_dialog = None
         elif trigger == "add-group" and selected_id:
             next_group_dialog = "add"
         elif trigger == "remove-group" and selected_id:
@@ -249,6 +272,9 @@ def register_callbacks(app, state, none_deck=None):
             delete_constellation(state, constellation_select)
             deleted_links = True
             next_constellation_dialog = None
+        elif trigger == ACTION_ID and action is not None:
+            # The module's button: its function changes the state (connections, say); saved and drawn below
+            action.run(state)
         elif trigger == "navigation-open":
             nav_state["dialog"] = "navigation"
         elif trigger == "navigation-dialog-cancel":
@@ -269,6 +295,7 @@ def register_callbacks(app, state, none_deck=None):
             next_group_dialog = None
             next_choice_dialog = False
             next_constellation_dialog = None
+            next_link_dialog = None
             nav_state.update({"context": None, "preview_id": None, "previous_id": None, "scroll_pos": None,
                               "scrolled_id": None, "message": None, "message_selected_id": None})
 
@@ -278,6 +305,8 @@ def register_callbacks(app, state, none_deck=None):
             revealed = False
         # Constellations are runtime-derived from current visible cards and links.
         state.refresh_constellations(cards)
+        if selected_id != selected_id_at_start:
+            next_link_dialog = None  # a new selection closes a dialog listed for another dot
 
         visible_ids = {card.id for card in cards}
         positions = [position for position in state.positions if position.comb_id in visible_ids]
@@ -302,8 +331,9 @@ def register_callbacks(app, state, none_deck=None):
         message_selected_id = nav_state.get("message_selected_id")
 
         changed_data_triggers = {
-            "create-link", "disconnect-link", "constellation-dialog-submit", "choice-dialog-submit",
+            "link-dialog-submit", "constellation-dialog-submit", "choice-dialog-submit",
             "choice-dialog-cancel", "focus-group", "all-groups", "group-dialog-submit", "group-dialog-cancel",
+            ACTION_ID,
         }
         clear_context = not empty_nav_reset and (mode_changed or selected_id != selected_id_at_start)
         if context and not empty_nav_reset:
@@ -516,6 +546,7 @@ def register_callbacks(app, state, none_deck=None):
                 view=state.view, entered=state.entered_deck,
                 deck_counts={info.deck_id: info.cards for info in state.decks.infos} if space_view else None,
                 sun_colors=None if space_view else state.deck_colors(state.entered_deck),
+                constellation=sorted(selected_constellation.members) if selected_constellation else None,
             ),
             panel,
             difficulty_control(selected_card, state, hidden=space_view),
@@ -523,8 +554,9 @@ def register_callbacks(app, state, none_deck=None):
             connection_control(
                 selected_card, cards, state, next_constellation_dialog,
                 navigation={**nav_state, "preview_card": preview_card}, view=state.view,
+                link_dialog=next_link_dialog,
             ),
-            "Saved" if trigger in {"create-link", "disconnect-link", "group-dialog-submit", "delete-group", "constellation-dialog-submit"} else "",
+            "Saved" if trigger in {"link-dialog-submit", "group-dialog-submit", "delete-group", "constellation-dialog-submit", ACTION_ID} else "",
             selected_id,
             revealed,
             f"{len(cards)} {'deck' if len(cards) == 1 else 'decks'} mapped" if space_view else (state.entered_name or ""),

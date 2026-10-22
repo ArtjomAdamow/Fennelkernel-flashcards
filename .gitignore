@@ -17,6 +17,7 @@ modules/navigation/temp/
 modules/navigation/tests/
 modules/helper/temp/
 modules/helper/tests/
+modules/helper/results/
 modules/cluster/temp/
 modules/cluster/tests/
 

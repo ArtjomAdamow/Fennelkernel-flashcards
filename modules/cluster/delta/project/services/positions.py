@@ -10,7 +10,11 @@ from typing import List
 
 from project.models import CardPosition
 
-INNER_RADIUS = 0.25  # no card sits inside the sun
+# No card sits closer to the sun than this (the deck view's unit of length is the map's radius): the knob for how
+# far the innermost cards keep from the sun's glow. Stored positions below it are pushed out at startup
+# (keep_off_the_sun), so a change shows at the next start; the helper module scales its model positions into
+# [INNER_RADIUS, 1] from scratch only at a fresh start.
+INNER_RADIUS = 0.4
 
 
 def shell_positions(
