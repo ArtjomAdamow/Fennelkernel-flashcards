@@ -13,7 +13,9 @@
   // A mouse drag, a wheel or a double click pauses the motion; once the gesture is over, the motion goes on in
   // the direction the drag turned the camera, from where the gesture left it (in the planetarium: back on the
   // line to the deck, at the zoom the gesture left). Space (by card order, keyboard.js) stops the motion until
-  // the next selection or view change. A sun with several group colours cycles through them.
+  // the next selection or view change. Within constellation, with no dot selected or one outside every
+  // constellation, Space stops the motion and the next Space lets it go on as after a drag (toggleMotion).
+  // A sun with several group colours cycles through them.
 
   const graphId = "sphere";
   const centeringDuration = 1800;
@@ -44,6 +46,7 @@
   let foreignCamera = null;  // the camera as the last relayout this script did not write (a drag) reported it
   let paused = null;  // a motion paused by a gesture: the centre and the azimuth to measure the drag against
   let resumeTimer = null;
+  let spaceStopped = null;  // a motion Space stopped without a capture (like `paused`), for the next Space
   const sunColorMs = 1800;
   let sunTimer = null;
   let sunKey = null;
@@ -503,6 +506,7 @@
     noteViewChange();
     cancelMotion(graph);
     paused = null;
+    spaceStopped = null;  // a new motion: its first Space stops it
     clearResume();
     if (!window.Plotly || typeof window.Plotly.relayout !== "function") {
       return;
@@ -904,6 +908,7 @@
       return Promise.resolve({ ignored: true });
     }
     paused = null;
+    spaceStopped = null;  // stopped for good: a later Space without a capture stops first
     clearResume();
     if (motionActive) {
       cancelMotion(graph);
@@ -926,10 +931,34 @@
   // the next selection, constellation or view change, never by itself; a drag no longer resumes it.
   function stopMotion() {
     paused = null;
+    spaceStopped = null;
     clearResume();
     if (attachedGraph) {
       cancelMotion(attachedGraph);
     }
+  }
+
+  // Called by Space from keyboard.js within constellation when no view is captured (no dot selected, or one
+  // outside every constellation): the first press stops the motion, remembering it like a gesture; the next one
+  // lets it go on from where the camera is, as after a drag (in the planetarium: back on the line to the deck,
+  // then the roll). A drag in between does not resume it, but sets the direction.
+  function toggleMotion() {
+    const graph = attachedGraph;
+    if (!graph || pointerIsDown) {
+      return;
+    }
+    if (!spaceStopped) {
+      pauseMotion(graph);
+      spaceStopped = paused || {
+        center: clone(orbitCenter) || { x: 0, y: 0, z: 0 },
+        azimuth: azimuthOf(currentCamera(graph), orbitCenter),
+      };
+      paused = null;
+      return;
+    }
+    paused = spaceStopped;
+    spaceStopped = null;
+    resumeMotion(graph);
   }
 
   const constellationNav = {
@@ -937,6 +966,7 @@
     getGeneration: function () { return viewGeneration; },
     setCameraSource: function (source) { cameraSource = source === "scene" ? "scene" : "layout"; },
     stopMotion: stopMotion,
+    toggleMotion: toggleMotion,
   };
   if (typeof window !== "undefined") {
     window.constellationNav = constellationNav;

@@ -23,6 +23,7 @@
   let navSent = false;
   let invalidateTimer = null;
   let cameraSource = "layout";
+  let spaceStopped = false; // Space stopped the motion; the next Space (toggleMotion) resumes it
 
   function defaultCamera() {
     return {
@@ -187,6 +188,7 @@
       ? clone(selection.camera)
       : defaultCamera();
     cancelMotion(graph);
+    spaceStopped = false; // a new selection moves again; its first Space stops it
     const generation = motionGeneration;
     const selectedTarget = cameraTargetedAt(selection.point, selection.dataScale, zoomFactor);
     motionActive = true;
@@ -457,6 +459,7 @@
     if (motionActive) {
       cancelMotion(graph);
     }
+    spaceStopped = false; // stopped for good: a later Space without a capture stops first
     const startGeneration = viewGeneration;
     return waitForStoppedView(stopTimeoutMs).then(function (stopped) {
       if (!stopped || viewGeneration !== startGeneration) {
@@ -471,8 +474,34 @@
     });
   }
 
+  // Called by Space from keyboard.js when no view is captured (no card selected, or a card outside every
+  // constellation): the first press stops centring/orbit, the next one turns the camera again around the
+  // point it looks at, from where it is now.
+  function toggleMotion() {
+    const graph = attachedGraph;
+    if (!graph) {
+      return;
+    }
+    cancelMotion(graph);
+    if (!spaceStopped) {
+      spaceStopped = true;
+      return;
+    }
+    spaceStopped = false;
+    const scene = graph._fullLayout && graph._fullLayout.scene;
+    const camera = readCamera(scene, scene && scene._scene);
+    const current = camera && camera.eye && camera.center ? camera : defaultCamera();
+    if (!window.Plotly || typeof window.Plotly.relayout !== "function") {
+      return;
+    }
+    noteViewChange();
+    motionActive = true;
+    rotateCamera(graph, current);
+  }
+
   const constellationNav = {
     captureView: captureView,
+    toggleMotion: toggleMotion,
     getGeneration: function () { return viewGeneration; },
     setCameraSource: function (source) { cameraSource = source === "scene" ? "scene" : "layout"; },
   };

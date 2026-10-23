@@ -23,7 +23,9 @@ Environment: the module has its own uv project (pyproject.toml, uv.lock and
 `uv sync --locked --check`, asks before installing anything, and restarts
 itself with the env's Python when it was started from another interpreter.
 HELPER_ENV_READY=1 marks the restarted process, so it (and the debug
-reloader's child) skips the check.
+reloader's child) skips the check. On Ctrl+C, which reaches every process of
+the console, the first process waits for the restarted one to stop the server
+(run_restarted), so no KeyboardInterrupt traceback is printed.
 
 All generated output goes flat into temp/: the merged assets and the module's
 own state files (plus their backups): helper_state.json for the cards (deck
@@ -410,6 +412,24 @@ def ensure_environment(
     return [str(python), str(Path(__file__).resolve()), *(list(sys.argv[1:]) if arguments is None else list(arguments))]
 
 
+def run_restarted(command: Sequence[str], popen: Callable = subprocess.Popen, grace: float = 10.0) -> int:
+    """Run the launcher again on the module env and return its exit code.
+
+    Ctrl+C reaches every process of the console, the restarted launcher included, and it stops the server on its
+    own. So this process waits for it instead of raising (subprocess.run prints a KeyboardInterrupt traceback and
+    kills it); on a second Ctrl+C, or when it still runs after `grace` seconds, it is killed.
+    """
+    process = popen(command)
+    try:
+        return process.wait()
+    except KeyboardInterrupt:
+        try:
+            return process.wait(timeout=grace)
+        except (KeyboardInterrupt, subprocess.TimeoutExpired):
+            process.kill()
+            return process.wait()
+
+
 # --- composition root ----------------------------------------------------------------
 
 
@@ -495,7 +515,7 @@ def main() -> None:
         if restart is not None:
             os.environ[ENV_READY] = "1"  # the restarted process skips the check
             print(f"Restarting on the module env: {restart[0]}")
-            raise SystemExit(subprocess.run(restart).returncode)
+            raise SystemExit(run_restarted(restart))
         os.environ[ENV_READY] = "1"  # the reloader child skips the check too
         prepare_state()
     load_app().main()

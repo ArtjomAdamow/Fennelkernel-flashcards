@@ -14,6 +14,9 @@ Changes against the main file:
     lives in the panel's `link-dialog` store, like the Delete dialog's.
   * With no dot selected the progress slider becomes the cut-off line of the dendrogram (cutoff_control), and
     overview_panel draws that line across the dendrogram.
+  * Groups panel in the deck view: Focus opens a checklist of the groups plus "No group" (dialog-group-checklist,
+    all checked by default), like the Cards dialog, instead of the one-group dropdown; the counts cover the
+    entered deck's cards only (ViewRouter.group_count). The space view keeps the dropdown.
 """
 
 import dash_daq as daq
@@ -21,6 +24,7 @@ from dash import dcc, html
 
 from project.layout.dendrogram import dendrogram_figure
 from project.models import Flashcard
+from project.store.view_router import NO_GROUP
 
 
 def _state(state):
@@ -35,6 +39,8 @@ ADD_TO_GROUP_NOTE = "Membership and color of the previously assigned group will 
 DELETE_GROUP_NOTE = "Connections of member cards will remain."
 UNCHECK_DECK_NOTE = "Unchecking a deck erases the settings of all its cards: progress, positions, groups and connections."
 UNCHECK_CARD_NOTE = "Unchecking a card only hides it: its progress, position, groups and connections stay."
+FOCUS_GROUPS_NOTE = "Unchecking a group only hides its cards; a card in a checked group stays."
+NO_GROUP_LABEL = "No group"
 CARD_LABEL_LENGTH = 80
 # phase 4: constellations
 DELETE_CONSTELLATION_NOTE = "Deleting a constellation will disconnect all members"
@@ -185,6 +191,13 @@ def difficulty_control(card: Flashcard | None, state=None, hidden: bool = False,
 
 def group_control(card: Flashcard | None, dialog: str | None = None, state=None, focused_group: str | None = None) -> html.Div:
     state = _state(state)
+    # Deck view: Focus is a checklist of the groups (like the Cards dialog), and the counts cover the deck's cards
+    deck_view = getattr(state, "view", None) == "deck"
+    focus_checklist = deck_view and dialog == "focus"
+
+    def count(group) -> int:
+        return state.group_count(group) if hasattr(state, "group_count") else len(group.card_ids)
+
     # The swatches of the selected card's groups glow, except the group that gives the card its colour on the map
     deciding = state.deciding_group(card.id, focused_group) if card else None
     shares_members = {
@@ -201,6 +214,8 @@ def group_control(card: Flashcard | None, dialog: str | None = None, state=None,
     note = {"new": NEW_GROUP_NOTE, "delete": DELETE_GROUP_NOTE}.get(dialog)
     if dialog == "add" and card is not None and any(card.id in group.card_ids for group in state.groups):
         note = ADD_TO_GROUP_NOTE
+    if focus_checklist:
+        dialog_title, note = "Focus groups", FOCUS_GROUPS_NOTE
     dialog_body = [
         dcc.Input(id="dialog-group-name", type="text", placeholder="Group name", style={"display": "block" if dialog == "new" else "none"}),
         daq.ColorPicker(id="dialog-group-color", value={"hex": "#f5b942"}, size=140, style={"display": "block" if dialog == "new" else "none"}),
@@ -211,7 +226,17 @@ def group_control(card: Flashcard | None, dialog: str | None = None, state=None,
             value=selected_groups[0] if selected_groups else None,
             placeholder="Select a saved group",
             clearable=True,
-            style={"display": "block" if dialog in {"add", "remove", "delete", "focus"} else "none"},
+            style={"display": "block" if dialog in {"add", "remove", "delete", "focus"} and not focus_checklist else "none"},
+        ),
+        # Always in the layout (a callback state); shown only for Focus in the deck view
+        dcc.Checklist(
+            id="dialog-group-checklist",
+            options=[{"label": group.name, "value": group.id} for group in state.groups] + [{"label": NO_GROUP_LABEL, "value": NO_GROUP}],
+            value=state.checked_groups() if deck_view else [],
+            className="choice-checklist",
+            inputClassName="choice-checkbox",
+            labelClassName="choice-option",
+            style={"display": "block" if focus_checklist else "none"},
         ),
     ]
     return html.Div(
@@ -231,7 +256,7 @@ def group_control(card: Flashcard | None, dialog: str | None = None, state=None,
             html.Div(
                 [
                     html.Div(
-                        [html.Span(className="group-color-swatch group-color-swatch-shared" if id(group) in shares_members else "group-color-swatch", style={"backgroundColor": group.color, "color": group.color}), html.Span(group.name), html.Span(f"{len(group.card_ids)} cards", className="group-member-count")],
+                        [html.Span(className="group-color-swatch group-color-swatch-shared" if id(group) in shares_members else "group-color-swatch", style={"backgroundColor": group.color, "color": group.color}), html.Span(group.name), html.Span(f"{count(group)} cards", className="group-member-count")],
                         className="group-list-item",
                     )
                     for group in state.groups

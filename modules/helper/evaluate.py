@@ -10,10 +10,15 @@ What it measures (docs/draft/helper/early.md, "Metrics"):
     within-deck top-5 overlap of the card positions (and decks 17 and 24), against the SVD start and random
     positions; and the time the whole model takes to build.
 
-Every run appends one row per model and variant to modules/helper/results/results.csv, and writes the hand-check
-candidates to modules/helper/results/hand_check.md: about 20 cards of decks 17 and 24 with the top-5 neighbours of
-every variant combined, to be judged by hand (relevant or not). Marks already in that file are kept, and once a
-card has a mark, every variant's hand-judged precision@5 over the judged cards goes into the results as well.
+  * D1, the difficulty model (docs/draft/helper/roadmap.md, step 10): out of fold on the rated quizzes, every
+    feature set with the deck shares and with the most likely class, the two baselines, and the predicted levels
+    of the unrated quizzes by the deck shares and by the cut points of the rated cards.
+
+Every run appends one row per model and variant to modules/helper/results/results.csv (D1 to difficulty.csv, its
+measures are others), and writes the hand-check candidates to modules/helper/results/hand_check.md: about 20 cards
+of decks 17 and 24 with the top-5 neighbours of every variant combined, to be judged by hand (relevant or not).
+Marks already in that file are kept, and once a card has a mark, every variant's hand-judged precision@5 over the
+judged cards goes into the results as well. `--part similarity` or `--part difficulty` runs one part only.
 results/ is git-ignored: it holds derived course data.
 """
 
@@ -42,6 +47,13 @@ COLUMNS = [
     "date", "model", "variant", "params", "seed", "precision_at_5", "kept_precision", "coverage", "distinct",
     "hand_precision", "judged_cards", "trust_decks", "overlap_decks", "overlap_cards", "overlap_17", "overlap_24",
     "seconds", "notes",
+]
+DIFFICULTY_FILE = RESULTS_DIR / "difficulty.csv"
+DIFFICULTY_COLUMNS = [
+    "date", "model", "variant", "features", "label_rule", "folds", "repeats", "seed",
+    "macro_f1", "macro_f1_sd", "balanced_accuracy", "balanced_accuracy_sd", "kappa", "kappa_sd", "accuracy", "accuracy_sd",
+    "spearman", "recall_easy", "recall_medium", "recall_hard", "rated", "unrated",
+    "predicted_easy", "predicted_medium", "predicted_hard", "seconds", "notes",
 ]
 MARKED = re.compile(r"^- \[([xX])\] (\S+) \(")
 NONE_RELEVANT = re.compile(r"^- \[[xX]\] none\b")  # judged: no candidate of this card is relevant
@@ -80,15 +92,61 @@ def variants():
     ]
 
 
-def write_rows(rows: list[dict]) -> None:
+def write_rows(rows: list[dict], path: Path = RESULTS_FILE, columns: list[str] = COLUMNS) -> None:
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
-    new_file = not RESULTS_FILE.exists()
-    with RESULTS_FILE.open("a", newline="", encoding="utf-8") as handle:
-        writer = csv.DictWriter(handle, fieldnames=COLUMNS)
+    new_file = not path.exists()
+    with path.open("a", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=columns)
         if new_file:
             writer.writeheader()
         for row in rows:
-            writer.writerow({column: row.get(column, "") for column in COLUMNS})
+            writer.writerow({column: row.get(column, "") for column in columns})
+
+
+def difficulty_rows(report, today: str, model: str, variant: str, measures: dict, label_rule: str, predicted=None) -> dict:
+    """One row of difficulty.csv: the measures (name -> (mean, sd)) and, if given, the predicted levels."""
+    row = {"date": today, "model": model, "variant": variant, "features": report.feature_set, "label_rule": label_rule,
+           "folds": report.folds, "repeats": report.repeats, "seed": 42, "rated": report.rated, "unrated": report.unrated,
+           "seconds": f"{report.seconds:.2f}"}
+    for name, (mean, sd) in measures.items():
+        row[name] = fmt(mean)
+        if f"{name}_sd" in DIFFICULTY_COLUMNS:
+            row[f"{name}_sd"] = fmt(sd)
+    if predicted is not None:
+        row["predicted_easy"], row["predicted_medium"], row["predicted_hard"] = report.counts(predicted)
+    return row
+
+
+def evaluate_difficulty(cards, today: str) -> list[dict]:
+    """D1: every feature set, out of fold, with the deck shares and with the most likely class; the baselines once;
+    the predicted levels of the unrated quizzes by the deck shares and by the cut points."""
+    from project.services import similar
+    from project.services.difficulty_model import DEFAULT_FEATURES, FEATURE_SETS, fit_difficulty
+
+    index = similar.SimilarityIndex.fit(cards)  # as the app fits it
+    rows = []
+    for feature_set in FEATURE_SETS:
+        report = fit_difficulty(cards, index, feature_set)
+        if not report.measured:
+            print(f"D1 {feature_set}: {report.note}")
+            continue
+        chosen = " (chosen)" if feature_set == DEFAULT_FEATURES else ""
+        rows.append(difficulty_rows(report, today, "D1", f"{feature_set}{chosen}", report.metrics, "deck shares", report.predictions))
+        rows.append(difficulty_rows(report, today, "D1", f"{feature_set}{chosen}", report.most_likely, "most likely class"))
+        rows.append(difficulty_rows(report, today, "D1", f"{feature_set}{chosen}", {}, "cut points of the rated cards",
+                                    report.cut_point_predictions))
+        f1, kappa = report.metrics["macro_f1"], report.metrics["kappa"]
+        print(f"D1 {feature_set:20s} deck shares: macro-F1 {f1[0]:.3f} ± {f1[1]:.3f}, weighted kappa {kappa[0]:.3f} ± {kappa[1]:.3f}, "
+              f"accuracy {report.metrics['accuracy'][0]:.3f}, recall {report.metrics['recall_easy'][0]:.2f} / "
+              f"{report.metrics['recall_medium'][0]:.2f} / {report.metrics['recall_hard'][0]:.2f} | most likely class: macro-F1 "
+              f"{report.most_likely['macro_f1'][0]:.3f} | {report.unrated} unrated quizzes: {report.predicted_counts} "
+              f"(cut points {report.counts(report.cut_point_predictions)}) ({report.seconds:.2f}s)")
+    if rows:
+        for name, measures in report.baselines.items():
+            rows.append(difficulty_rows(report, today, "baseline", name, measures, "deck shares" if name == "similarity" else "constant"))
+            print(f"baseline {name:12s} macro-F1 {measures['macro_f1'][0]:.3f} ± {measures['macro_f1'][1]:.3f}, "
+                  f"weighted kappa {measures['kappa'][0]:.3f} ± {measures['kappa'][1]:.3f}, accuracy {measures['accuracy'][0]:.3f}")
+    return rows
 
 
 def fmt(value) -> str:
@@ -174,6 +232,8 @@ def write_hand_check(cards, by_id, indexes: dict[str, object], seen_today: str, 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--course", default=None, help="the course file (default: data/cards.json of the repository)")
+    parser.add_argument("--part", choices=("all", "similarity", "difficulty"), default="all",
+                        help="the similarity models (B0, M1, M1-map), the difficulty model D1, or both (default)")
     arguments = parser.parse_args()
 
     launcher = install_launcher()
@@ -193,6 +253,14 @@ def main() -> None:
     rows: list[dict] = []
     marks = read_hand_check()
     print(f"{len(cards)} cards in {len(deck_ids)} decks ({course}); hand-check marks for {len(marks)} cards")
+
+    # D1: the difficulty model, into its own file
+    if arguments.part in ("all", "difficulty"):
+        difficulty = evaluate_difficulty(cards, today)
+        write_rows(difficulty, DIFFICULTY_FILE, DIFFICULTY_COLUMNS)
+        print(f"{len(difficulty)} rows appended to {DIFFICULTY_FILE}")
+    if arguments.part == "difficulty":
+        return
 
     # B0: the random floor
     floors = [evaluation.random_floor(ids, deck_of, seed) for seed in SEEDS]

@@ -22,6 +22,12 @@ Changes against the main file:
   * With no dot selected the progress slider is the cut-off line of the view's dendrogram (ViewRouter.cutoff):
     moving it cuts the tree, the map's connections and the constellations below the line; the dendrogram shows
     the line. The cut-off is runtime only and starts at the full tree.
+  * Focus in the deck view is a checklist (the state dialog-group-checklist): Confirm keeps the checked groups
+    (ViewRouter.set_checked_groups), All checks everything again; the space view keeps the one-group Focus.
+  * The back of the card panel (a hook for the helper module): with `overview_back` and nothing selected, Enter
+    or a click on the panel flips between the dendrogram and the back the function draws. The flip is the
+    `revealed` store, which a selection and a view change reset; it is no longer reset just because nothing is
+    selected. Without `overview_back` nothing flips.
 """
 
 from dash import Input, Output, State
@@ -36,12 +42,15 @@ from project.services import dendrogram, navigation, views
 from project.services.actions import ACTION_ID
 
 
-def register_callbacks(app, state, none_deck=None, action=None):
+FLIP_HINT = "Enter or a click on this frame turns it over."
+
+
+def register_callbacks(app, state, none_deck=None, action=None, overview_back=None):
     """Register the card callback on `app`.
 
     `state` is the ViewRouter the callback reads and changes; `none_deck` is unused (kept for the main
-    signature); `action` is the module action of the top bar button, or None. Returns the callback function
-    (for tests).
+    signature); `action` is the module action of the top bar button, or None; `overview_back` draws the back of
+    the card panel from the router while nothing is selected, or None. Returns the callback function (for tests).
     """
 
     @app.callback(
@@ -106,6 +115,7 @@ def register_callbacks(app, state, none_deck=None, action=None):
         State("link-dialog", "data"),
         State("navigation-select", "value"),
         State("nav-state", "data"),
+        State("dialog-group-checklist", "value"),
     )
     def update_card(
         click_data, panel_clicks, random_clicks, difficulty, new_group_clicks,
@@ -119,7 +129,7 @@ def register_callbacks(app, state, none_deck=None, action=None):
         selected_id, revealed, link_target, relayout_data, hover_data,
         group_dialog, focused_group, dialog_group_name, dialog_group_color,
         dialog_group_select, choice_dialog, choice_checked, constellation_dialog, constellation_select, link_dialog,
-        navigation_select, nav_state
+        navigation_select, nav_state, dialog_group_checked
     ):
         from dash import ctx
         import random
@@ -198,6 +208,8 @@ def register_callbacks(app, state, none_deck=None, action=None):
                 revealed = not revealed
                 if revealed:
                     state.mark_read(selected_id)
+        elif trigger == "selected-card" and overview_back is not None:
+            revealed = not revealed  # nothing selected: the panel turns between the dendrogram and its back
         elif trigger == "random-card" and cards and state.view == views.DECK:
             chosen = cards_service.choose_random_card(cards, state.progress, random)
             selected_id = chosen.id if chosen else None
@@ -213,6 +225,8 @@ def register_callbacks(app, state, none_deck=None, action=None):
                     revealed = not revealed
                     if revealed:
                         state.mark_read(selected_id)
+            elif command == "enter" and payload is None and overview_back is not None:
+                revealed = not revealed  # nothing selected: the panel turns between the dendrogram and its back
             elif mode == "card_order" and payload is None and command in {"next", "right", "down", "previous", "prev", "left", "up"}:
                 direction = 1 if command in {"next", "right", "down"} else -1
                 adjacent = cards_service.adjacent_card(cards, selected_id, direction)
@@ -246,6 +260,7 @@ def register_callbacks(app, state, none_deck=None, action=None):
             next_group_dialog = "focus"
         elif trigger == "all-groups":
             next_focused_group = None
+            state.set_checked_groups(None)
         elif trigger == "group-dialog-cancel":
             next_group_dialog = None
         elif trigger == "group-dialog-submit" and selected_id and group_dialog == "new" and dialog_group_name:
@@ -262,6 +277,10 @@ def register_callbacks(app, state, none_deck=None, action=None):
             state.delete_group(dialog_group_select)
             if next_focused_group == dialog_group_select:
                 next_focused_group = None
+            next_group_dialog = None
+        elif trigger == "group-dialog-submit" and group_dialog == "focus" and state.view == views.DECK:
+            # The deck view's Focus: the cards of the checked groups stay (the router keeps the checks)
+            state.set_checked_groups(dialog_group_checked or [])
             next_group_dialog = None
         elif trigger == "group-dialog-submit" and group_dialog == "focus" and dialog_group_select:
             next_focused_group = dialog_group_select
@@ -305,9 +324,11 @@ def register_callbacks(app, state, none_deck=None, action=None):
                               "scrolled_id": None, "message": None, "message_selected_id": None})
 
         cards = state.visible_cards(None, next_focused_group)
-        if selected_id not in {card.id for card in cards}:
+        if selected_id is not None and selected_id not in {card.id for card in cards}:
             selected_id = None
             revealed = False
+        if selected_id is None and overview_back is None:
+            revealed = False  # nothing to turn over
         # Constellations are runtime-derived from current visible cards and links.
         state.refresh_constellations(cards)
         if selected_id != selected_id_at_start:
@@ -521,7 +542,10 @@ def register_callbacks(app, state, none_deck=None, action=None):
             if preview_id and preview_id != selected_id else None
         )
         context_members = context.get("members") if context else None
-        if selected_card is None:
+        flip_hint = f" {FLIP_HINT}" if overview_back is not None else ""
+        if selected_card is None and revealed and overview_back is not None:
+            panel = overview_back(state)  # the back of the card panel
+        elif selected_card is None:
             # state.links are the connections below the cut-off line; the line itself is measured on the full tree
             dot_ids = [card.id for card in cards]
             forest = dendrogram.build_forest(dot_ids, state.links)
@@ -530,14 +554,15 @@ def register_callbacks(app, state, none_deck=None, action=None):
             if space_view:
                 panel = overview_panel(
                     "Constellations of decks", forest, label_of,
-                    "Select a deck to see its description. The Decks button chooses the decks on the map.",
+                    "Select a deck to see its description. The Decks button chooses the decks on the map." + flip_hint,
                     cut=cut,
                 )
             else:
                 info = state.decks.by_id.get(state.entered_deck)
                 panel = overview_panel(
                     state.entered_name or "", forest, label_of,
-                    "Select a card to begin; the Cards button chooses the cards on the map. Backspace goes back to the decks.",
+                    "Select a card to begin; the Cards button chooses the cards on the map. Backspace goes back to the decks."
+                    + flip_hint,
                     subtitle=info.description() if info else None,
                     cut=cut,
                 )

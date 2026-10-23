@@ -3,7 +3,8 @@
 
   // Browser key handling for constellation navigation.
   // By card order arrows remain bare directions. Within constellation, arrows send a generation;
-  // Space captures the settled camera view; Enter always flips the selected card.
+  // Space always stops the camera's motion: with a constellation member selected it captures the settled
+  // view; otherwise the next Space resumes the motion. Enter always flips the selected card.
 
   const KEY_WINDOW_MS = 200;
   const ARROWS = { ArrowLeft: "left", ArrowRight: "right", ArrowUp: "up", ArrowDown: "down" };
@@ -129,7 +130,7 @@
 
     function handleSpace(event) {
       const config = env.readConfig();
-      if (config.mode !== "constellation" || !config.selected || isIgnoredTarget(event.target, ACTION_IGNORED)) {
+      if (config.mode !== "constellation" || isIgnoredTarget(event.target, ACTION_IGNORED)) {
         return;
       }
       event.preventDefault();
@@ -140,14 +141,19 @@
       if (spacePending || (lastSpaceAt !== null && now - lastSpaceAt < KEY_WINDOW_MS)) {
         return;
       }
-      if (!config.member) {
-        // Selected card is not a constellation member: show the message only.
-        // No camera stop, no view capture.
+      const nav = env.getNav();
+      if (!config.selected || !config.member) {
+        // No card selected, or one outside every constellation: no view capture. Space stops the motion,
+        // the next Space resumes it; a selected card still gets its message.
         lastSpaceAt = now;
-        env.sender.sendCommand({ cmd: "space" });
+        if (nav && typeof nav.toggleMotion === "function") {
+          nav.toggleMotion();
+        }
+        if (config.selected) {
+          env.sender.sendCommand({ cmd: "space" });
+        }
         return;
       }
-      const nav = env.getNav();
       if (!nav || typeof nav.captureView !== "function") {
         return;
       }

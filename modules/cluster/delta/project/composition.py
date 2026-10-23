@@ -8,13 +8,15 @@
   (store.view_settings.view_state_path).
 * the ViewRouter over both, handed to the server and the callback.
 * hooks for a module on top (the helper): the two position sources are parameters of compose, defaulting to
-  the random ones (deck_positions for the space state, card_positions for the card state), and an optional
-  module action (services.actions.ModuleAction): a button in the top bar that runs a function on the router.
+  the random ones (deck_positions for the space state, card_positions for the card state), an optional
+  module action (services.actions.ModuleAction): a button in the top bar that runs a function on the router, and
+  an optional back of the card panel (overview_back): with nothing selected, Enter or a click on the panel flips
+  between the dendrogram and what the function draws from the router.
 """
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
 from project.callbacks import register_callbacks
 from project.content.deck_catalog import JsonDeckCatalog
@@ -55,10 +57,12 @@ def compose(
     deck_positions: PositionSource = sphere_positions,
     card_positions: PositionSource = shell_positions,
     action: Optional[ModuleAction] = None,
+    overview_back: Optional[Callable[[ViewRouter], object]] = None,
 ) -> Composition:
     """Build the whole app from explicit paths. The position sources place the dots that have no stored
     position: decks in the space state, cards in the card state (random by default). The action, if any, is
-    a module's button in the top bar."""
+    a module's button in the top bar; overview_back, if any, draws the back of the card panel while nothing is
+    selected (a function of the router that returns a Dash component)."""
     cards_file = CardsFile(cards_path)  # the course file, read here and once more by DeckIndex for the deck ids
     catalog = JsonDeckCatalog(cards_file, exclude={"readme", NONE_DECK})
     decks = DeckIndex(cards_path, cards_file, catalog.available())
@@ -87,5 +91,5 @@ def compose(
     )
     hub = Runtime(user_state=router)
     dash_app = create_app(base_dir, boot_id, router, action)
-    register_callbacks(dash_app, router, action=action)
+    register_callbacks(dash_app, router, action=action, overview_back=overview_back)
     return Composition(boot_id=boot_id, catalog=catalog, core=core, space_core=space_core, hub=hub, dash_app=dash_app)

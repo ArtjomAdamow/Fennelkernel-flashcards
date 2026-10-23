@@ -46,9 +46,9 @@ node --test modules/navigation/tests/nav.test.js
 
 `-B` keeps Python from writing `__pycache__` folders next to the test files.
 
-Both Python commands run all 108 Python tests. `test_nav_js.py` also runs the Node suite (27 tests) when Node 18 or newer is installed, and is skipped without Node. A skip is not a pass: check that the Node suite really ran. The explicit Node command prints the browser suite result separately.
+Both Python commands run all 108 Python tests. `test_nav_js.py` also runs the Node suite (32 tests) when Node 18 or newer is installed, and is skipped without Node. A skip is not a pass: check that the Node suite really ran. The explicit Node command prints the browser suite result separately.
 
-`nav.test.js` tests the module's `keyboard.js` and `camera.js`, or the main project's while `delta/assets/` has none. A change to the main assets can therefore break this suite, so run it after changing them. Its key configuration must follow `keyboard.js`: for example, the `member` flag (`data-member`) decides whether Space captures a view.
+`nav.test.js` tests the module's `keyboard.js` and `camera.js`, or the main project's while `delta/assets/` has none. A change to the main assets can therefore break this suite, so run it after changing them. Its key configuration must follow `keyboard.js`: for example, the `member` flag (`data-member`) decides whether Space captures a view. Without a member (nothing selected, or a card outside every constellation) Space captures no view: it stops the camera's motion, and the next Space resumes it (`constellationNav.toggleMotion` in `camera.js`, since 2026-10-23).
 
 For focused iteration:
 

@@ -4,11 +4,15 @@
   // Cluster module copy of assets/keyboard.js. Changes: Backspace sends the bare "back" command (Python decides:
   // unselect the dot, or leave the deck view; nothing while a dialog is open); the top bar buttons give up the
   // focus after a click, so a following Enter flips the card instead of clicking the button again; by card
-  // order, Space stops the camera's motion (camera.js, constellationNav.stopMotion) and sends nothing.
+  // order, Space stops the camera's motion (camera.js, constellationNav.stopMotion) and sends nothing; within
+  // constellation, with no dot selected or one outside every constellation, Space stops the motion and the next
+  // Space resumes it (constellationNav.toggleMotion), as in the main project; Enter is sent with nothing selected
+  // too (it turns the card panel over where a module gives it a back).
   //
   // Browser key handling for constellation navigation.
   // By card order arrows remain bare directions. Within constellation, arrows send a generation;
-  // Space captures the settled camera view; Enter always flips the selected card.
+  // Space always stops the camera's motion: with a constellation member selected it captures the settled
+  // view; otherwise the next Space resumes the motion. Enter always flips the selected card.
 
   const KEY_WINDOW_MS = 200;
   const ARROWS = { ArrowLeft: "left", ArrowRight: "right", ArrowUp: "up", ArrowDown: "down" };
@@ -122,8 +126,10 @@
       }
     }
 
+    // Enter goes to Python with or without a selected dot: with nothing selected it turns the card panel over
+    // when a module gives it a back (the callback's overview_back); otherwise Python ignores it.
     function handleEnter(event) {
-      if (!env.readConfig().selected || isIgnoredTarget(event.target, ACTION_IGNORED)) {
+      if (isIgnoredTarget(event.target, ACTION_IGNORED)) {
         return;
       }
       event.preventDefault();
@@ -165,9 +171,6 @@
         handleStop(event);
         return;
       }
-      if (!config.selected) {
-        return;
-      }
       event.preventDefault();
       if (event.repeat) {
         return;
@@ -176,14 +179,19 @@
       if (spacePending || (lastSpaceAt !== null && now - lastSpaceAt < KEY_WINDOW_MS)) {
         return;
       }
-      if (!config.member) {
-        // Selected card is not a constellation member: show the message only.
-        // No camera stop, no view capture.
+      const nav = env.getNav();
+      if (!config.selected || !config.member) {
+        // No dot selected, or one outside every constellation: no view capture. Space stops the motion,
+        // the next Space resumes it; a selected dot still gets its message.
         lastSpaceAt = now;
-        env.sender.sendCommand({ cmd: "space" });
+        if (nav && typeof nav.toggleMotion === "function") {
+          nav.toggleMotion();
+        }
+        if (config.selected) {
+          env.sender.sendCommand({ cmd: "space" });
+        }
         return;
       }
-      const nav = env.getNav();
       if (!nav || typeof nav.captureView !== "function") {
         return;
       }

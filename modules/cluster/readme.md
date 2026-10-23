@@ -50,8 +50,18 @@ The names in `delta/` match the main project: `delta/project/` stands for the pa
 - **Backspace:** unselects the selected dot; with nothing selected, it goes back from the deck view to the decks. It is ignored in text fields, dropdowns and while a dialog is open.
 - **Connect, Disconnect:** each opens a dialog with a dropdown: Connect lists the dots not yet connected to the selected one, Disconnect only the connected ones. Confirm applies, Cancel closes; selecting another dot or changing the view closes it too.
 - **Dendrogram:** with nothing selected, the card panel shows the dendrogram of the view's connections.
+  - A module on top can give the card panel a back (`compose(..., overview_back=...)`, used by the helper for its difficulty model's metrics). Enter or a click on the panel then turns it over and back, and a selection or a view change turns it back.
+  - In this module alone there is no back, and Enter with nothing selected does nothing.
 - **Cut-off line:** with nothing selected, the slider under the card panel is the dendrogram's cut-off line, from 0 % to 100 % of the tree's height. At 100 % the tree is whole; lower it and the merges above the line are cut: the tree falls apart, the map draws only the connections below the line, and those parts are the constellations. Nothing is stored; every start shows the whole tree, and each view and deck keeps its own line while the app runs.
-- **Space** (navigation by card order): stops the camera's motion until the next selection or view change.
+- **Groups in the deck view:**
+  - Focus opens a checklist of the groups plus "No group", all checked, like the Cards dialog. Confirm hides the cards none of whose groups is checked (a card in no group: when "No group" is unchecked). It changes no membership.
+  - A card takes the colour of its oldest checked group. All checks everything again, and so does every view change.
+  - The panel's counts cover only the open deck's cards.
+  - The space view keeps the one-group Focus dropdown.
+- **Space:**
+  - Navigation by card order: stops the camera's motion until the next selection or view change.
+  - Navigation within constellation, with a constellation member selected: stops the motion and starts the navigation (the view capture), as before.
+  - Within constellation, with nothing selected or a dot outside every constellation: always stops the motion, and the next Space lets it go on from where it stopped (in the planetarium, back on the line to the deck). A drag in between doesn't bring it back but sets its direction. A selected dot also shows its "not connected" message.
 - **Two states:** connections, groups and progress of decks (`temp/cluster_space_state.json`) and of cards (`temp/cluster_state.json`) are separate.
 
 ## Start the module build
