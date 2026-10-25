@@ -3,6 +3,8 @@ Dash app and its callback (project.composition), starts the server.
 
 Changes against the main file: two state files (cards and decks) instead of one, and the ViewRouter as the
 state the app works with. The launcher (modules/cluster/cluster.py) keeps both files in its temp/ folder.
+The course is data/topics.json, the version 3 file with topics (decks 01 to 24, written by scripts/topics.py),
+read by the module's parser (delta/project/content/parser.py), which reads version 2 too.
 """
 
 import uuid
@@ -14,7 +16,7 @@ from project.composition import compose
 BASE_DIR = Path(__file__).resolve().parents[3]
 STATE_PATH = BASE_DIR / "data" / "user_state.json"  # card state (deck view); the launcher keeps it as temp/cluster_state.json
 SPACE_STATE_PATH = BASE_DIR / "data" / "space_state.json"  # deck state (space view): temp/cluster_space_state.json
-CARDS_FILE = BASE_DIR / "data" / "cards.json"  # course file, read at startup
+CARDS_FILE = BASE_DIR / "data" / "topics.json"  # course file, version 3, read at startup
 SERVER_BOOT_ID = uuid.uuid4().hex
 
 
