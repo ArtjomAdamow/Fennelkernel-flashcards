@@ -1,6 +1,7 @@
-"""Decks as dots of the space view: one deck card per deck of the course, with a placeholder description.
+"""Decks as dots of the decks view: one deck card per deck of the course, with a placeholder description.
 
-The space state is an ordinary StateCore whose only deck is SPACE_DECK; its cards are the course's decks.
+The space state (the decks' 3D space) is an ordinary StateCore whose only deck is SPACE_DECK; its cards are the
+course's decks.
 A deck card's comb_id is the deck "id" of the course file, its question the deck name and its answer the
 description (never flipped: a deck is entered instead).
 """
@@ -9,8 +10,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
 
-from project.content.parser import CardsFile, read_decks
+from project.content.parser import STACK_DIFFICULTY, STACK_QUIZ, CardsFile, read_decks
 from project.models import Flashcard
+
+# The stacks of the quiz cards; the flashcards are stacks 1 and 4 (the JS quiz file's flashcards are no quizzes)
+QUIZ_STACKS = (STACK_QUIZ, STACK_DIFFICULTY)
 
 # The only deck of the space state
 SPACE_DECK = "Space"
@@ -47,7 +51,7 @@ class DeckIndex:
                     deck_id=raw["id"],
                     name=name,
                     cards=len(members),
-                    quiz=sum(card.stack != 1 for card in members),
+                    quiz=sum(card.stack in QUIZ_STACKS for card in members),
                     with_difficulty=sum(card.difficulty is not None for card in members),
                 )
             )

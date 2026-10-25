@@ -1,14 +1,19 @@
-"""Card parser of the cluster module (replaces project/content/parser.py): course files of version 2 and 3.
+"""Card parser of the cluster module (replaces project/content/parser.py): course files of version 3 only.
 
 Changes against the main file:
-  * read_decks accepts the versions in SOURCE_VERSIONS (2 and 3); read_course gives the version with the decks.
-    SOURCE_VERSION stays 2, the main project's version.
+  * read_decks accepts only the versions in SOURCE_VERSIONS (version 3, TOPICS_VERSION); read_course gives the
+    version with the decks. SOURCE_VERSION stays 2, the main project's version, which this parser refuses: a
+    version 2 file carries no "source" key, so its JS flashcards would land on stack 1 with other comb_ids.
   * Version 3 (written by scripts/topics.py, docs/draft/cluster/dataset.md section 9.6) adds a "topics" list per
     deck and a "topic" key per card. read_decks checks them (check_topics): unique topic ids, and every card's
     topic one of its deck's.
   * CardsFile keeps them: topics(deck_name) gives a deck's topics (Topic) in file order, topic_of(comb_id) a
-    card's topic id; version is the file's version. A version 2 course has no topics.
-  * The cards are parsed as before, so a card's comb_id is the same in both versions.
+    card's topic id; version is the file's version.
+  * A fourth stack: the flashcards of the quiz file (scripts/input/flashcard_quiz.js) carry "source": "quizes"
+    (combi_json_js.py marks them) and get stack 4 (STACK_SOURCE); stack 1 keeps the flashcards without a source
+    (the ones of Q_and_A.json). A card with "quiz" and "source" together, or a "source" other than "quizes", is
+    refused like a "quiz" that is not true. The comb_ids of the JS flashcards therefore differ from the main
+    project's (4... instead of 1...).
 
 Card parser. Two sources:
 
@@ -19,17 +24,16 @@ Card parser. Two sources:
   * the JSON course file (data/cards.json): CardsFile reads and parses it once, on construction.
     No live update: the file is read again only by CardsFile.reload() (phase 2: the deck "Add" button).
 
-Course file layout:
-    {"courseName": ..., "version": 2, "decks": [{"id": "02", "name": ..., "cards": [{"card_id": "032", ...}, ...]}, ...]}
-Version 3 (the cluster module's data/topics.json) adds the topics:
-    {..., "version": 3, "decks": [{"id": "02", "name": ..., "topics": [{"topic_id": "01", "name": ..., ...}, ...],
-                                   "cards": [{"card_id": "032", "topic": "01", ...}, ...]}, ...]}
+Course file layout (version 3, the cluster module's data/topics.json; the main project's version 2 is refused):
+    {"courseName": ..., "version": 3, "decks": [{"id": "02", "name": ..., "topics": [{"topic_id": "01", "name": ..., ...}, ...],
+                                                 "cards": [{"card_id": "032", "topic": "01", ...}, ...]}, ...]}
     The rest topic, for the cards that fit no other, carries "rest": true.
 
-Every card belongs to one of three stacks, decided by the keys it carries:
-    stack 1: no "quiz"                   plain question / answer card
-    stack 2: "quiz" without "difficulty" quiz question
-    stack 3: "difficulty"                quiz question with an authored difficulty
+Every card belongs to one of four stacks, decided by the keys it carries:
+    stack 1: neither "quiz" nor "source"   plain question / answer card (the lecture notebooks' Q_and_A.json)
+    stack 2: "quiz" without "difficulty"   quiz question without an authored difficulty
+    stack 3: "difficulty"                  quiz question with an authored difficulty (the quizzes of the JS file)
+    stack 4: "source": "quizes"            plain question / answer card of the JS quiz file
 
 A card's global id is comb_id = stack + deck "id" + "card_id" (e.g. "3" + "02" + "032" -> "302032").
 The local "id" and "card_id" are not kept on the card.
@@ -156,14 +160,18 @@ def load_decks(folder: Path, deck_names: Optional[List[str]] = None) -> List[Fla
 
 # --- JSON course file -----------------------------------------------------------
 
-# The main project's course file format; version 3 adds the topics, and this parser reads both
+# The main project's course file format is version 2; version 3 adds the topics and the source key, and this
+# parser reads version 3 only (a version 2 file would give the JS flashcards other comb_ids)
 SOURCE_VERSION = 2
 TOPICS_VERSION = 3
-SOURCE_VERSIONS = (SOURCE_VERSION, TOPICS_VERSION)
+SOURCE_VERSIONS = (TOPICS_VERSION,)
 
 STACK_PLAIN = 1
 STACK_QUIZ = 2
 STACK_DIFFICULTY = 3
+STACK_SOURCE = 4
+# The only value of a card's "source" key: a flashcard of the quiz file (combi_json_js.py marks them)
+QUIZ_FILE_SOURCE = "quizes"
 
 # Spans the term formatting must not touch: fenced code, inline code, inline math and
 # <placeholder> arguments such as "git push -u origin <branch_name>"
@@ -195,11 +203,26 @@ def _optional_text(raw: dict, key: str, where: str) -> Optional[str]:
     return _text(raw, key, where) if key in raw else None
 
 def card_stack(raw_card: dict) -> int:
+    """The stack by the keys a card carries, in the order difficulty, quiz, source (check_card_keys has refused a
+    card with both "quiz" and "source")."""
     if "difficulty" in raw_card:
         return STACK_DIFFICULTY
     if "quiz" in raw_card:
         return STACK_QUIZ
+    if "source" in raw_card:
+        return STACK_SOURCE
     return STACK_PLAIN
+
+def check_card_keys(raw: dict, where: str) -> None:
+    """The keys that decide the stack: "quiz" must be true, "source" must be the quiz file's mark, and a card
+    cannot carry both (a quiz of the JS file carries "quiz" and a difficulty, never "source")."""
+    # "quiz" only marks the stack; anything but true would make that ambiguous
+    if "quiz" in raw and raw["quiz"] is not True:
+        raise ValueError(f"{where}: 'quiz' must be true when present, got {raw['quiz']!r}")
+    if "source" in raw and raw["source"] != QUIZ_FILE_SOURCE:
+        raise ValueError(f"{where}: 'source' must be {QUIZ_FILE_SOURCE!r} when present, got {raw['source']!r}")
+    if "source" in raw and "quiz" in raw:
+        raise ValueError(f"{where}: a card cannot carry both 'quiz' and 'source'")
 
 def comb_id(stack: int, deck_id: str, card_id: str) -> str:
     return f"{stack}{deck_id}{card_id}"
@@ -280,9 +303,7 @@ def parse_json_deck(raw_deck: dict) -> List[Flashcard]:
 
     for raw in raw_deck["cards"]:
         where = f"deck {deck_id} card {raw.get('card_id')!r}"
-        # "quiz" only marks the stack; anything but true would make that ambiguous
-        if "quiz" in raw and raw["quiz"] is not True:
-            raise ValueError(f"{where}: 'quiz' must be true when present, got {raw['quiz']!r}")
+        check_card_keys(raw, where)
         stack = card_stack(raw)
         question = _clean_markdown(_text(raw, "question", where))
 
@@ -353,12 +374,11 @@ class CardsFile:
         return True
 
     def topics(self, deck_name: str) -> Tuple[Topic, ...]:
-        """The deck's topics in file order (version 3); none in a version 2 course or for an unknown deck."""
+        """The deck's topics in file order; none for an unknown deck."""
         return self._topics.get(deck_name, ())
 
     def topic_of(self, comb_id: str) -> Optional[str]:
-        """The topic id of the card with this comb_id (version 3); None in a version 2 course or for an unknown
-        card."""
+        """The topic id of the card with this comb_id; None for an unknown card."""
         return self._card_topics.get(comb_id)
 
     def card(self, comb_id: str) -> Optional[Flashcard]:

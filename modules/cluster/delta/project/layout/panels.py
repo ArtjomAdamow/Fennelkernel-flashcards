@@ -2,21 +2,21 @@
 
 Changes against the main file:
   * deck_control (Add, Remove, Focus, All, Reset) and deck_filter_options are gone: choice_control is the
-    dialog of the top bar's choice button, a checkbox list: all decks (Decks, space view) or the cards of the
-    entered deck (Cards, deck view).
+    dialog of the top bar's choice button, a checkbox list: all decks (Decks, decks view), the topics of the
+    entered deck (Topics, topics view) or the cards of the entered topic (Cards, cards view).
   * position_control is gone: the user no longer changes positions (the state keeps set_position for the
     model-calculated positions of the helper module).
-  * deck_panel shows a selected deck (its description); overview_panel shows the dendrogram of the view
-    when no dot is selected.
-  * difficulty_control can be hidden (the space view has nothing to rate).
+  * deck_panel and topic_panel show a selected deck or topic (its description); overview_panel shows the
+    dendrogram of the view when no dot is selected.
+  * difficulty_control can be hidden (a deck or a topic has nothing to rate).
   * Connect and Disconnect open a dialog with the dropdown (as in the main project since 2026-10-22): Connect
     lists the dots not yet connected to the selected one, Disconnect only the connected ones; the dialog's state
     lives in the panel's `link-dialog` store, like the Delete dialog's.
   * With no dot selected the progress slider becomes the cut-off line of the dendrogram (cutoff_control), and
     overview_panel draws that line across the dendrogram.
-  * Groups panel in the deck view: Focus opens a checklist of the groups plus "No group" (dialog-group-checklist,
-    all checked by default), like the Cards dialog, instead of the one-group dropdown; the counts cover the
-    entered deck's cards only (ViewRouter.group_count). The space view keeps the dropdown.
+  * Groups panel in the topics and cards views: Focus opens a checklist of the groups plus "No group"
+    (dialog-group-checklist, all checked by default), like the Cards dialog, instead of the one-group dropdown;
+    the counts cover the view's dots only (ViewRouter.group_count). The decks view keeps the dropdown.
 """
 
 import dash_daq as daq
@@ -24,6 +24,7 @@ from dash import dcc, html
 
 from project.layout.dendrogram import dendrogram_figure
 from project.models import Flashcard
+from project.services.views import CARDS, DECKS, TOPICS
 from project.store.view_router import NO_GROUP
 
 
@@ -37,16 +38,19 @@ def _state(state):
 NEW_GROUP_NOTE = "The selected card will be added to the new group."
 ADD_TO_GROUP_NOTE = "Membership and color of the previously assigned group will remain until removed from the other group."
 DELETE_GROUP_NOTE = "Connections of member cards will remain."
-UNCHECK_DECK_NOTE = "Unchecking a deck erases the settings of all its cards: progress, positions, groups and connections."
+UNCHECK_DECK_NOTE = "Unchecking a deck erases the settings of all its topics and cards: progress, positions, groups and connections."
+UNCHECK_TOPIC_NOTE = "Unchecking a topic hides it and its cards and drops the topic's own connections; the cards keep their settings."
 UNCHECK_CARD_NOTE = "Unchecking a card only hides it: its progress, position, groups and connections stay."
 FOCUS_GROUPS_NOTE = "Unchecking a group only hides its cards; a card in a checked group stays."
 NO_GROUP_LABEL = "No group"
 CARD_LABEL_LENGTH = 80
 # phase 4: constellations
 DELETE_CONSTELLATION_NOTE = "Deleting a constellation will disconnect all members"
-# The link dialogs' notes; {noun} is "deck" in the space view and "card" in the deck view
+# The link dialogs' notes; {noun} is the level of the view: deck, topic or card
 CONNECT_NOTE = "Lists the {noun}s not yet connected to the selected {noun}."
 DISCONNECT_NOTE = "Lists only the {noun}s connected to the selected {noun}."
+NOUNS = {DECKS: "deck", TOPICS: "topic", CARDS: "card"}
+CHOICE_LABELS = {DECKS: "Decks", TOPICS: "Topics", CARDS: "Cards"}
 
 
 def _dialog_note(text):
@@ -89,13 +93,26 @@ def card_panel(card: Flashcard | None, revealed: bool = False) -> html.Div:
 
 
 def deck_panel(deck: Flashcard) -> html.Div:
-    """A selected deck of the space view: its name and description; a click (or Enter) enters it."""
+    """A selected deck of the decks view: its name and description; a click (or Enter) enters it."""
     return html.Div(
         [
             html.Div("Deck", className="card-label"),
             html.Div(deck.question, className="card-content"),
             dcc.Markdown(deck.answer, className="deck-description"),
             html.Div("Click this frame or press Enter to open the deck. Backspace unselects it.", className="card-hint"),
+        ],
+        className="card-panel",
+    )
+
+
+def topic_panel(topic: Flashcard) -> html.Div:
+    """A selected topic of the topics view: its name and description; a click (or Enter) enters it."""
+    return html.Div(
+        [
+            html.Div("Topic", className="card-label"),
+            html.Div(topic.question, className="card-content"),
+            dcc.Markdown(topic.answer, className="deck-description"),
+            html.Div("Click this frame or press Enter to open the topic. Backspace unselects it.", className="card-hint"),
         ],
         className="card-panel",
     )
@@ -184,16 +201,17 @@ def difficulty_control(card: Flashcard | None, state=None, hidden: bool = False,
             ),
         ],
         className="progress-control",
-        # The slider stays in the layout (it is a callback input); the space view just does not show it
+        # The slider stays in the layout (it is a callback input); the decks view just does not show it
         style={"display": "none"} if hidden else None,
     )
 
 
 def group_control(card: Flashcard | None, dialog: str | None = None, state=None, focused_group: str | None = None) -> html.Div:
     state = _state(state)
-    # Deck view: Focus is a checklist of the groups (like the Cards dialog), and the counts cover the deck's cards
-    deck_view = getattr(state, "view", None) == "deck"
-    focus_checklist = deck_view and dialog == "focus"
+    # Topics and cards views: Focus is a checklist of the groups (like the Cards dialog), and the counts cover the
+    # view's dots
+    checklist_view = getattr(state, "view", DECKS) != DECKS
+    focus_checklist = checklist_view and dialog == "focus"
 
     def count(group) -> int:
         return state.group_count(group) if hasattr(state, "group_count") else len(group.card_ids)
@@ -228,11 +246,11 @@ def group_control(card: Flashcard | None, dialog: str | None = None, state=None,
             clearable=True,
             style={"display": "block" if dialog in {"add", "remove", "delete", "focus"} and not focus_checklist else "none"},
         ),
-        # Always in the layout (a callback state); shown only for Focus in the deck view
+        # Always in the layout (a callback state); shown only for Focus in the topics and cards views
         dcc.Checklist(
             id="dialog-group-checklist",
             options=[{"label": group.name, "value": group.id} for group in state.groups] + [{"label": NO_GROUP_LABEL, "value": NO_GROUP}],
-            value=state.checked_groups() if deck_view else [],
+            value=state.checked_groups() if checklist_view else [],
             className="choice-checklist",
             inputClassName="choice-checkbox",
             labelClassName="choice-option",
@@ -284,27 +302,36 @@ def group_control(card: Flashcard | None, dialog: str | None = None, state=None,
 
 
 def choice_label(view: str) -> str:
-    """The top bar's choice button: Decks in the space view, Cards in the deck view."""
-    return "Cards" if view == "deck" else "Decks"
+    """The top bar's choice button: Decks, Topics or Cards, by the view."""
+    return CHOICE_LABELS.get(view, CHOICE_LABELS[DECKS])
+
+
+def _short_label(text: str) -> str:
+    text = " ".join(text.replace("`", "").replace("**", "").split())
+    return text if len(text) <= CARD_LABEL_LENGTH else text[: CARD_LABEL_LENGTH - 1] + "…"
 
 
 def _card_label(card: Flashcard) -> str:
-    text = " ".join(card.question.replace("`", "").replace("**", "").split())
-    return text if len(text) <= CARD_LABEL_LENGTH else text[: CARD_LABEL_LENGTH - 1] + "…"
+    return _short_label(card.question)
 
 
 def choice_control(dialog_open: bool = False, state=None) -> html.Div:
     """The dialog of the choice button, a checkbox list; Confirm applies the changes.
 
-    Space view: every deck (checked = loaded and shown). Deck view: the cards of the entered deck (checked =
-    shown). Nothing is checked on a fresh start. It always stays in the layout, hidden while closed: its
-    checklist is read by the callback.
+    Decks view: every deck (checked = loaded and shown; all on a fresh start). Topics view: the topics of the
+    entered deck (checked = loaded and shown; all on a fresh deck). Cards view: the cards of the entered topic
+    (checked = shown; all on a fresh deck). It always stays in the layout, hidden while closed: its checklist is
+    read by the callback.
     """
     state = _state(state)
-    if state.view == "deck":
+    if state.view == CARDS:
         options = [{"label": _card_label(card), "value": card.id} for card in state.deck_cards()]
         value = state.shown_cards()
         note = UNCHECK_CARD_NOTE
+    elif state.view == TOPICS:
+        options = [{"label": _short_label(topic.name), "value": topic.dot_id} for topic in state.deck_topics()]
+        value = state.checked_topics()
+        note = UNCHECK_TOPIC_NOTE
     else:
         options = [{"label": name, "value": name} for name in state.available_decks()]
         value = [name for name in state.available_decks() if name in state.enabled_decks]
@@ -377,7 +404,7 @@ def connection_control(
     state=None,
     dialog: str | None = None,
     navigation=None,
-    view: str = "space",
+    view: str = DECKS,
     link_dialog: str | None = None,
 ) -> html.Div:
     """Connections panel, retaining its existing positional-compatible Delete flow; `link_dialog` is None,
@@ -395,7 +422,7 @@ def connection_control(
     if navigation.get("preview_id") == (card.id if card else None):
         preview_card = None
     is_member = bool(card and any(card.id in item.members for item in constellations))
-    noun = "deck" if view == "space" else "card"
+    noun = NOUNS.get(view, NOUNS[CARDS])
     options = link_options(card, candidate_cards, state, link_dialog)
     has_links = bool(card and state is not None and any(card.id in (link.source_id, link.target_id) for link in state.links))
     link_note = (DISCONNECT_NOTE if link_dialog == "disconnect" else CONNECT_NOTE).format(noun=noun)

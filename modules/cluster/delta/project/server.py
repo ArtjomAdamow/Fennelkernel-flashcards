@@ -1,8 +1,8 @@
 """The Dash app and its layout for the cluster module (replaces project/server.py).
 
 Changes against the main file:
-  * top bar: "Random" (a random card; hidden in the space view) and the choice button (Decks in the space view,
-    Cards in the deck view), with its checkbox dialog under it;
+  * top bar: "Random" (a random topic or card; hidden in the decks view) and the choice button (Decks, Topics
+    or Cards, by the view), with its checkbox dialog under it;
   * window A: the card panel and the progress control (the position panel is gone);
   * window B: groups and connections (the deck panel is gone); assets/style.css puts it above the map;
   * no reset confirmation and no drag store; a store for the choice dialog;
@@ -22,6 +22,7 @@ from project.layout.panels import (
     card_panel, choice_control, choice_label, connection_control, difficulty_control, group_control,
 )
 from project.services.actions import ACTION_ID
+from project.services.views import DECKS
 
 
 def create_app(base_dir, server_boot_id, state, action=None):
@@ -54,7 +55,7 @@ def create_app(base_dir, server_boot_id, state, action=None):
                             ),
                             html.Button(
                                 "Random", id="random-card", className="random-button", n_clicks=0,
-                                style={"display": "none"} if state.view == "space" else {},
+                                style={"display": "none"} if state.view == DECKS else {},
                             ),
                             html.Div(
                                 [
@@ -70,7 +71,7 @@ def create_app(base_dir, server_boot_id, state, action=None):
                 className="topbar",
             ),
             html.Section(
-                [html.Div("0 decks mapped", id="card-count", className="card-count")],
+                [html.Div(f"{len(state.visible_cards())} decks mapped", id="card-count", className="card-count")],
                 className="toolbar",
             ),
             html.Section(

@@ -17,8 +17,8 @@ A file found in delta/ is used, otherwise the main project's file. New files
 that exist only in delta/project/ are importable as project.<name>.
 
 All generated output goes flat into temp/: the merged assets and the module's
-own state files (plus their backups): cluster_state.json for the cards (deck
-view), cluster_space_state.json for the decks (space view) and
+own state files (plus their backups): cluster_state.json for the cards (cards
+view), cluster_space_state.json for the decks (decks view) and
 cluster_view_state.json for the checked cards of each deck. Dash serves
 temp/ as its assets folder, so its hot reload is switched off (a state save
 would reload the browser). No __pycache__ folders are written.

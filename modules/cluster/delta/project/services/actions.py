@@ -3,7 +3,7 @@
 A module on top of this one (the helper) passes a ModuleAction to compose. The server draws the button with its
 label (hidden when there is no action, so the callback's input always exists), and the callback runs `run(state)`
 when it is clicked, then saves and redraws like any other change. `state` is the ViewRouter: `run` can read the
-view, the entered deck and the two services (cards_state, space).
+view, the entered deck and the two services (cards_state, decks_state).
 """
 
 from dataclasses import dataclass

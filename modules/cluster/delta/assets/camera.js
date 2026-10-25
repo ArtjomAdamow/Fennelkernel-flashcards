@@ -1,21 +1,25 @@
 (function () {
   "use strict";
 
-  // Cluster module copy of assets/camera.js. Changes: the figure's meta carries the view ("space" or "deck")
-  // and, in the space view, the constellation of the selected deck.
-  // Space view, nothing selected: the camera looks at the centre of the sphere from outside and turns around
-  // it, at the zoom that just fits the decks' sphere into the window. Space view, a deck selected: the
-  // planetarium. The eye sits on the line from the centre of the sphere to the deck and looks at the deck, so
-  // only that part of the sphere is in view; its distance along the line is the one at which the deck's
-  // constellation just fits the window (a deck on its own is looked at from the very centre); the picture rolls
-  // around the selected deck. Deck view: with no card selected the camera turns around the sun (the origin) at
-  // the zoomed-out distance; a selected card is centred and the camera turns around it, as the main app does.
+  // Cluster module copy of assets/camera.js. Changes: the figure's meta carries the view ("decks", "topics" or
+  // "cards").
+  // Decks view: the camera always sits at the centre of the sphere. Nothing selected: it looks at a random deck
+  // and turns the sphere like a globe around its polar axis, in a random direction or the last drag's. A deck
+  // selected: it looks at the deck and the picture rolls around the line of sight (the deck stays in the middle,
+  // its neighbours wheel around it). Cards view: with nothing selected the camera looks at the middle of the
+  // topic's sphere from outside and turns around it at the zoom that just fits the sphere into the window; a
+  // selected card is looked at from outside the sphere, the eye on the axis through the sphere's centre and the
+  // card, beyond the card at the main app's close-up distance, and the picture rolls around that axis. Topics
+  // view: around the center (the origin, where the deck's centroid is drawn) with nothing selected; a selected
+  // topic is centred and the camera turns around it, as the main app does.
   // A mouse drag, a wheel or a double click pauses the motion; once the gesture is over, the motion goes on in
-  // the direction the drag turned the camera, from where the gesture left it (in the planetarium: back on the
-  // line to the deck, at the zoom the gesture left). Space (by card order, keyboard.js) stops the motion until
-  // the next selection or view change. Within constellation, with no dot selected or one outside every
-  // constellation, Space stops the motion and the next Space lets it go on as after a drag (toggleMotion).
-  // A sun with several group colours cycles through them.
+  // the direction the drag turned the camera, from where the gesture left it (with the axis camera: back on the
+  // axis, a deck's eye back at the centre, a card's eye at the distance the gesture left but outside the
+  // sphere; with the globe: back at the centre, looking where the gesture left the view). Space (by card order,
+  // keyboard.js) stops the motion until the next selection or view change. Within constellation, with no dot
+  // selected or one outside every constellation, Space stops the motion and the next Space lets it go on as
+  // after a drag (toggleMotion).
+  // A centroid with several group colours cycles through them.
 
   const graphId = "sphere";
   const centeringDuration = 1800;
@@ -23,8 +27,7 @@
   const zoomFactor = 0.5;  // a selected card: the camera's distance as a share of the default eye
   const fieldOfView = Math.PI / 4;  // plotly's gl3d camera: its vertical field of view (perspective)
   const fitMargin = 1.06;  // the sphere's radius plus room for the glow of the dots on its rim
-  const zoomCap = 0.95;  // the planetarium's eye never goes closer to the deck than this share of the way
-  const zoomFloor = -4;  // nor farther behind the centre of the sphere than this share of the deck's distance
+  const axisMargin = 1.1;  // a card's eye never comes closer to the centre than this times the card's distance
   const resumeDelayMs = 300;  // after a gesture ends, the motion goes on this much later
   const directionThreshold = 0.02;  // radians of azimuth a drag must turn the camera to set the direction
   let attachedGraph = null;
@@ -36,20 +39,21 @@
   let motionGeneration = 0;
   let lastView = null;
   let viewStarted = false;  // the view's first motion has been started
-  let deckSelection;  // deck view: undefined before its first figure, then null or the selected card
-  let spaceKey = "";  // space view: the selected deck and its constellation the current motion was made for
-  let spaceSelected = null;  // space view: the selected deck, or null
+  let deckSelection;  // topics and cards views: undefined before its first figure, then null or the selected dot
+  let decksKey = "";  // decks view: the selected deck the current motion was made for
+  let axisSelected = null;  // the dot the axis camera looks at (a deck or a card), or null
   let orbitCenter = null;  // the centre the camera turns (or rolls) around while a motion runs
   let orbitDirection = 1;  // +1 or -1: the way the camera turns, set by the last drag
-  let motionRolls = false;  // the running (or paused) motion is the planetarium's roll, not a turn
+  let dragDirection = null;  // the direction the last drag gave, if any (the globe starts with it)
+  let motionKind = "turn";  // the running (or paused) motion: a turn, the inside camera's roll, or the globe
   let lastWrittenCamera = null;  // the camera as this script last wrote it
   let foreignCamera = null;  // the camera as the last relayout this script did not write (a drag) reported it
   let paused = null;  // a motion paused by a gesture: the centre and the azimuth to measure the drag against
   let resumeTimer = null;
   let spaceStopped = null;  // a motion Space stopped without a capture (like `paused`), for the next Space
-  const sunColorMs = 1800;
-  let sunTimer = null;
-  let sunKey = null;
+  const centroidColorMs = 1800;
+  let centroidTimer = null;
+  let centroidKey = null;
 
   // Constellation navigation (additive, transient, never persisted).
   const gestureQuietMs = 200;
@@ -297,7 +301,7 @@
   }
 
   // The camera that looks at the origin from outside, at the fitting distance, in the current viewing
-  // direction. An eye inside the sphere (the planetarium) leaves on the side of what it looks at.
+  // direction. An eye inside the sphere (the inside camera) leaves on the side of what it looks at.
   function cameraAroundOrigin(graph, current) {
     const fallback = defaultCamera();
     const base = validCamera(current) ? current : fallback;
@@ -316,9 +320,9 @@
     };
   }
 
-  // --- the planetarium: a selected deck in the space view ---------------------------------------
+  // --- the axis camera: a selected deck in the decks view, a selected card in the cards view -----------
 
-  // The decks' points by id, from the traces of the space view.
+  // The decks' points by id, from the traces of the decks view.
   function deckPoints(graph) {
     const points = {};
     (graph.data || []).forEach(function (trace) {
@@ -335,38 +339,8 @@
     return points;
   }
 
-  // The members of the selected deck's constellation (the figure's meta, from the callback), else the deck alone.
-  function constellationOf(graph, selected) {
-    const meta = graph.layout && graph.layout.meta;
-    const members = meta && Array.isArray(meta.constellation) ? meta.constellation.map(String) : [];
-    return members.indexOf(String(selected)) >= 0 ? members : [String(selected)];
-  }
-
-  // Where along the line from the centre of the sphere to the deck the eye goes: 0 is the centre, 1 the deck,
-  // below 0 behind the centre. The largest share at which every member of the constellation stays inside the
-  // window whatever the roll: a member at the angle phi from the deck (seen from the centre) allows
-  // cos(phi) - sin(phi) / tan(half angle of view). A deck on its own is looked at from the centre.
-  function planetariumZoom(graph, axis, memberPoints) {
-    const cotangent = 1 / Math.tan(halfViewAngle(graph));
-    let zoom = zoomCap;
-    let others = 0;
-    memberPoints.forEach(function (point) {
-      const direction = unit(point);
-      if (!direction) {
-        return;
-      }
-      const cosine = Math.max(-1, Math.min(1, axis.x * direction.x + axis.y * direction.y + axis.z * direction.z));
-      if (cosine > 1 - 1e-9) {
-        return;  // the selected deck itself
-      }
-      others += 1;
-      zoom = Math.min(zoom, cosine - Math.sqrt(1 - cosine * cosine) * cotangent);
-    });
-    return others ? Math.max(zoomFloor, zoom) : 0;
-  }
-
   // An up vector at right angles to the line of sight: the given one with its part along the line removed,
-  // else the z axis, else the y axis (a deck right above the centre).
+  // else the z axis, else the y axis (a dot right above the centre).
   function perpendicularUp(axis, hint) {
     const candidates = [hint, { x: 0, y: 0, z: 1 }, { x: 0, y: 1, z: 0 }];
     for (let index = 0; index < candidates.length; index += 1) {
@@ -383,38 +357,90 @@
     return { x: 0, y: 0, z: 1 };
   }
 
-  // The planetarium camera of the selected deck: the eye on the line from the centre to the deck (`zoomAlong`
-  // of the way, or the fitting share), looking at the deck, the up vector at right angles to the line.
-  function planetariumCamera(graph, selected, zoomAlong, upHint) {
-    const points = deckPoints(graph);
-    const point = points[String(selected)] || selectedPoint(graph);
+  // The axis camera: the eye on the axis through the centre of the sphere and the selected dot (`point`, in
+  // data coordinates), `distance` from the centre along that axis (0: at the centre, looking outward at a deck;
+  // beyond the dot: outside the sphere, looking inward at a card), looking at the dot, the up vector at right
+  // angles to the axis. The picture then rolls around the axis (rollCamera): the dot stays in the middle of the
+  // window and its neighbours wheel around it.
+  function axisCamera(graph, point, distance, upHint) {
     const axis = unit(point);
     if (!axis) {
       return null;
     }
-    const members = constellationOf(graph, selected).map(function (id) { return points[id]; }).filter(Boolean);
-    const zoom = zoomAlong == null
-      ? planetariumZoom(graph, axis, members)
-      : Math.max(zoomFloor, Math.min(zoomCap, zoomAlong));
     const scale = dataScaleOf(graph);
-    const radius = Math.hypot(point.x, point.y, point.z);
     return {
-      eye: { x: axis.x * zoom * radius * scale[0], y: axis.y * zoom * radius * scale[1], z: axis.z * zoom * radius * scale[2] },
+      eye: { x: axis.x * distance * scale[0], y: axis.y * distance * scale[1], z: axis.z * distance * scale[2] },
       up: perpendicularUp(axis, upHint),
       center: { x: point.x * scale[0], y: point.y * scale[1], z: point.z * scale[2] },
     };
   }
 
-  // Where the eye sits along the line to the deck, as a share of the deck's distance from the centre.
-  function zoomAlongAxis(graph, camera, selected) {
-    const point = deckPoints(graph)[String(selected)] || selectedPoint(graph);
+  // Where the eye sits along the axis through the centre and the dot, as a distance from the centre in data
+  // coordinates (negative behind the centre).
+  function distanceAlongAxis(graph, camera, point) {
     const axis = unit(point);
     if (!axis) {
       return null;
     }
     const scale = dataScaleOf(graph);
-    const radius = Math.hypot(point.x, point.y, point.z) || 1;
-    return ((camera.eye.x / scale[0]) * axis.x + (camera.eye.y / scale[1]) * axis.y + (camera.eye.z / scale[2]) * axis.z) / radius;
+    return (camera.eye.x / scale[0]) * axis.x + (camera.eye.y / scale[1]) * axis.y + (camera.eye.z / scale[2]) * axis.z;
+  }
+
+  // The eye's seat for a selected card: outside the sphere, beyond the card on its axis, the main app's close-up
+  // distance (zoomFactor of the default eye distance) away from the card.
+  function cardEyeDistance(graph, point) {
+    const scale = Math.max.apply(null, dataScaleOf(graph));
+    const defaultEye = defaultCamera().eye;
+    return Math.hypot(point.x, point.y, point.z) + (zoomFactor * Math.hypot(defaultEye.x, defaultEye.y, defaultEye.z)) / scale;
+  }
+
+  // The nearest seat outside the sphere for a card: a wheel zoom never takes the eye inside.
+  function outsideDistance(point, distance) {
+    return Math.max(axisMargin * Math.hypot(point.x, point.y, point.z), distance);
+  }
+
+  // --- the globe: nothing selected in the decks view ---------------------------------------------
+
+  // The direction of a random deck (the Decks traces), else a random direction in the equator's plane.
+  function randomDirection(graph) {
+    const points = Object.keys(deckPoints(graph)).map(function (id) { return unit(deckPoints(graph)[id]); }).filter(Boolean);
+    if (points.length) {
+      return points[Math.floor(Math.random() * points.length)];
+    }
+    const angle = Math.random() * 2 * Math.PI;
+    return { x: Math.cos(angle), y: Math.sin(angle), z: 0 };
+  }
+
+  // The globe camera: the eye at the centre of the sphere, looking in `direction` (a unit vector in data
+  // coordinates), the up vector upright.
+  function globeCameraAt(graph, direction) {
+    const scale = dataScaleOf(graph);
+    return {
+      eye: { x: 0, y: 0, z: 0 },
+      up: perpendicularUp(direction, { x: 0, y: 0, z: 1 }),
+      center: { x: direction.x * scale[0], y: direction.y * scale[1], z: direction.z * scale[2] },
+    };
+  }
+
+  // The direction the camera looks in, in data coordinates.
+  function lookDirection(graph, camera) {
+    const scale = dataScaleOf(graph);
+    return unit({
+      x: (camera.center.x - camera.eye.x) / scale[0],
+      y: (camera.center.y - camera.eye.y) / scale[1],
+      z: (camera.center.z - camera.eye.z) / scale[2],
+    });
+  }
+
+  // The globe's turn: the look direction turns around the polar (z) axis, the eye stays at the centre.
+  function spunGlobe(camera, elapsed, direction) {
+    const angle = (direction || 1) * (elapsed / rotationDuration) * Math.PI * 2;
+    const center = rotateAbout(camera.center, { x: 0, y: 0, z: 1 }, angle);
+    const axis = unit({ x: center.x - camera.eye.x, y: center.y - camera.eye.y, z: center.z - camera.eye.z });
+    return Object.assign({}, camera, {
+      center: center,
+      up: axis ? perpendicularUp(axis, { x: 0, y: 0, z: 1 }) : camera.up,
+    });
   }
 
   // --- turning, rolling, gliding, pausing ------------------------------------------------------
@@ -456,7 +482,7 @@
     };
   }
 
-  // The planetarium's roll: the up vector turns around the line of sight; eye and centre stay.
+  // The inside camera's roll: the up vector turns around the line of sight; eye and centre stay.
   function rolledCamera(camera, elapsed, direction) {
     const axis = unit({ x: camera.center.x - camera.eye.x, y: camera.center.y - camera.eye.y, z: camera.center.z - camera.eye.z });
     if (!axis) {
@@ -470,7 +496,7 @@
   function rotateCamera(graph, centered) {
     const startedAt = performance.now();
     orbitCenter = clone(centered.center);
-    motionRolls = false;
+    motionKind = "turn";
 
     function step(now) {
       if (!motionActive) {
@@ -487,7 +513,7 @@
   function rollCamera(graph, centered) {
     const startedAt = performance.now();
     orbitCenter = clone(centered.center);
-    motionRolls = true;
+    motionKind = "roll";
 
     function step(now) {
       if (!motionActive) {
@@ -500,8 +526,29 @@
     animationFrame = window.requestAnimationFrame(step);
   }
 
-  // Glide from the camera as it is now to `target` (the centering), then turn around the target's centre, or
-  // roll around the line of sight to it (options.roll).
+  // Turn the globe: from `centered` (the eye at the centre of the sphere) the look direction turns around the
+  // polar axis, in the direction of the last drag. The centre a gesture is measured against follows the look.
+  function spinGlobe(graph, centered) {
+    const startedAt = performance.now();
+    orbitCenter = clone(centered.center);
+    motionKind = "globe";
+
+    function step(now) {
+      if (!motionActive) {
+        return;
+      }
+      const camera = spunGlobe(centered, now - startedAt, orbitDirection);
+      orbitCenter = clone(camera.center);
+      writeCamera(graph, camera);
+      animationFrame = window.requestAnimationFrame(step);
+    }
+
+    animationFrame = window.requestAnimationFrame(step);
+  }
+
+  // Glide from the camera as it is now to `target` (the centering), then go on with the motion of
+  // options.kind: a turn around the target's centre (the default), a roll around the line of sight to it, or
+  // the globe's turn from it.
   function glideTo(graph, target, options) {
     noteViewChange();
     cancelMotion(graph);
@@ -513,8 +560,9 @@
     }
     const start = currentCamera(graph);
     const generation = motionGeneration;
+    const kind = (options && options.kind) || "turn";
     orbitCenter = clone(target.center);
-    motionRolls = Boolean(options && options.roll);
+    motionKind = kind;
     motionActive = true;
 
     let startedAt;
@@ -527,8 +575,10 @@
       writeCamera(graph, interpolateCamera(start, target, eased(progress)));
       if (progress < 1) {
         animationFrame = window.requestAnimationFrame(step);
-      } else if (options && options.roll) {
+      } else if (kind === "roll") {
         rollCamera(graph, target);
+      } else if (kind === "globe") {
+        spinGlobe(graph, target);
       } else {
         rotateCamera(graph, target);
       }
@@ -543,15 +593,22 @@
     });
   }
 
-  // A selected card (deck view): centre on it, then turn around it, as the main app does.
+  // A selected topic or card: centre on it, then turn around it, as the main app does.
   function moveCamera(graph, selection) {
     glideTo(graph, cameraTargetedAt(selection.point, selection.dataScale, zoomFactor));
   }
 
-  // No card selected, or nothing selected in the space view: look at the origin from the fitting distance,
-  // then turn around it.
+  // Nothing selected in the topics or cards view: look at the origin from the fitting distance, then turn
+  // around it.
   function glideToOrigin(graph) {
     glideTo(graph, cameraAroundOrigin(graph, currentCamera(graph)));
+  }
+
+  // Nothing selected in the decks view: to the centre of the sphere, looking at a random deck, then the
+  // globe's turn in the last drag's direction, or a random one.
+  function glideToGlobe(graph) {
+    orbitDirection = dragDirection || (Math.random() < 0.5 ? -1 : 1);
+    glideTo(graph, globeCameraAt(graph, randomDirection(graph)), { kind: "globe" });
   }
 
   function clearResume() {
@@ -588,8 +645,10 @@
   }
 
   // The gesture is over: go on in the direction the drag turned the camera (a drag that did not turn it keeps
-  // the direction). In the planetarium the eye goes back onto the line to the deck, at the zoom the gesture
-  // left, and the roll goes on; elsewhere the turn goes on from where the gesture left the camera.
+  // the direction). With the axis camera the eye goes back onto the axis through the centre and the dot (a
+  // deck: to the centre, the zoom dropped; a card: at the distance the gesture left, outside the sphere) and the
+  // roll goes on; with the globe the eye goes back to the centre of the sphere, looking where the gesture left
+  // the view, and the globe turns on; elsewhere the turn goes on from where the gesture left the camera.
   function resumeMotion(graph) {
     if (!paused || pointerIsDown || motionActive) {
       return;
@@ -599,18 +658,26 @@
     const turned = wrapAngle(azimuthOf(camera, center) - paused.azimuth);
     if (Math.abs(turned) > directionThreshold) {
       orbitDirection = turned > 0 ? 1 : -1;
+      dragDirection = orbitDirection;
     }
     paused = null;
-    if (lastView === "space" && spaceSelected) {
-      const along = zoomAlongAxis(graph, camera, spaceSelected);
-      const target = along == null ? null : planetariumCamera(graph, spaceSelected, along, camera.up);
+    if (lastView === "decks" && !axisSelected) {
+      const look = lookDirection(graph, camera) || unit(camera.center) || { x: 1, y: 0, z: 0 };
+      glideTo(graph, globeCameraAt(graph, look), { kind: "globe" });
+      return;
+    }
+    if ((lastView === "decks" || lastView === "cards") && axisSelected) {
+      const point = selectedPoint(graph);
+      const along = point ? distanceAlongAxis(graph, camera, point) : null;
+      const distance = lastView === "decks" ? 0 : (along == null ? null : outsideDistance(point, along));
+      const target = point && distance != null ? axisCamera(graph, point, distance, camera.up) : null;
       if (target) {
-        glideTo(graph, target, { roll: true });
+        glideTo(graph, target, { kind: "roll" });
         return;
       }
     }
     motionActive = true;
-    if (motionRolls) {
+    if (motionKind === "roll") {
       rollCamera(graph, camera);
     } else {
       rotateCamera(graph, { eye: camera.eye, up: camera.up || defaultCamera().up, center: center });
@@ -622,36 +689,36 @@
     return meta && meta.view ? meta.view : null;
   }
 
-  // The sun's traces carry their colours in meta.colors (map.py); with several groups they take turns.
-  function cycleSunColors(graph) {
+  // The centroid's traces carry their colours in meta.colors (map.py); with several groups they take turns.
+  function cycleCentroidColors(graph) {
     const traces = [];
     (graph.data || []).forEach(function (trace, index) {
       const colors = trace && trace.meta && trace.meta.colors;
-      if ((trace.name === "Sun" || trace.name === "Sun glow") && Array.isArray(colors) && colors.length > 1) {
+      if ((trace.name === "Centroid" || trace.name === "Centroid glow") && Array.isArray(colors) && colors.length > 1) {
         traces.push({ index: index, colors: colors });
       }
     });
     const key = traces.length ? JSON.stringify(traces) : null;
-    if (key === sunKey) {
+    if (key === centroidKey) {
       return;
     }
-    sunKey = key;
-    if (sunTimer !== null) {
-      window.clearInterval(sunTimer);
-      sunTimer = null;
+    centroidKey = key;
+    if (centroidTimer !== null) {
+      window.clearInterval(centroidTimer);
+      centroidTimer = null;
     }
     if (!key || !window.Plotly || typeof window.Plotly.restyle !== "function") {
       return;
     }
     let turn = 0;
-    sunTimer = window.setInterval(function () {
+    centroidTimer = window.setInterval(function () {
       turn += 1;
       window.Plotly.restyle(
         graph,
         { "marker.color": traces.map(function (item) { return item.colors[turn % item.colors.length]; }) },
         traces.map(function (item) { return item.index; })
       ).catch(function () {});
-    }, sunColorMs);
+    }, centroidColorMs);
   }
 
   function onFigureUpdated(graph) {
@@ -660,41 +727,48 @@
       lastView = view;
       deckSelection = undefined;
       viewStarted = false;
-      spaceKey = "";
-      spaceSelected = null;
+      decksKey = "";
+      axisSelected = null;
       paused = null;
       clearResume();
       cancelMotion(graph);
     }
-    cycleSunColors(graph);
-    if (view === "deck") {
+    cycleCentroidColors(graph);
+    if (view === "topics" || view === "cards") {
       const current = selectedId(graph) || null;
       if (current === deckSelection) {
         return;
       }
       deckSelection = current;
+      axisSelected = null;
       const point = current ? selectedPoint(graph) : null;
-      if (point) {
-        moveCamera(graph, collectSelectionSnapshot(graph, point));  // the selected card: centred, turned around
+      const outside = view === "cards" && point ? axisCamera(graph, point, cardEyeDistance(graph, point), null) : null;
+      if (outside) {
+        axisSelected = String(current);
+        glideTo(graph, outside, { kind: "roll" });  // the selected card: from outside on its axis, rolling
+      } else if (point) {
+        moveCamera(graph, collectSelectionSnapshot(graph, point));  // the selected topic: centred, turned around
       } else {
-        glideToOrigin(graph);  // entering the deck, or the card unselected: the sun, zoomed out
+        glideToOrigin(graph);  // entering the deck or topic, or the dot unselected: the center, zoomed out
       }
       return;
     }
-    if (view === "space") {
+    if (view === "decks") {
       const current = selectedId(graph) || null;
-      const key = current ? String(current) + "|" + constellationOf(graph, current).join(",") : "";
-      if (viewStarted && key === spaceKey) {
+      const key = current ? String(current) : "";
+      if (viewStarted && key === decksKey) {
         return;
       }
       viewStarted = true;
-      spaceKey = key;
-      spaceSelected = current ? String(current) : null;
-      const target = current ? planetariumCamera(graph, current, null, null) : null;
+      decksKey = key;
+      axisSelected = current ? String(current) : null;
+      const point = current ? selectedPoint(graph) : null;
+      const target = point ? axisCamera(graph, point, 0, null) : null;
       if (target) {
-        glideTo(graph, target, { roll: true });  // the planetarium: from inside, at the deck, its constellation fitted
+        glideTo(graph, target, { kind: "roll" });  // the selected deck: from the centre of the sphere, rolling
       } else {
-        glideToOrigin(graph);  // nothing selected: the whole sphere from outside, turning
+        axisSelected = null;
+        glideToGlobe(graph);  // nothing selected: from the centre of the sphere, the globe turning
       }
     }
   }
@@ -940,8 +1014,8 @@
 
   // Called by Space from keyboard.js within constellation when no view is captured (no dot selected, or one
   // outside every constellation): the first press stops the motion, remembering it like a gesture; the next one
-  // lets it go on from where the camera is, as after a drag (in the planetarium: back on the line to the deck,
-  // then the roll). A drag in between does not resume it, but sets the direction.
+  // lets it go on from where the camera is, as after a drag (with the inside camera: back on the line to the
+  // deck, then the roll). A drag in between does not resume it, but sets the direction.
   function toggleMotion() {
     const graph = attachedGraph;
     if (!graph || pointerIsDown) {
@@ -1027,10 +1101,11 @@
       collectSelectionSnapshot: collectSelectionSnapshot,
       collectNavigationSnapshot: collectNavigationSnapshot,
       constellationNav: constellationNav,
+      axisCamera: axisCamera,
       fitDistance: fitDistance,
+      globeCameraAt: globeCameraAt,
       moveCamera: moveCamera,
       onFigureUpdated: onFigureUpdated,
-      planetariumCamera: planetariumCamera,
     };
   }
 })();

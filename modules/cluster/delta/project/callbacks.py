@@ -1,29 +1,33 @@
 """The card callback of the cluster module (replaces project/callbacks.py).
 
 Changes against the main file:
-  * `state` is the ViewRouter: the same calls reach the space state (decks) or the card state (cards).
-  * Enter (key) or a click on the panel enters a selected deck in the space view; in the deck view it flips the
-    card as before. The bare "back" command (Backspace, assets/keyboard.js) follows services.views.back.
+  * `state` is the ViewRouter: the same calls reach the decks state or the card state, in three views (decks,
+    topics, cards; services.views).
+  * Enter (key) or a click on the panel enters a selected deck in the decks view and a selected topic in the
+    topics view; in the cards view it flips the card as before. The bare "back" command (Backspace,
+    assets/keyboard.js) follows services.views.back: up one level with that level's dot selected.
   * The choice dialog (choice-open, choice-dialog-submit/cancel, choice-checklist) replaces the deck panel
     (add/remove/focus/all-decks, deck-filter, deck-dialog-*) and the reset (reset-cards, reset-confirm). In the
-    space view it is Decks (checked decks are loaded and shown), in the deck view Cards (checked cards are
-    shown); the button's label follows the view.
+    decks view it is Decks (checked decks are loaded and shown), in the topics view Topics (checked topics are
+    loaded and shown), in the cards view Cards (checked cards are shown); the button's label follows the view.
   * The position inputs (toggle-drag, save-position, drag-x/y/z) and the drag store are gone.
-  * With no dot selected the panel shows the dendrogram of the view's connections.
-  * The card count reads "N decks mapped" in the space view and the deck name in the deck view.
-  * "Random" (random-card) is hidden in the space view; the sun takes the colours of the entered deck's groups.
+  * With no dot selected the panel shows the dendrogram of the view's connections, with the entered deck's or
+    topic's description; a selected deck or topic shows its description (nothing to flip).
+  * The card count reads "N decks mapped" in the decks view, the deck name in the topics view and
+    "deck › topic" in the cards view.
+  * "Random" (random-card) is hidden in the decks view (a random topic, or card, elsewhere); the centroid takes
+    the colours of the entered deck's groups, the cards view's sphere the entered topic's colour.
   * Switching views resets the camera, the group focus, the open dialogs and the navigation context.
   * A module action (services.actions): a click on the top bar button `module-action` runs the action's function
     on the router; the change is then saved and drawn like any other (a hook for the helper module).
-  * The figure's meta carries the selected dot's constellation (its members), which camera.js fits into the
-    window in the space view (the planetarium around the selected deck).
   * Connect and Disconnect open a dialog (link-dialog-submit/cancel, the link-dialog store), as in the main
     project since 2026-10-22; the dialog closes on a view change too, and the back key is blocked while it is open.
   * With no dot selected the progress slider is the cut-off line of the view's dendrogram (ViewRouter.cutoff):
     moving it cuts the tree, the map's connections and the constellations below the line; the dendrogram shows
     the line. The cut-off is runtime only and starts at the full tree.
-  * Focus in the deck view is a checklist (the state dialog-group-checklist): Confirm keeps the checked groups
-    (ViewRouter.set_checked_groups), All checks everything again; the space view keeps the one-group Focus.
+  * Focus in the topics and cards views is a checklist (the state dialog-group-checklist): Confirm keeps the
+    checked groups (ViewRouter.set_checked_groups), All checks everything again; the decks view keeps the
+    one-group Focus.
   * The back of the card panel (a hook for the helper module): with `overview_back` and nothing selected, Enter
     or a click on the panel flips between the dendrogram and the back the function draws. The flip is the
     `revealed` store, which a selection and a view change reset; it is no longer reset just because nothing is
@@ -35,7 +39,7 @@ from dash import Input, Output, State
 from project.layout.map import DEFAULT_CAMERA, make_figure
 from project.layout.panels import (
     card_panel, choice_control, choice_label, connection_control, deck_panel, delete_constellation,
-    difficulty_control, group_control, overview_panel,
+    difficulty_control, group_control, overview_panel, topic_panel,
 )
 from project.services import cards as cards_service
 from project.services import dendrogram, navigation, views
@@ -166,15 +170,15 @@ def register_callbacks(app, state, none_deck=None, action=None, overview_back=No
         next_constellation_dialog = constellation_dialog
         next_link_dialog = link_dialog
         deleted_links = False
-        view_before = (state.view, state.entered_deck)
+        view_before = (state.view, state.entered_deck, state.entered_topic)
         dialog_open = bool(group_dialog or choice_dialog or constellation_dialog or link_dialog or nav_state.get("dialog"))
 
         def current_view() -> views.ViewState:
-            return views.ViewState(state.view, state.entered_deck, selected_id)
+            return views.ViewState(state.view, state.entered_deck, state.entered_topic, selected_id)
 
         def switch(result: views.ViewState) -> None:
             nonlocal selected_id, revealed
-            state.set_view(result.view, result.entered)
+            state.set_view(result.view, result.entered, result.entered_topic)
             selected_id = result.selected
             revealed = False
 
@@ -184,9 +188,12 @@ def register_callbacks(app, state, none_deck=None, action=None, overview_back=No
             next_choice_dialog = False
         elif trigger == "choice-dialog-submit":
             checked = set(choice_checked or [])
-            if state.view == views.DECK:
+            if state.view == views.CARDS:
                 # Cards: checked cards are shown; unchecking only hides a card
                 state.set_shown_cards([card.id for card in state.deck_cards() if card.id in checked])
+            elif state.view == views.TOPICS:
+                # Topics: checked topics are loaded and shown; unchecking drops the topic's dot and hides its cards
+                state.set_checked_topics([topic.dot_id for topic in state.deck_topics() if topic.dot_id in checked])
             else:
                 # Decks: checked decks are loaded and shown; unchecking strips the deck's card state
                 for deck_name in state.available_decks():
@@ -210,7 +217,7 @@ def register_callbacks(app, state, none_deck=None, action=None, overview_back=No
                     state.mark_read(selected_id)
         elif trigger == "selected-card" and overview_back is not None:
             revealed = not revealed  # nothing selected: the panel turns between the dendrogram and its back
-        elif trigger == "random-card" and cards and state.view == views.DECK:
+        elif trigger == "random-card" and cards and state.view != views.DECKS:
             chosen = cards_service.choose_random_card(cards, state.progress, random)
             selected_id = chosen.id if chosen else None
             revealed = False
@@ -234,7 +241,7 @@ def register_callbacks(app, state, none_deck=None, action=None, overview_back=No
                 revealed = False
             # In constellation mode the JSON commands are handled after the visible
             # constellation refresh. Bare commands and malformed commands are ignored.
-        elif trigger == "difficulty-slider" and selected_id and difficulty is not None and state.view == views.DECK:
+        elif trigger == "difficulty-slider" and selected_id and difficulty is not None and state.view == views.CARDS:
             state.set_difficulty(selected_id, difficulty)
         elif trigger == "difficulty-slider" and not selected_id and difficulty is not None:
             state.set_cutoff(difficulty / 100)  # the slider is the cut-off line while nothing is selected
@@ -278,8 +285,8 @@ def register_callbacks(app, state, none_deck=None, action=None, overview_back=No
             if next_focused_group == dialog_group_select:
                 next_focused_group = None
             next_group_dialog = None
-        elif trigger == "group-dialog-submit" and group_dialog == "focus" and state.view == views.DECK:
-            # The deck view's Focus: the cards of the checked groups stay (the router keeps the checks)
+        elif trigger == "group-dialog-submit" and group_dialog == "focus" and state.view != views.DECKS:
+            # The topics and cards views' Focus: the dots of the checked groups stay (the router keeps the checks)
             state.set_checked_groups(dialog_group_checked or [])
             next_group_dialog = None
         elif trigger == "group-dialog-submit" and group_dialog == "focus" and dialog_group_select:
@@ -312,7 +319,7 @@ def register_callbacks(app, state, none_deck=None, action=None, overview_back=No
                               "scrolled_id": None, "message": None, "message_selected_id": None})
 
         # A view change (entered, left, or the entered deck unchecked) starts the new view clean
-        view_changed = (state.view, state.entered_deck) != view_before
+        view_changed = (state.view, state.entered_deck, state.entered_topic) != view_before
         if view_changed:
             revealed = False
             next_focused_group = None
@@ -535,7 +542,9 @@ def register_callbacks(app, state, none_deck=None, action=None, overview_back=No
                 "message": message,
                 "message_selected_id": message_selected_id,
             })
-        space_view = state.view == views.SPACE
+        decks_view = state.view == views.DECKS
+        topics_view = state.view == views.TOPICS
+        cards_view = state.view == views.CARDS
         selected_card = state.card_by_id.get(selected_id)
         preview_card = (
             state.card_by_id.get(preview_id)
@@ -543,6 +552,7 @@ def register_callbacks(app, state, none_deck=None, action=None, overview_back=No
         )
         context_members = context.get("members") if context else None
         flip_hint = f" {FLIP_HINT}" if overview_back is not None else ""
+        topic = state.entered_topic_info
         if selected_card is None and revealed and overview_back is not None:
             panel = overview_back(state)  # the back of the card panel
         elif selected_card is None:
@@ -551,42 +561,60 @@ def register_callbacks(app, state, none_deck=None, action=None, overview_back=No
             forest = dendrogram.build_forest(dot_ids, state.links)
             cut = dendrogram.cut_line(dot_ids, state.active.links, state.cutoff())
             label_of = {card.id: card.question for card in cards}
-            if space_view:
+            if decks_view:
                 panel = overview_panel(
                     "Constellations of decks", forest, label_of,
                     "Select a deck to see its description. The Decks button chooses the decks on the map." + flip_hint,
                     cut=cut,
                 )
-            else:
+            elif topics_view:
                 info = state.decks.by_id.get(state.entered_deck)
                 panel = overview_panel(
                     state.entered_name or "", forest, label_of,
-                    "Select a card to begin; the Cards button chooses the cards on the map. Backspace goes back to the decks."
-                    + flip_hint,
+                    "Select a topic to see its description; the Topics button chooses the topics on the map. "
+                    "Backspace goes back to the decks." + flip_hint,
                     subtitle=info.description() if info else None,
                     cut=cut,
                 )
-        elif space_view:
+            else:
+                panel = overview_panel(
+                    topic.name if topic else "", forest, label_of,
+                    "Select a card to begin; the Cards button chooses the cards on the map. Backspace goes back to the topics."
+                    + flip_hint,
+                    subtitle=topic.description() if topic else None,
+                    cut=cut,
+                )
+        elif decks_view:
             panel = deck_panel(selected_card)
+        elif topics_view:
+            panel = topic_panel(selected_card)
         else:
             panel = card_panel(selected_card, revealed)
         if not deleted_links and not navigation_only_trigger:
             state.save()
+        if decks_view:
+            count_line = f"{len(cards)} {'deck' if len(cards) == 1 else 'decks'} mapped"
+        elif topics_view:
+            count_line = state.entered_name or ""
+        else:
+            count_line = f"{state.entered_name or ''} › {topic.name if topic else ''}"
         return (
             make_figure(
                 cards, selected_id, camera, state, next_focused_group,
                 preview_id=preview_id if context else None,
                 scrolled_id=scrolled_id if context else None,
                 nav_members=context_members, map_token=current_token,
-                view=state.view, entered=state.entered_deck,
-                deck_counts={info.deck_id: info.cards for info in state.decks.infos} if space_view else None,
-                sun_colors=None if space_view else state.deck_colors(state.entered_deck),
-                constellation=sorted(selected_constellation.members) if selected_constellation else None,
+                view=state.view, entered=state.entered_topic if cards_view else state.entered_deck,
+                deck_counts={info.deck_id: info.cards for info in state.decks.infos} if decks_view else None,
+                centroid_colors=state.deck_colors(state.entered_deck) if topics_view else None,
+                topic_color=state.topic_color(state.entered_topic) if cards_view else None,
+                rest_ids={card.id for card in cards if state.is_rest(card.id)} if topics_view else None,
             ),
             panel,
-            # A selected card: its progress; a selected deck: nothing to rate; nothing selected: the cut-off line
+            # A selected card: its progress; a selected deck or topic: nothing to rate; nothing selected: the
+            # cut-off line
             difficulty_control(
-                selected_card, state, hidden=space_view and selected_card is not None,
+                selected_card, state, hidden=not cards_view and selected_card is not None,
                 cutoff=None if selected_card else state.cutoff(),
             ),
             group_control(selected_card, next_group_dialog, state, next_focused_group),
@@ -598,14 +626,14 @@ def register_callbacks(app, state, none_deck=None, action=None, overview_back=No
             "Saved" if trigger in {"link-dialog-submit", "group-dialog-submit", "delete-group", "constellation-dialog-submit", ACTION_ID} else "",
             selected_id,
             revealed,
-            f"{len(cards)} {'deck' if len(cards) == 1 else 'decks'} mapped" if space_view else (state.entered_name or ""),
+            count_line,
             "",
             next_group_dialog,
             next_focused_group,
             choice_control(next_choice_dialog, state),
             next_choice_dialog,
             nav_state,
-            {"display": "none"} if space_view else {},
+            {"display": "none"} if decks_view else {},
             choice_label(state.view),
         )
 

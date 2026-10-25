@@ -1,5 +1,7 @@
 # Helper module: layout and launch
 
+**Status (2026-10-25): the helper does not start until its next step is built.** The cluster module it layers on changed on 2026-10-25 (three views `decks`, `topics` and `cards`, the course file `data/topics.json` of version 3 only, four stacks, the decks and cards on the sphere's surface, neutral names), and the helper follows all of those changes in its next step (`docs/draft/helper/roadmap.md`, step 14): the cluster module's view ids and `decks_state`, `data/topics.json`, the cluster module's state formats written fresh, and the cards placed on the surface of their topic's sphere. Until then its `DECK` import fails and its course file is refused. This readme describes the built state before that change; "space view" is the decks view, "deck view" the view of a deck's cards, now the topics view and the cards view.
+
 The helper puts model positions and connections on the cluster module's map: in the space view the decks are placed by the similarity of their cards, in the deck view the cards sit around their deck's centroid by how central they are, and the connections of both views come from a hierarchical clustering. The first milestone is "TF-IDF similar cards"; the concept, architecture, roadmap and baseline numbers are in `docs/draft/helper/`.
 
 The helper builds on the cluster module (its views, keys and assets) and depends on the flashcards package (the main project); no module is merged into the main project.

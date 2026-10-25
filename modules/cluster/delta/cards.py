@@ -14,8 +14,8 @@ from project.composition import compose
 
 # Application configuration. This file is modules/cluster/delta/cards.py: parents[3] is the repository root.
 BASE_DIR = Path(__file__).resolve().parents[3]
-STATE_PATH = BASE_DIR / "data" / "user_state.json"  # card state (deck view); the launcher keeps it as temp/cluster_state.json
-SPACE_STATE_PATH = BASE_DIR / "data" / "space_state.json"  # deck state (space view): temp/cluster_space_state.json
+STATE_PATH = BASE_DIR / "data" / "user_state.json"  # card state (cards view); the launcher keeps it as temp/cluster_state.json
+SPACE_STATE_PATH = BASE_DIR / "data" / "space_state.json"  # deck state (decks view): temp/cluster_space_state.json
 CARDS_FILE = BASE_DIR / "data" / "topics.json"  # course file, version 3, read at startup
 SERVER_BOOT_ID = uuid.uuid4().hex
 

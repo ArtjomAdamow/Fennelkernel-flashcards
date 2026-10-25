@@ -2,7 +2,7 @@
   "use strict";
 
   // Cluster module copy of assets/keyboard.js. Changes: Backspace sends the bare "back" command (Python decides:
-  // unselect the dot, or leave the deck view; nothing while a dialog is open); the top bar buttons give up the
+  // unselect the dot, or leave the cards view; nothing while a dialog is open); the top bar buttons give up the
   // focus after a click, so a following Enter flips the card instead of clicking the button again; by card
   // order, Space stops the camera's motion (camera.js, constellationNav.stopMotion) and sends nothing; within
   // constellation, with no dot selected or one outside every constellation, Space stops the motion and the next
