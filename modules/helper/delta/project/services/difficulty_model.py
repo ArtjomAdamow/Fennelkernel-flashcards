@@ -4,7 +4,8 @@ the flattened quizzes that have none, learned from the quizzes that have one (do
     rated quizzes (stack 3) ───┐
                                ├→ features → logistic regression → score 0..2 ─┬→ cross-validation: deck shares → metrics ± sd
     unrated quizzes (stack 2) ─┘                                                └→ test: deck shares → predicted levels
-    plain flashcards (stack 1): not in the first run (another kind of card, rated differently later)
+    plain flashcards (stack 1, and the quiz file's flashcards, stack 4): not in the first run (another kind of card,
+    rated differently later)
 
 * Features come from a card's own text and the fitted similarity index only: text statistics, its centrality and
   neighbour scores, and (as a variant) its TF-IDF row. Never the card order, the ids, the deck or the stack: the
@@ -17,13 +18,15 @@ the flattened quizzes that have none, learned from the quizzes that have one (do
   its midpoint (i - 1/2)/n falls into (hard in the top share, medium in the next, easy below).
 * Metrics are out of fold (repeated stratified k-fold), as mean ± sd over the repeats, next to two baselines: always
   "easy", and the similarity baseline as a classifier (the nearest rated cards by cosine). The same cross-validation
-  also gives every deck's own metrics (its rated quizzes only, under the course-wide model) for the deck view.
+  also gives every deck's own metrics (its rated quizzes only, under the course-wide model) for the topics view, and
+  a topic's part counts the topic's quizzes with the deck's metrics for the cards view (DifficultyReport.for_topic).
 """
 
+import dataclasses
 import re
 import time
 from dataclasses import dataclass, field
-from typing import Mapping, Optional, Sequence
+from typing import Iterable, Mapping, Optional, Sequence
 
 import numpy as np
 from scipy import sparse
@@ -61,8 +64,9 @@ Spread = tuple[float, float]  # (mean, sd) over the repeats
 
 
 def split(cards: Sequence[Flashcard]) -> tuple[list[Flashcard], list[Flashcard]]:
-    """(rated, unrated): the cards with a difficulty, and the flattened quizzes (stack 2) without one. Plain
-    flashcards are in neither: they are not trained on and not predicted in the first run."""
+    """(rated, unrated): the cards with a difficulty, and the flattened quizzes (stack 2) without one. Flashcards
+    are in neither, the lecture notebooks' (stack 1) and the quiz file's (stack 4) alike: they are not trained on
+    and not predicted in the first run."""
     rated = [card for card in cards if card.difficulty in LEVEL_OF]
     unrated = [card for card in cards if card.difficulty not in LEVEL_OF and card.stack == STACK_QUIZ]
     return rated, unrated
@@ -74,7 +78,7 @@ def _words(text: Optional[str]) -> int:
 
 def text_statistics(card: Flashcard) -> list[float]:
     """The card's text statistics (TEXT_FEATURES): word counts (log), code, digits and scenario words in the question,
-    and its commas. Longer, scenario-like questions are the harder ones (docs/draft/helper/early.md)."""
+    and its commas. Longer, scenario-like questions are the harder ones (docs/draft/helper/concept.md)."""
     question = card.question
     return [
         float(np.log1p(_words(question))),
@@ -88,8 +92,8 @@ def text_statistics(card: Flashcard) -> list[float]:
 
 
 def course_features(index: similar.SimilarityIndex, ids: Sequence[str]) -> np.ndarray:
-    """COURSE_FEATURES of the cards: the cosine to their deck vector (how central a card is to its deck, as for the
-    sun distance) and the cosine of their first and fifth neighbour (0 when there is none above the minimum)."""
+    """COURSE_FEATURES of the cards: the cosine to their deck vector (how central a card is to its deck) and the
+    cosine of their first and fifth neighbour (0 when there is none above the minimum)."""
     names, deck_matrix = similar.deck_vectors(index.decks, index.vectors)
     deck_row = {name: row for row, name in enumerate(names)}
     row_of = {card_id: row for row, card_id in enumerate(index.ids)}
@@ -218,7 +222,8 @@ def measure(levels: np.ndarray, labels: np.ndarray, scores: Optional[np.ndarray]
     recalls = recall_score(levels, labels, labels=list(range(len(LEVELS))), average=None, zero_division=0)
     spearman = float("nan")
     if scores is not None and np.ptp(scores) > 0:
-        spearman = float(spearmanr(scores, levels).correlation)
+        # Scores equal to 9 places are ties (cards with the same features score the same up to the summation order)
+        spearman = float(spearmanr(np.round(scores, 9), levels).correlation)
     return {
         "macro_f1": float(f1_score(levels, labels, labels=list(range(len(LEVELS))), average="macro", zero_division=0)),
         "balanced_accuracy": float(balanced_accuracy_score(levels, labels)),
@@ -263,7 +268,8 @@ class DifficultyReport:
 
     The course's report holds one report of the same kind per deck (`decks`, `for_deck`): the deck's rated quizzes
     measured out of fold within the same cross-validation (the course-wide model, the deck's own cards only), and
-    its predicted quizzes."""
+    its predicted quizzes. A deck's part gives a topic's part (`for_topic`): the topic's rated levels and
+    predictions, counted from its card ids, with the deck's metrics."""
 
     feature_set: str
     rated_counts: tuple[int, int, int]
@@ -279,8 +285,11 @@ class DifficultyReport:
     cut_point_predictions: dict[str, str] = field(default_factory=dict)  # the comparison rule
     seconds: float = 0.0
     note: str = ""
-    scope: Optional[str] = None  # None: the whole course; a deck name: that deck's part
+    scope: Optional[str] = None  # None: the whole course; a deck name: that deck's part; a topic name: its part
     decks: dict[str, "DifficultyReport"] = field(default_factory=dict)  # deck name -> its part (the course's report)
+    levels: dict[str, str] = field(default_factory=dict)  # card id -> the authored level of the rated quizzes
+    unrated_ids: tuple[str, ...] = ()  # the unrated quizzes (predicted or not)
+    parent: Optional["DifficultyReport"] = None  # a topic's part: the deck's part whose metrics it shows
 
     def for_deck(self, name: str) -> "DifficultyReport":
         """The deck's part; a deck without quizzes gets an empty one that says so."""
@@ -289,6 +298,21 @@ class DifficultyReport:
             part = DifficultyReport(self.feature_set, (0, 0, 0), 0, self.folds, self.repeats, scope=name,
                                     note=self.note or "This deck has no quizzes: nothing to measure or predict.")
         return part
+
+    def for_topic(self, name: str, card_ids: Iterable[str]) -> "DifficultyReport":
+        """The topic's part (the cards view): its rated levels and its unrated quizzes with their predictions,
+        counted from the topic's card ids, with this report's metrics, baselines and matrix, which stay the deck's
+        (a topic's few rated quizzes are too few to measure). `parent` is this report, for the back's subtitle."""
+        ids = set(card_ids)
+        levels = {card_id: level for card_id, level in self.levels.items() if card_id in ids}
+        unrated_ids = tuple(card_id for card_id in self.unrated_ids if card_id in ids)
+        return dataclasses.replace(
+            self, scope=name, rated_counts=self.counts(levels), unrated=len(unrated_ids), levels=levels, unrated_ids=unrated_ids,
+            predictions={card_id: level for card_id, level in self.predictions.items() if card_id in ids},
+            scores={card_id: score for card_id, score in self.scores.items() if card_id in ids},
+            cut_point_predictions={card_id: level for card_id, level in self.cut_point_predictions.items() if card_id in ids},
+            decks={}, parent=self,
+        )
 
     @property
     def rated(self) -> int:
@@ -331,7 +355,10 @@ def fit_difficulty(
     }
     present = [count for count in rated_counts if count]
     folds = min(n_splits, min(present)) if present else 0
-    report = DifficultyReport(feature_set, rated_counts, len(unrated), folds if folds >= 2 else 0, n_repeats if folds >= 2 else 0)
+    report = DifficultyReport(
+        feature_set, rated_counts, len(unrated), folds if folds >= 2 else 0, n_repeats if folds >= 2 else 0,
+        levels={card.id: card.difficulty for card in rated}, unrated_ids=tuple(card.id for card in unrated),
+    )
     if len(present) < 2:
         report.note = "Too few rated quizzes: no model."
         report.seconds = time.perf_counter() - started
@@ -391,12 +418,14 @@ def fit_difficulty(
         report.predictions = {card.id: LEVELS[label] for card, label in zip(unrated, labels)}
         report.scores = {card.id: float(score) for card, score in zip(unrated, scores)}
         report.cut_point_predictions = {card.id: LEVELS[label] for card, label in zip(unrated, cut)}
-    report.decks = _deck_parts(report, unrated, counts, deck_runs)
+    report.decks = _deck_parts(report, rated, unrated, counts, deck_runs)
     report.seconds = time.perf_counter() - started
     return report
 
 
-def _deck_parts(report: DifficultyReport, unrated: Sequence[Flashcard], counts, deck_runs) -> dict[str, DifficultyReport]:
+def _deck_parts(
+    report: DifficultyReport, rated: Sequence[Flashcard], unrated: Sequence[Flashcard], counts, deck_runs
+) -> dict[str, DifficultyReport]:
     """One report per deck with quizzes: its rated quizzes' share of the cross-validation, and its predictions."""
     parts = {}
     for deck in sorted(set(counts) | {card.deck for card in unrated}):
@@ -406,6 +435,8 @@ def _deck_parts(report: DifficultyReport, unrated: Sequence[Flashcard], counts, 
             predictions={card_id: report.predictions[card_id] for card_id in ids if card_id in report.predictions},
             scores={card_id: report.scores[card_id] for card_id in ids if card_id in report.scores},
             cut_point_predictions={card_id: report.cut_point_predictions[card_id] for card_id in ids if card_id in report.cut_point_predictions},
+            levels={card.id: card.difficulty for card in rated if card.deck == deck},
+            unrated_ids=tuple(ids),
         )
         runs = deck_runs.get(deck)
         if runs and runs["D1"]:

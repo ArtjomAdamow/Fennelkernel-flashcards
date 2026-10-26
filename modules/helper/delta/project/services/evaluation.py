@@ -1,21 +1,31 @@
 """Offline measures of the helper's models (no Dash, no state): how good the neighbours are, judged by an
-independent label (the deck a card belongs to), and the random floor the map shows without a model.
+independent label (the deck a card belongs to), the random floor the map shows without a model, and the judges of
+the topic model T1 (docs/draft/helper/concept.md, "Topic model T1").
 
 * same_deck_precision: of a card's top-5 neighbours, how many come from the card's own deck, over all cards.
   Empty slots (fewer than 5 neighbours above the minimum score) count as misses. Random neighbours score about 2 %.
 * kept_precision: the same over the kept neighbours only (what the user would actually see).
 * coverage: the share of cards with at least one neighbour, and the number of different cards that appear as a
   neighbour at all (hub cards show up everywhere; a low number means they do).
-* random_floor (B0): the same-deck precision of the k nearest cards at random positions, as the map placed them.
+* random_floor (B0): the same-deck precision of the k nearest cards at random positions, as the map placed them
+  (on the sphere's surface since the cluster module's three-level build).
+* The topic judges, each on one deck's rows and scripted labels: agreement (the share of predicted labels that are
+  the scripted ones, one minus the lessons' Hamming loss), nearest_labels (the label of the most similar other card,
+  the helper's neighbour rule), leave_one_out_logistic (logistic regression per deck, every card predicted by a
+  model fitted on the others) and chance_by_sizes (an assignment by the topic sizes).
 """
 
+import math
 from typing import Callable, Mapping, Sequence
 
 import numpy as np
+from sklearn.linear_model import LogisticRegression
 
-from project.services.geometry import sphere_positions
-from project.services.layout import nearest_in_3d
+from project.services.layout import as_dense, nearest_in_3d
+from project.services.positions import surface_positions
 from project.services.similar import TOP_K
+
+LOGISTIC_ITERATIONS = 2000  # the per-deck logistic regression of the T1 measurement
 
 
 def _card_id(item) -> str:
@@ -61,9 +71,59 @@ def random_floor(
     deck_of: Mapping[str, str],
     seed: int,
     k: int = TOP_K,
-    source: Callable = sphere_positions,
+    source: Callable = surface_positions,
 ) -> float:
     """B0: the same-deck precision of the k nearest cards when all cards sit at random positions."""
     positions = source(list(ids), seed)
     points = np.array([[position.x, position.y, position.z] for position in positions])
     return same_deck_precision(nearest_by_position(list(ids), points, k), deck_of, k)
+
+
+# --- the judges of the topic model ----------------------------------------------
+
+
+def agreement(predicted: Sequence, scripted: Sequence) -> float:
+    """The share of predictions that equal the scripted label (NaN without cards)."""
+    if not len(scripted):
+        return math.nan
+    return float(np.mean([left == right for left, right in zip(predicted, scripted)]))
+
+
+def nearest_labels(vectors, labels: Sequence) -> list:
+    """The neighbour rule: every row takes the label of its most similar other row (by cosine; a tie goes to the
+    lowest row). A single row keeps its own label."""
+    matrix = as_dense(vectors)
+    count = len(matrix)
+    if count < 2:
+        return list(labels)
+    lengths = np.linalg.norm(matrix, axis=1, keepdims=True)
+    units = np.divide(matrix, lengths, out=np.zeros_like(matrix), where=lengths > 0)
+    cosines = units @ units.T
+    np.fill_diagonal(cosines, -np.inf)
+    return [labels[int(np.argmax(cosines[row]))] for row in range(count)]
+
+
+def leave_one_out_logistic(vectors, labels: Sequence, max_iter: int = LOGISTIC_ITERATIONS) -> list:
+    """Logistic regression per deck, leave-one-out: every row's label predicted by a model fitted on the other rows
+    (the only label left when they all share one)."""
+    matrix = as_dense(vectors)
+    labels = list(labels)
+    count = len(matrix)
+    predicted = []
+    for row in range(count):
+        others = [other for other in range(count) if other != row]
+        classes = {labels[other] for other in others}
+        if len(classes) < 2:
+            predicted.append(next(iter(classes)) if classes else labels[row])
+            continue
+        model = LogisticRegression(max_iter=max_iter).fit(matrix[others], [labels[other] for other in others])
+        predicted.append(model.predict(matrix[row : row + 1])[0])
+    return predicted
+
+
+def chance_by_sizes(labels: Sequence) -> float:
+    """The agreement of an assignment drawn by the label sizes: the sum of the squared shares (NaN without cards)."""
+    labels = list(labels)
+    if not labels:
+        return math.nan
+    return float(sum((labels.count(label) / len(labels)) ** 2 for label in set(labels)))

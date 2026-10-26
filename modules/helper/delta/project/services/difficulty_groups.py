@@ -1,4 +1,4 @@
-"""Difficulty groups: the course's easy, medium and hard as generated card groups of the deck view ("Quiz: easy",
+"""Difficulty groups: the course's easy, medium and hard as generated card groups of the card state ("Quiz: easy",
 "Quiz: medium", "Quiz: hard"), and the grey group of the predicted quizzes ("Quiz difficulty: predicted").
 
 Every card with a difficulty is a member of its difficulty's group; unrated cards are in none and keep the grey of

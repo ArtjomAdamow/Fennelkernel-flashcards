@@ -28,11 +28,13 @@ the console, the first process waits for the restarted one to stop the server
 (run_restarted), so no KeyboardInterrupt traceback is printed.
 
 All generated output goes flat into temp/: the merged assets and the module's
-own state files (plus their backups): helper_state.json for the cards (deck
-view), helper_space_state.json for the decks (space view) and
-helper_view_state.json for the checked cards of each deck. Dash serves temp/ as
-its assets folder, so its hot reload is switched off (a state save would reload
-the browser). No __pycache__ folders are written.
+own state files (plus their backups): helper_state.json for the cards and the
+topic dots (the topics and cards views), helper_space_state.json for the decks
+(the decks view) and helper_view_state.json for the checked topics and cards of
+each deck. The serving process also writes helper_topics.json there, the model's
+derived course file, rebuilt at every start and never backed up. Dash serves
+temp/ as its assets folder, so its hot reload is switched off (a state save
+would reload the browser). No __pycache__ folders are written.
 
 On startup, if a state file exists, the user is asked whether to back them up
 (temp/helper_state.json_01.bak, _02.bak, ...) and start fresh.

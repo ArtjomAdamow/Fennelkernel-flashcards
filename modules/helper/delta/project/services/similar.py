@@ -24,9 +24,9 @@ from project.models import Flashcard
 TOP_K = 5
 # A neighbour below this cosine is dropped: a card without a good match gets fewer (or no) neighbours rather than
 # weak ones. Chosen from the score distribution of the course: about the 10th percentile of the fifth neighbour's
-# score (docs/draft/helper/early.md, "Baseline numbers").
+# score (docs/draft/helper/concept.md, "Baseline numbers").
 MIN_SCORE = 0.1
-# The chosen settings of the baseline (the offline evaluation, docs/draft/helper/early.md): unigrams plus bigrams,
+# The chosen settings of the baseline (the offline evaluation, docs/draft/helper/concept.md): unigrams plus bigrams,
 # terms in at least two cards, sublinear term frequency, and the explanation in the text.
 NGRAM_RANGE = (1, 2)
 MIN_DF = 2
@@ -68,7 +68,7 @@ def unit_rows(vectors) -> sparse.csr_matrix:
 
 
 def cosine_similarities(vectors: sparse.csr_matrix) -> np.ndarray:
-    """All pairwise cosines of unit rows: the dense n × n matrix of dot products (1,670² values fit in memory)."""
+    """All pairwise cosines of unit rows: the dense n × n matrix of dot products (1,064² values fit in memory)."""
     return np.asarray((vectors @ vectors.T).todense(), dtype=float)
 
 

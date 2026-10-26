@@ -1,7 +1,8 @@
 """The back of the card panel in the helper module: how well the difficulty model D1 does
 (services.difficulty_model.DifficultyReport), shown while nothing is selected after Enter or a click on the panel.
-The space view shows the whole course; the deck view shows the entered deck's part only (its rated quizzes, out of
-fold under the course-wide model, and its predicted quizzes).
+The decks view shows the whole course; the topics view shows the entered deck's part only (its rated quizzes, out
+of fold under the course-wide model, and its predicted quizzes); the cards view shows the entered topic's counts
+and predictions with the deck's metrics (about two rated quizzes per topic are too few to measure).
 
 * A table of the key scores, D1 as mean ± sd over the repeats, next to the two baselines (always "easy", and the
   similarity baseline as a classifier); it is also the table view of the numbers.
@@ -119,27 +120,52 @@ def _graph(figure: go.Figure, class_name: str) -> dcc.Graph:
     return dcc.Graph(figure=figure, config={"displayModeBar": False}, className=class_name)
 
 
-def _subtitle(report: DifficultyReport) -> str:
+def _levels(report: DifficultyReport) -> str:
     easy, medium, hard = report.rated_counts
+    return f"{easy} easy, {medium} medium, {hard} hard"
+
+
+def _count(number: int, noun: str) -> str:
+    return f"{number} {noun}" if number == 1 else f"{number} {noun}zes"
+
+
+def _subtitle(report: DifficultyReport) -> str:
     run = f"{report.folds} folds × {report.repeats} repeats"
     if report.scope is None:
         return (
-            f"All decks: {report.rated} rated quizzes ({easy} easy, {medium} medium, {hard} hard), measured out of fold "
-            f"({run}); levels by each deck's shares. {report.unrated} unrated quizzes predicted; plain flashcards are "
-            f"not rated."
+            f"All decks: {report.rated} rated quizzes ({_levels(report)}), measured out of fold ({run}); levels by each "
+            f"deck's shares. {report.unrated} unrated quizzes predicted; plain flashcards are not rated."
+        )
+    if report.parent is not None:  # the cards view: the topic's counts, the deck's metrics
+        deck = report.parent
+        rated = f"its {_count(report.rated, 'rated quiz')} ({_levels(report)})" if report.rated else "no rated quizzes"
+        unrated = (
+            f"{_count(report.unrated, 'unrated quiz')} ({len(report.predictions)} predicted)" if report.unrated
+            else "no unrated quizzes"
+        )
+        return (
+            f"This topic: {rated} and {unrated}. The scores, the matrix and the baselines are the deck's: its {deck.rated} "
+            f"rated quizzes ({_levels(deck)}), out of fold in the course's cross-validation ({run}), by the deck's shares; "
+            f"a topic's few rated quizzes are too few to measure on their own."
         )
     predicted = f"{report.unrated} unrated quizzes of this deck predicted." if report.unrated else "No unrated quiz in this deck."
     return (
-        f"This deck: its {report.rated} rated quizzes ({easy} easy, {medium} medium, {hard} hard), out of fold in the "
-        f"course's cross-validation ({run}), by the deck's shares. {predicted} The space view shows all decks."
+        f"This deck: its {report.rated} rated quizzes ({_levels(report)}), out of fold in the course's cross-validation "
+        f"({run}), by the deck's shares. {predicted} The decks view shows all decks."
     )
 
 
-def metrics_panel(report: DifficultyReport, deck: Optional[str] = None) -> html.Div:
-    """The back of the card panel: what D1 measured and predicted, for the whole course or (with `deck`, the deck
-    view) for the entered deck only; or why there is nothing to show."""
+def metrics_panel(report: DifficultyReport, deck: Optional[str] = None, topic=None) -> html.Div:
+    """The back of the card panel: what D1 measured and predicted, for the whole course (the decks view), for the
+    entered deck only (`deck`, the topics view) or for the entered topic (`topic`, a TopicInfo with `name` and
+    `card_ids`, the cards view: the topic's counts and predictions with the deck's metrics); or why there is
+    nothing to show."""
     part = report.for_deck(deck) if deck is not None else report
-    title = html.Div("Difficulty model D1" + (f" · {deck}" if deck is not None else " · all decks"), className="card-label")
+    scope = f" · {deck}" if deck is not None else " · all decks"
+    if topic is not None:
+        part = part.for_topic(topic.name, topic.card_ids)
+        scope = f" · {deck} › {topic.name}"
+    title = html.Div("Difficulty model D1" + scope, className="card-label")
     hint = html.Div(BACK_HINT, className="card-hint")
     style = {"cursor": "pointer"}
     if not part.measured:

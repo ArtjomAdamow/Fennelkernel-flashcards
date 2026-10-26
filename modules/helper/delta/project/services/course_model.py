@@ -1,18 +1,25 @@
-"""The course model of the helper module (no Dash, no state): the pipeline fitted once on all cards, and from it
-the positions and connections the cluster module shows.
+"""The course model of the helper module (no Dash, no state): the pipeline fitted once on all cards, and from it the
+topics of the state and the positions and connections the cluster module shows.
 
-* Space view: one unit vector per deck (similar.deck_vectors); the layout step (services.layout, k = 3) places
-  all decks on the unit sphere at once. The positions are keyed by deck id, the dots of the space state. The
-  clustering of the deck vectors (services.clustering) gives the deck connections.
-* Deck view, for each deck: the distance from the sun is the card's cosine to its deck vector, scaled linearly so
-  that the most central card sits at INNER_RADIUS and the least central at 1 (all equally central: halfway). The
-  direction comes from the layout step on the deck's card vectors, centred on the deck (what sets a card apart),
-  with the neighbours within the deck (k = 5). The clustering of the deck's card vectors gives its connections.
-* The two position sources have the cluster module's signature (ids, seed) -> positions. They are deterministic
-  and ignore the seed. An id the model does not know (a card that is not in the course it was fitted on) gets the
-  random position of the cluster module's own source for that view, with the seed.
+* Decks view: one unit vector per deck (similar.deck_vectors); the layout step (services.layout, k = 3) places all
+  decks on the unit sphere at once. The positions are keyed by deck id, the dots of the decks state. The clustering
+  of the deck vectors (services.clustering) gives the deck connections, which the Helper button adds on request
+  (a fresh start writes none).
+* Topics: the topic model T1 (services.topic_model) takes the scripted topics of the course file as its input and
+  decides every card's topic and margin; the derived course file it writes is what the cluster module reads, so the
+  topic dots are the cluster module's own (random in the shell; the model places none).
+* Cards view, for each topic of the model: the layout step on the topic's card vectors, centred on the topic's mean
+  (the start's own centring), with the neighbours within the topic (k = min(5, n - 1)), gives one unit direction per
+  card, and that direction is the position: every card sits on the surface of its topic's sphere (radius 1), as the
+  cluster module's hard rule wants it. The clustering of the topic's card vectors gives its connections (n - 1). A
+  topic with fewer than two cards gets no layout and no connections.
+* The two position sources have the cluster module's signature (ids, seed) -> positions. They are deterministic and
+  ignore the seed. An id the model does not know (a card of a one-card topic, a card that is not in the course it
+  was fitted on) gets the cluster module's random position on the surface (services.positions.surface_positions),
+  with the seed.
 """
 
+import math
 from dataclasses import dataclass
 from typing import Mapping, Optional, Sequence
 
@@ -20,44 +27,31 @@ import numpy as np
 
 from project.models import CardPosition, Flashcard
 from project.services import clustering, layout, similar
-from project.services.geometry import sphere_positions
-from project.services.positions import INNER_RADIUS, shell_positions
+from project.services.positions import surface_positions
+from project.services.topic_model import FOCUS_MARGIN, TopicModel, TopicSeed
 
 DECK_NEIGHBOURS = 3
 CARD_NEIGHBOURS = 5
-# The force layout of the 48 decks runs with a smaller step and a weaker push than the card layouts (the defaults
-# of services.layout): on the course both measures of the deck layout are better that way (results.csv)
+# The force layout of the decks runs with a smaller step and a weaker push than the card layouts (the defaults of
+# services.layout): on the course both measures of the deck layout are better that way (results.csv)
 DECK_LAYOUT = {"iterations": 300, "step": 0.05, "repulsion": 0.5}
-# A hair above the hard rule's radius: the cluster module checks stored positions against INNER_RADIUS at startup
-# (keep_off_the_sun), and a product of floats at exactly 0.25 can come out a rounding error below it
-INNER_DISTANCE = INNER_RADIUS + 1e-9
-OUTER_RADIUS = 1.0
 
 Point = tuple[float, float, float]
-
-
-def sun_distances(centrality: np.ndarray, inner: float = INNER_DISTANCE, outer: float = OUTER_RADIUS) -> np.ndarray:
-    """Distances from the sun: the most central card (highest cosine to the deck vector) at `inner`, the least
-    central at `outer`, linear in between; all equally central cards sit halfway. Never below `inner`."""
-    centrality = np.asarray(centrality, dtype=float)
-    if centrality.size == 0:
-        return centrality
-    low, high = float(centrality.min()), float(centrality.max())
-    if high - low < 1e-12:
-        return np.full(centrality.shape, (inner + outer) / 2)
-    return outer - (centrality - low) / (high - low) * (outer - inner)
+Key = tuple[str, str]  # (deck id, topic id)
 
 
 @dataclass
-class DeckLayout:
-    """One deck's cards around its sun."""
+class TopicLayout:
+    """One topic's cards (the model's membership) on the surface of the topic's sphere."""
 
-    name: str
+    deck: str  # the deck name
     deck_id: str
+    topic_id: str
+    name: str
     ids: list[str]
-    positions: dict[str, Point]
-    links: list[tuple[str, str]]
-    overlap: float  # top-5 overlap of the 3D directions with the within-deck neighbours (NaN for tiny decks)
+    positions: dict[str, Point]  # unit directions; empty below two cards
+    links: list[tuple[str, str]]  # n - 1 connections in merge order; empty below two cards
+    overlap: float  # top-k overlap of the 3D directions with the within-topic neighbours (NaN below two cards)
     trustworthiness: float
 
 
@@ -66,11 +60,14 @@ class CourseModel:
         self,
         cards: Sequence[Flashcard],
         deck_ids: Mapping[str, str],
+        topics: Sequence[TopicSeed],
         vectoriser=None,
         index: Optional[similar.SimilarityIndex] = None,
+        margin: float = FOCUS_MARGIN,
     ) -> None:
-        """Fit on all cards. `deck_ids` maps deck names to the deck ids of the course file (the space state's
-        dot ids); a deck without an id keeps its name as id."""
+        """Fit on all cards. `deck_ids` maps deck names to the deck ids of the course file (the decks state's dot
+        ids); a deck without an id keeps its name as id. `topics` are the scripted topics (topic_model.scripted_topics),
+        the input of T1."""
         self.index = index if index is not None else similar.SimilarityIndex.fit(cards, vectoriser)
         self.deck_ids = {name: deck_ids.get(name, name) for name in dict.fromkeys(self.index.decks)}
         names, vectors = similar.deck_vectors(self.index.decks, self.index.vectors)
@@ -86,47 +83,53 @@ class CourseModel:
         self.deck_links: list[tuple[str, str]] = clustering.merge_links(
             [self.deck_ids[name] for name in self.deck_names], self.deck_vectors
         )
-        self.decks: dict[str, DeckLayout] = {
-            name: self._lay_out(name, self.deck_vectors[row]) for row, name in enumerate(self.deck_names)
-        }
+        self.topic_model = TopicModel(self.index, topics, margin)
+        self._row_of = {card_id: row for row, card_id in enumerate(self.index.ids)}
+        self.topics: dict[Key, TopicLayout] = {}
+        for seed in self.topic_model.seeds:
+            placed = self._lay_out(seed)
+            self.topics[(placed.deck_id, placed.topic_id)] = placed
         self.card_points: dict[str, Point] = {
-            card_id: point for deck in self.decks.values() for card_id, point in deck.positions.items()
+            card_id: point for placed in self.topics.values() for card_id, point in placed.positions.items()
         }
 
-    def _lay_out(self, name: str, deck_vector: np.ndarray) -> DeckLayout:
-        rows = self.index.rows_of_deck(name)
-        ids = [self.index.ids[row] for row in rows]
-        vectors = layout.as_dense(self.index.vectors[rows])
-        distances = sun_distances(vectors @ deck_vector)
-        directions, _start = layout.sphere_layout(vectors, CARD_NEIGHBOURS)  # the start centres the vectors
-        positions = {
-            card_id: tuple(float(value) for value in directions[row] * distances[row]) for row, card_id in enumerate(ids)
-        }
-        return DeckLayout(
-            name=name,
-            deck_id=self.deck_ids[name],
+    def _lay_out(self, seed: TopicSeed) -> TopicLayout:
+        ids = list(self.topic_model.members.get(seed.key, []))
+        deck_id = self.deck_ids.get(seed.deck, seed.deck)
+        if len(ids) < 2:  # no layout and no connections below two cards (the user's edge case)
+            return TopicLayout(seed.deck, deck_id, seed.topic_id, seed.name, ids, {}, [], math.nan, math.nan)
+        vectors = layout.as_dense(self.index.vectors[[self._row_of[card_id] for card_id in ids]])
+        k = min(CARD_NEIGHBOURS, len(ids) - 1)
+        directions, _start = layout.sphere_layout(vectors, k)  # the start centres the vectors on the topic's mean
+        positions = {card_id: tuple(float(value) for value in directions[row]) for row, card_id in enumerate(ids)}
+        return TopicLayout(
+            deck=seed.deck,
+            deck_id=deck_id,
+            topic_id=seed.topic_id,
+            name=seed.name,
             ids=ids,
             positions=positions,
             links=clustering.merge_links(ids, vectors),
-            overlap=layout.neighbour_overlap(vectors, directions, CARD_NEIGHBOURS),
-            trustworthiness=layout.trustworthiness_score(vectors, directions, CARD_NEIGHBOURS),
+            overlap=layout.neighbour_overlap(vectors, directions, k),
+            trustworthiness=layout.trustworthiness_score(vectors, directions, k),
         )
 
     # --- the cluster module's position sources ------------------------------
 
     def deck_positions(self, ids: Sequence[str], seed: int = 42) -> list[CardPosition]:
-        """PositionSource of the space state: the model's deck positions; unknown ids are placed at random."""
-        return self._positions(ids, self.deck_points, sphere_positions, seed)
+        """PositionSource of the decks state: the model's deck positions; unknown ids are placed at random on the
+        surface."""
+        return self._positions(ids, self.deck_points, seed)
 
     def card_positions(self, ids: Sequence[str], seed: int = 42) -> list[CardPosition]:
-        """PositionSource of the card state: the model's card positions; unknown ids are placed at random in
-        the shell around the sun."""
-        return self._positions(ids, self.card_points, shell_positions, seed)
+        """PositionSource of the card state's cards: the model's directions (radius 1); unknown ids, and the cards
+        of a one-card topic, are placed at random on the surface."""
+        return self._positions(ids, self.card_points, seed)
 
     @staticmethod
-    def _positions(ids: Sequence[str], known: Mapping[str, Point], fallback, seed: int) -> list[CardPosition]:
+    def _positions(ids: Sequence[str], known: Mapping[str, Point], seed: int) -> list[CardPosition]:
         unknown = [card_id for card_id in ids if card_id not in known]
-        random_positions = {position.comb_id: position for position in fallback(unknown, seed)} if unknown else {}
+        random_positions = {position.comb_id: position for position in surface_positions(unknown, seed)} if unknown else {}
         positions = []
         for card_id in ids:
             if card_id in known:
@@ -136,12 +139,21 @@ class CourseModel:
                 positions.append(random_positions[card_id])
         return positions
 
-    # --- connections and neighbours ----------------------------------------
+    # --- the topics, connections and neighbours ------------------------------
 
-    def card_links(self, deck_name: str) -> list[tuple[str, str]]:
-        """The deck's connections in merge order; empty for an unknown deck."""
-        deck = self.decks.get(deck_name)
-        return list(deck.links) if deck else []
+    @property
+    def hidden(self) -> set[str]:
+        """The cards T1 hides from focus (a margin below the threshold)."""
+        return self.topic_model.hidden
+
+    def topics_of_deck(self, deck_id: str) -> list[TopicLayout]:
+        """The deck's topics in file order."""
+        return [placed for placed in self.topics.values() if placed.deck_id == deck_id]
+
+    def card_links(self, deck_id: str, topic_id: str) -> list[tuple[str, str]]:
+        """The topic's connections in merge order; empty for an unknown topic or one with fewer than two cards."""
+        placed = self.topics.get((deck_id, topic_id))
+        return list(placed.links) if placed else []
 
     def related(self, card_id: str) -> list[tuple[str, float]]:
         """The neighbours of a card across the whole course, best first."""

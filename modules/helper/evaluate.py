@@ -1,25 +1,29 @@
 """Offline evaluation of the helper's models on the course file. Run it in the module env, from the repository root:
 
-    modules/helper/.venv/Scripts/python.exe modules/helper/evaluate.py [--course data/cards.json]
+    modules/helper/.venv/Scripts/python.exe modules/helper/evaluate.py [--course data/topics.json] [--part <part>]
 
-What it measures (docs/draft/helper/early.md, "Metrics"):
-  * B0, the random floor: the same-deck precision@5 of the 5 nearest cards at random positions, over several seeds;
+What it measures (docs/draft/helper/concept.md, "Metrics"):
+  * B0, the random floor: the same-deck precision@5 of the 5 nearest cards at random positions on the sphere's
+    surface (as the cluster module places them), over several seeds;
   * M1, the TF-IDF variants: same-deck precision@5 (empty slots count as misses), the precision over the kept
     neighbours, the coverage and the number of distinct recommended cards, without and with the minimum score;
-  * M1-map, the chosen model's positions: trustworthiness and top-3 overlap of the 48 deck positions, the mean
-    within-deck top-5 overlap of the card positions (and decks 17 and 24), against the SVD start and random
-    positions; and the time the whole model takes to build.
-
+  * M1-map, the chosen model's positions: trustworthiness and top-3 overlap of the deck positions, the mean
+    within-topic top-5 overlap of the card positions over the model's topics (and over the topics of decks 17 and
+    24), against the SVD start and random positions on the surface; and the time the whole model takes to build;
   * D1, the difficulty model (docs/draft/helper/roadmap.md, step 10): out of fold on the rated quizzes, every
     feature set with the deck shares and with the most likely class, the two baselines, and the predicted levels
-    of the unrated quizzes by the deck shares and by the cut points of the rated cards.
+    of the unrated quizzes by the deck shares and by the cut points of the rated cards;
+  * T1, the topic model (concept.md, "Topic model T1"): the agreement with the scripted topics of the nearest
+    centroid rule, of the neighbour rule (the nearest other card of the deck) and of a logistic regression per
+    deck, leave-one-out, next to chance by the topic sizes; by stack and per deck; T1's margin table (the cards
+    kept at a threshold and their agreement), the coherence per topic, the moved cards and the emptied topics.
 
-Every run appends one row per model and variant to modules/helper/results/results.csv (D1 to difficulty.csv, its
-measures are others), and writes the hand-check candidates to modules/helper/results/hand_check.md: about 20 cards
-of decks 17 and 24 with the top-5 neighbours of every variant combined, to be judged by hand (relevant or not).
-Marks already in that file are kept, and once a card has a mark, every variant's hand-judged precision@5 over the
-judged cards goes into the results as well. `--part similarity` or `--part difficulty` runs one part only.
-results/ is git-ignored: it holds derived course data.
+Every run appends one row per model and variant to modules/helper/results/results.csv (D1 to difficulty.csv and
+T1 to topics.csv: their measures are others), and writes the hand-check candidates to
+modules/helper/results/hand_check.md: about 20 cards of decks 17 and 24 with the top-5 neighbours of every variant
+combined, to be judged by hand (relevant or not). Marks already in that file are kept, and once a card has a mark,
+every variant's hand-judged precision@5 over the judged cards goes into the results as well. `--part similarity`,
+`--part difficulty` or `--part topics` runs one part only. results/ is git-ignored: it holds derived course data.
 """
 
 from __future__ import annotations
@@ -27,6 +31,7 @@ from __future__ import annotations
 import argparse
 import csv
 import importlib.util
+import math
 import re
 import sys
 import time
@@ -55,6 +60,12 @@ DIFFICULTY_COLUMNS = [
     "spearman", "recall_easy", "recall_medium", "recall_hard", "rated", "unrated",
     "predicted_easy", "predicted_medium", "predicted_hard", "seconds", "notes",
 ]
+TOPICS_FILE = RESULTS_DIR / "topics.csv"
+TOPICS_COLUMNS = [
+    "date", "model", "scope", "cards", "topics", "agreement", "kept_share", "coherence_median", "coherence_below_half",
+    "coherence_at_one", "moved", "emptied", "seconds", "notes",
+]
+MARGINS = (0.0, 0.02, 0.05, 0.10, 0.15)  # the margin table of concept.md
 MARKED = re.compile(r"^- \[([xX])\] (\S+) \(")
 NONE_RELEVANT = re.compile(r"^- \[[xX]\] none\b")  # judged: no candidate of this card is relevant
 HEADING = re.compile(r"^## (\S+) \(")
@@ -103,11 +114,24 @@ def write_rows(rows: list[dict], path: Path = RESULTS_FILE, columns: list[str] =
             writer.writerow({column: row.get(column, "") for column in columns})
 
 
-def difficulty_rows(report, today: str, model: str, variant: str, measures: dict, label_rule: str, predicted=None) -> dict:
+def fmt(value) -> str:
+    return "" if value is None or (isinstance(value, float) and math.isnan(value)) else f"{value:.3f}"
+
+
+def scope_note(deck_ids: dict[str, str]) -> str:
+    """The decks of the course file, for the notes column: "decks 01 to 24"."""
+    ids = sorted(deck_ids.values())
+    return f"decks {ids[0]} to {ids[-1]}" if ids else "no decks"
+
+
+# --- D1 -------------------------------------------------------------------------------
+
+
+def difficulty_rows(report, today: str, model: str, variant: str, measures: dict, label_rule: str, note: str, predicted=None) -> dict:
     """One row of difficulty.csv: the measures (name -> (mean, sd)) and, if given, the predicted levels."""
     row = {"date": today, "model": model, "variant": variant, "features": report.feature_set, "label_rule": label_rule,
            "folds": report.folds, "repeats": report.repeats, "seed": 42, "rated": report.rated, "unrated": report.unrated,
-           "seconds": f"{report.seconds:.2f}"}
+           "seconds": f"{report.seconds:.2f}", "notes": note}
     for name, (mean, sd) in measures.items():
         row[name] = fmt(mean)
         if f"{name}_sd" in DIFFICULTY_COLUMNS:
@@ -117,7 +141,7 @@ def difficulty_rows(report, today: str, model: str, variant: str, measures: dict
     return row
 
 
-def evaluate_difficulty(cards, today: str) -> list[dict]:
+def evaluate_difficulty(cards, today: str, note: str) -> list[dict]:
     """D1: every feature set, out of fold, with the deck shares and with the most likely class; the baselines once;
     the predicted levels of the unrated quizzes by the deck shares and by the cut points."""
     from project.services import similar
@@ -131,9 +155,9 @@ def evaluate_difficulty(cards, today: str) -> list[dict]:
             print(f"D1 {feature_set}: {report.note}")
             continue
         chosen = " (chosen)" if feature_set == DEFAULT_FEATURES else ""
-        rows.append(difficulty_rows(report, today, "D1", f"{feature_set}{chosen}", report.metrics, "deck shares", report.predictions))
-        rows.append(difficulty_rows(report, today, "D1", f"{feature_set}{chosen}", report.most_likely, "most likely class"))
-        rows.append(difficulty_rows(report, today, "D1", f"{feature_set}{chosen}", {}, "cut points of the rated cards",
+        rows.append(difficulty_rows(report, today, "D1", f"{feature_set}{chosen}", report.metrics, "deck shares", note, report.predictions))
+        rows.append(difficulty_rows(report, today, "D1", f"{feature_set}{chosen}", report.most_likely, "most likely class", note))
+        rows.append(difficulty_rows(report, today, "D1", f"{feature_set}{chosen}", {}, "cut points of the rated cards", note,
                                     report.cut_point_predictions))
         f1, kappa = report.metrics["macro_f1"], report.metrics["kappa"]
         print(f"D1 {feature_set:20s} deck shares: macro-F1 {f1[0]:.3f} ± {f1[1]:.3f}, weighted kappa {kappa[0]:.3f} ± {kappa[1]:.3f}, "
@@ -141,16 +165,108 @@ def evaluate_difficulty(cards, today: str) -> list[dict]:
               f"{report.metrics['recall_medium'][0]:.2f} / {report.metrics['recall_hard'][0]:.2f} | most likely class: macro-F1 "
               f"{report.most_likely['macro_f1'][0]:.3f} | {report.unrated} unrated quizzes: {report.predicted_counts} "
               f"(cut points {report.counts(report.cut_point_predictions)}) ({report.seconds:.2f}s)")
+        if feature_set == DEFAULT_FEATURES:
+            print("   confusion (rows true, columns predicted, shares): "
+                  + " | ".join(" ".join(f"{value:.2f}" for value in row) for row in report.confusion))
+            parts = [part for part in report.decks.values() if part.measured]
+            kappas = [part.metrics["kappa"][0] for part in parts]
+            print(f"   per deck ({len(parts)} measured): kappa mean {np.mean(kappas):.2f}, lowest {min(kappas):.2f}, highest {max(kappas):.2f}; "
+                  f"accuracy mean {np.mean([part.metrics['accuracy'][0] for part in parts]):.2f}, "
+                  f"macro-F1 mean {np.mean([part.metrics['macro_f1'][0] for part in parts]):.2f}")
     if rows:
         for name, measures in report.baselines.items():
-            rows.append(difficulty_rows(report, today, "baseline", name, measures, "deck shares" if name == "similarity" else "constant"))
+            rows.append(difficulty_rows(report, today, "baseline", name, measures, "deck shares" if name == "similarity" else "constant", note))
             print(f"baseline {name:12s} macro-F1 {measures['macro_f1'][0]:.3f} ± {measures['macro_f1'][1]:.3f}, "
                   f"weighted kappa {measures['kappa'][0]:.3f} ± {measures['kappa'][1]:.3f}, accuracy {measures['accuracy'][0]:.3f}")
     return rows
 
 
-def fmt(value) -> str:
-    return "" if value is None or (isinstance(value, float) and np.isnan(value)) else f"{value:.3f}"
+# --- T1 -------------------------------------------------------------------------------
+
+
+def topic_row(today: str, model: str, scope: str, cards: int, agreement: float, note: str, **extra) -> dict:
+    row = {"date": today, "model": model, "scope": scope, "cards": cards, "agreement": fmt(agreement), "notes": note}
+    row.update(extra)
+    return row
+
+
+def evaluate_topics(cards, cards_file, deck_ids: dict[str, str], today: str, note: str) -> list[dict]:
+    """T1 against the scripted topics, with the neighbour rule, the per-deck logistic regression and chance: by
+    course, by stack and per deck; T1's margin table, coherence, moved cards and emptied topics (concept.md)."""
+    from project.services import evaluation, similar
+    from project.services.topic_model import FOCUS_MARGIN, TopicModel, scripted_topics
+
+    started = time.perf_counter()
+    index = similar.SimilarityIndex.fit(cards)
+    seeds = scripted_topics(cards_file)
+    model = TopicModel(index, seeds)
+    t1_seconds = time.perf_counter() - started
+    scripted = model.scripted_of
+    by_id = {card.id: card for card in cards}
+    deck_order = sorted(cards_file.deck_names, key=lambda name: deck_ids.get(name, name))
+
+    started = time.perf_counter()
+    nearest: dict[str, str] = {}
+    logistic: dict[str, str] = {}
+    chance: dict[str, float] = {}
+    for deck in deck_order:
+        rows = index.rows_of_deck(deck)
+        ids = [index.ids[row] for row in rows]
+        labels = [scripted[card_id] for card_id in ids]
+        vectors = index.vectors[rows]
+        nearest.update(zip(ids, evaluation.nearest_labels(vectors, labels)))
+        logistic.update(zip(ids, evaluation.leave_one_out_logistic(vectors, labels)))
+        chance[deck] = evaluation.chance_by_sizes(labels)
+    judges_seconds = time.perf_counter() - started
+
+    def agree(predicted: dict, ids) -> float:
+        ids = list(ids)
+        return evaluation.agreement([predicted[card_id] for card_id in ids], [scripted[card_id] for card_id in ids])
+
+    def chance_of(ids) -> float:
+        ids = list(ids)
+        return sum(chance[by_id[card_id].deck] for card_id in ids) / len(ids) if ids else math.nan
+
+    all_ids = list(model.topic_of)
+    coherences = [value for value in model.coherence.values() if not math.isnan(value)]
+    rows = [
+        topic_row(today, "T1", "all", len(all_ids), model.agreement, note, topics=len(seeds), kept_share=fmt(1.0),
+                  coherence_median=fmt(float(np.median(coherences))), coherence_below_half=sum(value < 0.5 for value in coherences),
+                  coherence_at_one=sum(value >= 1.0 for value in coherences), moved=model.moved, emptied=len(model.emptied),
+                  seconds=f"{t1_seconds:.2f}"),
+        topic_row(today, "1-NN", "all", len(all_ids), agree(nearest, all_ids), note, topics=len(seeds)),
+        topic_row(today, "LR", "all", len(all_ids), agree(logistic, all_ids), note, topics=len(seeds), seconds=f"{judges_seconds:.2f}"),
+        topic_row(today, "chance", "all", len(all_ids), chance_of(all_ids), note, topics=len(seeds)),
+    ]
+    print(f"T1 nearest centroid: agreement {model.agreement:.3f} over {len(all_ids)} cards in {len(seeds)} topics | "
+          f"1-NN {agree(nearest, all_ids):.3f} | LR per deck {agree(logistic, all_ids):.3f} | chance {chance_of(all_ids):.3f} "
+          f"(T1 {t1_seconds:.2f}s, the judges {judges_seconds:.2f}s)")
+    print(f"   {model.moved} cards elsewhere ({model.moved / len(all_ids):.0%}), {len(model.emptied)} topics emptied; coherence median "
+          f"{np.median(coherences):.2f}, {sum(value < 0.5 for value in coherences)} topics below 0.5, {sum(value >= 1.0 for value in coherences)} at 1.0; "
+          f"FOCUS_MARGIN {FOCUS_MARGIN} hides {len(model.hidden)} cards")
+    for stack in sorted({card.stack for card in cards}):
+        ids = [card_id for card_id in all_ids if by_id[card_id].stack == stack]
+        rows.append(topic_row(today, "T1", f"stack {stack}", len(ids), model.agreement_of(ids), note))
+        print(f"   stack {stack}: T1 {model.agreement_of(ids):.3f} over {len(ids)} cards")
+    print("   | Deck | Cards | Topics | T1 | 1-NN | LR | Chance |")
+    print("   |---|---|---|---|---|---|---|")
+    for deck in deck_order:
+        ids = [card_id for card_id in all_ids if by_id[card_id].deck == deck]
+        topics = len([seed for seed in seeds if seed.deck == deck])
+        scope = f"deck {deck_ids.get(deck, '')} {deck}"
+        values = (model.agreement_of(ids), agree(nearest, ids), agree(logistic, ids), chance_of(ids))
+        for name, value in zip(("T1", "1-NN", "LR", "chance"), values):
+            rows.append(topic_row(today, name, scope, len(ids), value, note, topics=topics))
+        print(f"   | {deck_ids.get(deck, '')} {deck} | {len(ids)} | {topics} | " + " | ".join(f"{value:.2f}" for value in values) + " |")
+    print("   | Margin at least | Share of the course | Agreement among them |")
+    for threshold in MARGINS:
+        share, agreement = model.kept(threshold)
+        rows.append(topic_row(today, "T1", f"margin >= {threshold:.2f}", round(share * len(all_ids)), agreement, note, kept_share=fmt(share)))
+        print(f"   | {threshold:.2f} | {share:.0%} | {agreement:.3f} |")
+    return rows
+
+
+# --- the hand check -------------------------------------------------------------------
 
 
 def hand_check_cards(cards):
@@ -197,16 +313,17 @@ def hand_precision(neighbours: dict[str, list], marks: dict[str, set[str]], k: i
     return float(np.mean(shares))
 
 
-def write_hand_check(cards, by_id, indexes: dict[str, object], seen_today: str, marks: dict[str, set[str]]) -> int:
+def write_hand_check(cards, by_id, indexes: dict[str, object], seen_today: str, marks: dict[str, set[str]], note: str) -> int:
     """The combined candidates of all variants for the hand check, as a markdown checklist; existing marks stay."""
     lines = [
         "# Hand check: related cards of decks 17 and 24",
         "",
-        f"Written by evaluate.py on {seen_today}. For every card below, mark every candidate that is a genuinely "
-        "related card for a learner (the same concept, a prerequisite, or the natural next card): put `x` in its "
-        "`[ ]`, as many or as few as apply; leave the others empty. If no candidate fits, mark the `none` line. "
-        "A card without any mark counts as not judged yet. The columns say which variants listed the candidate, "
-        "with the cosine. Later runs keep the marks and compute every variant's hand-judged precision@5 from them.",
+        f"Written by evaluate.py on {seen_today} ({note}). For every card below, mark every candidate that is a "
+        "genuinely related card for a learner (the same concept, a prerequisite, or the natural next card): put `x` "
+        "in its `[ ]`, as many or as few as apply; leave the others empty. If no candidate fits, mark the `none` "
+        "line. A card without any mark counts as not judged yet. The columns say which variants listed the "
+        "candidate, with the cosine. Later runs keep the marks and compute every variant's hand-judged precision@5 "
+        "from them.",
         "",
     ]
     names = list(indexes)
@@ -229,44 +346,26 @@ def write_hand_check(cards, by_id, indexes: dict[str, object], seen_today: str, 
     return len(hand_check_cards(cards))
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--course", default=None, help="the course file (default: data/cards.json of the repository)")
-    parser.add_argument("--part", choices=("all", "similarity", "difficulty"), default="all",
-                        help="the similarity models (B0, M1, M1-map), the difficulty model D1, or both (default)")
-    arguments = parser.parse_args()
+# --- the similarity models and the map ------------------------------------------------
 
-    launcher = install_launcher()
-    from project.content.parser import CardsFile, read_decks
+
+def evaluate_similarity(cards, cards_file, deck_ids: dict[str, str], today: str, note: str, marks: dict[str, set[str]]) -> tuple[list[dict], dict]:
+    """B0, the M1 variants and M1-map (the deck layout and the per-topic card layouts of the chosen model)."""
     from project.services import evaluation, layout, similar
     from project.services.course_model import CARD_NEIGHBOURS, DECK_NEIGHBOURS, CourseModel
-    from project.services.geometry import sphere_positions
-    from project.services.positions import shell_positions
+    from project.services.positions import surface_positions
+    from project.services.topic_model import scripted_topics
 
-    course = Path(arguments.course) if arguments.course else launcher.ROOT / "data" / "cards.json"
-    cards = CardsFile(course).load_decks()
     by_id = {card.id: card for card in cards}
     deck_of = {card.id: card.deck for card in cards}
-    deck_ids = {deck["name"]: deck["id"] for deck in read_decks(course)}
     ids = [card.id for card in cards]
-    today = date.today().isoformat()
     rows: list[dict] = []
-    marks = read_hand_check()
-    print(f"{len(cards)} cards in {len(deck_ids)} decks ({course}); hand-check marks for {len(marks)} cards")
-
-    # D1: the difficulty model, into its own file
-    if arguments.part in ("all", "difficulty"):
-        difficulty = evaluate_difficulty(cards, today)
-        write_rows(difficulty, DIFFICULTY_FILE, DIFFICULTY_COLUMNS)
-        print(f"{len(difficulty)} rows appended to {DIFFICULTY_FILE}")
-    if arguments.part == "difficulty":
-        return
 
     # B0: the random floor
     floors = [evaluation.random_floor(ids, deck_of, seed) for seed in SEEDS]
     for seed, floor in zip(SEEDS, floors):
-        rows.append({"date": today, "model": "B0", "variant": "random positions, 5 nearest", "params": "sphere_positions",
-                     "seed": seed, "precision_at_5": fmt(floor)})
+        rows.append({"date": today, "model": "B0", "variant": "random positions, 5 nearest", "params": "surface_positions",
+                     "seed": seed, "precision_at_5": fmt(floor), "notes": note})
     print(f"B0 random floor: same-deck precision@5 {np.mean(floors):.3f} ± {np.std(floors):.3f} over seeds {SEEDS}")
 
     # M1: the vectoriser variants, without and with the minimum score
@@ -286,7 +385,7 @@ def main() -> None:
                      "precision_at_5": fmt(precision), "kept_precision": fmt(kept_only), "coverage": fmt(covered),
                      "distinct": distinct, "hand_precision": fmt(judged), "judged_cards": len(marks) if marks else "",
                      "seconds": f"{seconds:.2f}",
-                     "notes": f"precision with min_score {similar.MIN_SCORE}: {kept_precision:.3f}"})
+                     "notes": f"precision with min_score {similar.MIN_SCORE}: {kept_precision:.3f}; {note}"})
         print(f"M1 {name:52s} precision@5 {precision:.3f} | min_score {similar.MIN_SCORE}: precision {kept_precision:.3f}, "
               f"kept-slot precision {kept_only:.3f}, coverage {covered:.3f}, distinct {distinct}, vocab {len(index.vectoriser.vocabulary_)}"
               + (f", hand-judged precision@5 {judged:.3f} over {len(marks)} cards" if marks else "") + f" ({seconds:.2f}s)")
@@ -301,49 +400,94 @@ def main() -> None:
         column = top[:, rank]
         print(f"  score of neighbour {rank + 1}: p10 {np.percentile(column, 10):.3f}, median {np.median(column):.3f}, p90 {np.percentile(column, 90):.3f}")
 
-    # M1-map: the chosen model's positions
+    # M1-map: the chosen model's positions (the deck layout and the card layouts per model topic)
     started = time.perf_counter()
-    model = CourseModel(cards, deck_ids)
+    model = CourseModel(cards, deck_ids, scripted_topics(cards_file))
     seconds = time.perf_counter() - started
     start = layout.svd_start(model.deck_vectors)
-    random_decks = np.array([[p.x, p.y, p.z] for p in sphere_positions(list(model.deck_points), 42)])
+    random_decks = np.array([[p.x, p.y, p.z] for p in surface_positions(list(model.deck_points), 42)])
     deck_measures = {
         "model": (model.deck_trustworthiness, model.deck_overlap),
         "SVD start": (layout.trustworthiness_score(model.deck_vectors, start, DECK_NEIGHBOURS), layout.neighbour_overlap(model.deck_vectors, start, DECK_NEIGHBOURS)),
         "random": (layout.trustworthiness_score(model.deck_vectors, random_decks, DECK_NEIGHBOURS), layout.neighbour_overlap(model.deck_vectors, random_decks, DECK_NEIGHBOURS)),
     }
-    card_overlaps = {"model": [], "SVD start": [], "random": []}
-    per_deck = {}
-    for name, deck in model.decks.items():
-        vectors = layout.as_dense(model.index.vectors[model.index.rows_of_deck(name)])
-        points = np.array([deck.positions[card_id] for card_id in deck.ids])
+    kinds = ("model", "SVD start", "random")
+    topic_overlaps = {kind: [] for kind in kinds}
+    per_deck: dict[str, dict[str, list]] = {}
+    row_of = {card_id: row for row, card_id in enumerate(model.index.ids)}
+    laid_out = 0
+    for placed in model.topics.values():
+        if len(placed.ids) < 2:
+            continue
+        laid_out += 1
+        vectors = layout.as_dense(model.index.vectors[[row_of[card_id] for card_id in placed.ids]])
+        points = np.array([placed.positions[card_id] for card_id in placed.ids])
         svd = layout.svd_start(vectors)
-        random_cards = np.array([[p.x, p.y, p.z] for p in shell_positions(deck.ids, 42)])
+        random_cards = np.array([[p.x, p.y, p.z] for p in surface_positions(placed.ids, 42)])
+        k = min(CARD_NEIGHBOURS, len(placed.ids) - 1)
         values = (
-            layout.neighbour_overlap(vectors, points, CARD_NEIGHBOURS),
-            layout.neighbour_overlap(vectors, svd, CARD_NEIGHBOURS),
-            layout.neighbour_overlap(vectors, random_cards, CARD_NEIGHBOURS),
+            layout.neighbour_overlap(vectors, points, k),
+            layout.neighbour_overlap(vectors, svd, k),
+            layout.neighbour_overlap(vectors, random_cards, k),
         )
-        per_deck[name] = values
-        for key, value in zip(card_overlaps, values):
-            card_overlaps[key].append(value)
-    for key in ("model", "SVD start", "random"):
-        trust, overlap = deck_measures[key]
-        mean_cards = float(np.nanmean(card_overlaps[key]))
-        overlap_17 = per_deck.get("NLP Fundamentals", (np.nan,) * 3)[["model", "SVD start", "random"].index(key)]
-        overlap_24 = per_deck.get("LLM Foundations & Embeddings", (np.nan,) * 3)[["model", "SVD start", "random"].index(key)]
-        rows.append({"date": today, "model": "M1-map", "variant": key, "params": f"k_decks={DECK_NEIGHBOURS}, k_cards={CARD_NEIGHBOURS}, "
-                     f"iterations={layout.ITERATIONS}, step={layout.STEP}, repulsion={layout.REPULSION}", "seed": 42 if key == "random" else "",
+        for kind, value in zip(kinds, values):
+            topic_overlaps[kind].append(value)
+            per_deck.setdefault(placed.deck, {kind: [] for kind in kinds})[kind].append(value)
+    for kind in kinds:
+        trust, overlap = deck_measures[kind]
+        mean_cards = float(np.nanmean(topic_overlaps[kind])) if topic_overlaps[kind] else math.nan
+        overlap_17 = float(np.nanmean(per_deck["NLP Fundamentals"][kind])) if "NLP Fundamentals" in per_deck else math.nan
+        overlap_24 = float(np.nanmean(per_deck["LLM Foundations & Embeddings"][kind])) if "LLM Foundations & Embeddings" in per_deck else math.nan
+        rows.append({"date": today, "model": "M1-map", "variant": kind, "params": f"k_decks={DECK_NEIGHBOURS}, k_cards=min({CARD_NEIGHBOURS}, n-1), "
+                     f"iterations={layout.ITERATIONS}, step={layout.STEP}, repulsion={layout.REPULSION}", "seed": 42 if kind == "random" else "",
                      "trust_decks": fmt(trust), "overlap_decks": fmt(overlap), "overlap_cards": fmt(mean_cards),
                      "overlap_17": fmt(overlap_17), "overlap_24": fmt(overlap_24),
-                     "seconds": f"{seconds:.2f}" if key == "model" else "", "notes": "deck layout and per-deck card layouts"})
-        print(f"M1-map {key:10s} decks: trustworthiness {trust:.3f}, top-3 overlap {overlap:.3f} | cards: mean top-5 overlap "
+                     "seconds": f"{seconds:.2f}" if kind == "model" else "",
+                     "notes": f"deck layout and card layouts per model topic ({laid_out} topics with two cards or more); {note}"})
+        print(f"M1-map {kind:10s} decks: trustworthiness {trust:.3f}, top-3 overlap {overlap:.3f} | cards: mean within-topic overlap "
               f"{mean_cards:.3f}, deck 17 {overlap_17:.3f}, deck 24 {overlap_24:.3f}")
-    print(f"the whole model (index, deck layout, {len(model.decks)} deck layouts, clustering) built in {seconds:.2f}s; "
-          f"{sum(len(deck.links) for deck in model.decks.values())} card connections, {len(model.deck_links)} deck connections")
+    print(f"the whole model (index, deck layout, T1, {laid_out} topic layouts, clustering) built in {seconds:.2f}s; "
+          f"{sum(len(placed.links) for placed in model.topics.values())} card connections, {len(model.deck_links)} deck connections, "
+          f"{len(model.hidden)} cards hidden")
+    return rows, indexes
 
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--course", default=None, help="the course file (default: data/topics.json of the repository)")
+    parser.add_argument("--part", choices=("all", "similarity", "difficulty", "topics"), default="all",
+                        help="the similarity models (B0, M1, M1-map), the difficulty model D1, the topic model T1, or all (default)")
+    arguments = parser.parse_args()
+
+    launcher = install_launcher()
+    from project.content.parser import CardsFile, read_decks
+
+    course = Path(arguments.course) if arguments.course else launcher.ROOT / "data" / "topics.json"
+    cards_file = CardsFile(course)
+    cards = cards_file.load_decks()
+    by_id = {card.id: card for card in cards}
+    deck_ids = {deck["name"]: deck["id"] for deck in read_decks(course)}
+    note = scope_note(deck_ids)
+    today = date.today().isoformat()
+    marks = read_hand_check()
+    print(f"{len(cards)} cards in {len(deck_ids)} decks ({course}, {note}); hand-check marks for {len(marks)} cards")
+
+    # T1: the topic model, into its own file
+    if arguments.part in ("all", "topics"):
+        topics = evaluate_topics(cards, cards_file, deck_ids, today, note)
+        write_rows(topics, TOPICS_FILE, TOPICS_COLUMNS)
+        print(f"{len(topics)} rows appended to {TOPICS_FILE}")
+    # D1: the difficulty model, into its own file
+    if arguments.part in ("all", "difficulty"):
+        difficulty = evaluate_difficulty(cards, today, note)
+        write_rows(difficulty, DIFFICULTY_FILE, DIFFICULTY_COLUMNS)
+        print(f"{len(difficulty)} rows appended to {DIFFICULTY_FILE}")
+    if arguments.part not in ("all", "similarity"):
+        return
+
+    rows, indexes = evaluate_similarity(cards, cards_file, deck_ids, today, note, marks)
     write_rows(rows)
-    listed = write_hand_check(cards, by_id, indexes, today, marks)
+    listed = write_hand_check(cards, by_id, indexes, today, marks, note)
     print(f"{len(rows)} rows appended to {RESULTS_FILE}; hand check for {listed} cards in {HAND_CHECK_FILE}"
           + (f" ({len(marks)} judged, marks kept)" if marks else " (no marks yet)"))
 
