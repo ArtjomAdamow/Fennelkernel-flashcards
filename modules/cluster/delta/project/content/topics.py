@@ -50,6 +50,8 @@ class TopicInfo:
     rest: bool
     card_ids: Tuple[str, ...]  # in deck order
     quiz: int  # cards on the quiz stacks
+    hard: int = 0  # quizzes with the authored difficulty "hard" (stack 3)
+    medium: int = 0  # quizzes with the authored difficulty "medium" (stack 3)
 
     @property
     def cards(self) -> int:
@@ -95,6 +97,8 @@ class TopicIndex:
                         rest=topic.rest,
                         card_ids=ids,
                         quiz=sum(card.stack in QUIZ_STACKS for card in own),
+                        hard=sum(card.difficulty == "hard" for card in own),
+                        medium=sum(card.difficulty == "medium" for card in own),
                     )
                 )
             self._by_deck[info.deck_id] = tuple(topics)

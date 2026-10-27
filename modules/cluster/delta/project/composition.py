@@ -10,7 +10,8 @@
 * view settings: the checked topics and the checked cards of each deck, in their own file next to the card
   state, named after it (store.view_settings.view_state_path). Read before the card state, whose source reads
   them; stale topic entries (a changed assignment) are dropped first.
-* the ViewRouter over both, handed to the server and the callback.
+* the ViewRouter over both, handed to the server and the callback. It sorts the loaded topic dots into the
+  predefined groups of the topics view (content.topic_groups) before the app is built.
 * hooks for a module on top (the helper): the three position sources are parameters of compose, defaulting to
   the random ones (deck_positions for the space state, card_positions for the cards and topic_positions for the
   topic dots of the card state), an optional module action (services.actions.ModuleAction): a button in the top
@@ -18,6 +19,9 @@
   selected, Enter or a click on the panel flips between the dendrogram and what the function draws from the
   router. The topic_positions hook (the user, 2026-10-25) is for the helper's model positions of the topics and
   can go once the merge of this module into the main project is decided.
+* the cards' images (content.images): the folder `images_dir` (data/images by default) is indexed once, by
+  comb_id, and handed to the router with the course's answer options (CardsFile.quiz); files that match no card
+  are reported, not refused (2026-10-27, roadmap step 31).
 """
 
 from dataclasses import dataclass
@@ -27,6 +31,7 @@ from typing import Callable, Optional
 from project.callbacks import register_callbacks
 from project.content.deck_catalog import JsonDeckCatalog
 from project.content.decks import SPACE_DECK, DeckIndex, SpaceCatalog
+from project.content.images import ImageIndex, image_index
 from project.content.parser import CardsFile
 from project.content.topics import TopicIndex
 from project.runtime import NONE_DECK, Runtime
@@ -49,6 +54,7 @@ class Composition:
     topics: TopicIndex
     hub: Runtime
     dash_app: object
+    images: ImageIndex
 
     @property
     def user_state(self) -> ViewRouter:
@@ -66,16 +72,25 @@ def compose(
     topic_positions: PositionSource = shell_positions,
     action: Optional[ModuleAction] = None,
     overview_back: Optional[Callable[[ViewRouter], object]] = None,
+    images_dir: Optional[Path] = None,
 ) -> Composition:
     """Build the whole app from explicit paths. The position sources place the dots that have no stored
     position: decks in the space state (on the sphere's surface), cards (on the surface too) and topic dots (in
     the shell around the center) in the card state, random by default; the hard rules then correct every stored
     or given position. The action, if any, is a module's button in the top bar; overview_back, if any, draws the
-    back of the card panel while nothing is selected (a function of the router that returns a Dash component)."""
+    back of the card panel while nothing is selected (a function of the router that returns a Dash component);
+    images_dir is the folder of the cards' images (base_dir/data/images by default; a missing folder has none)."""
     cards_file = CardsFile(cards_path)  # the course file, read here and once more by DeckIndex for the deck ids
     catalog = JsonDeckCatalog(cards_file, exclude={"readme", NONE_DECK})
     decks = DeckIndex(cards_path, cards_file, catalog.available())
     topics = TopicIndex(cards_file, decks)
+    images = image_index(
+        Path(images_dir) if images_dir is not None else Path(base_dir) / "data" / "images",
+        (card.comb_id for card in cards_file.load_decks()),
+    )
+    if images.unmatched:
+        shown = ", ".join(images.unmatched[:5]) + (", ..." if len(images.unmatched) > 5 else "")
+        print(f"{len(images.unmatched)} image file(s) in {images.folder} match no card: {shown}")
 
     card_store = JsonStateStore(state_path)
     # The settings come first: the card state's source reads the checked topics; a changed assignment resets them
@@ -106,10 +121,14 @@ def compose(
         settings=settings,
         topics=topics,
         card_source=card_source,
+        quiz_of=cards_file.quiz,
+        images=images,
     )
+    router.sync_topic_groups()
     hub = Runtime(user_state=router)
     dash_app = create_app(base_dir, boot_id, router, action)
     register_callbacks(dash_app, router, action=action, overview_back=overview_back)
     return Composition(
         boot_id=boot_id, catalog=catalog, core=core, space_core=space_core, topics=topics, hub=hub, dash_app=dash_app,
+        images=images,
     )

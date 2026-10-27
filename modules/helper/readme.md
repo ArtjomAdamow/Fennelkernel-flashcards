@@ -101,6 +101,7 @@ The views, keys and dialogs are the cluster module's (`modules/cluster/readme.md
   - These are three generated groups ("Quiz: easy", "Quiz: medium", "Quiz: hard"). They can be combined with your own groups: a card may be in both.
   - They are always the oldest groups, so a rated card shows its difficulty colour. Uncheck them in Focus, and the card takes the colour of its oldest checked group.
   - Their colours are in `delta/project/services/difficulty_groups.py`.
+  - The cluster module's predefined groups of the topic dots ("hard quizes", "more flashcards", "composite") stay in front of them with their own ranks: they hold topic dots, the difficulty groups cards.
 - **Predicted difficulty** (cards view): the difficulty model D1 rates the flattened quizzes that have no difficulty (56 in the course; flashcards are not rated, the lecture notebooks' and the quiz file's alike).
   - A predicted quiz is in two generated groups: the grey "Quiz difficulty: predicted" and the group of its predicted level ("Quiz: easy", …), with the same colour as the rated cards.
   - "Quiz difficulty: predicted" is always the oldest group, so a predicted quiz shows grey. Uncheck it in Focus, and the quiz shows its predicted level's colour.

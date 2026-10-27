@@ -8,10 +8,13 @@ rated cards. The groups are ordinary groups of the card state, so a card can als
 They are always the oldest groups: every fill gives them the lowest ranks ("Quiz difficulty: predicted" first, then
 easy, medium and hard) and the first places in the list. A predicted card therefore shows grey, a rated card its
 difficulty colour, unless Focus unchecks them; and a group the user deleted comes back as the oldest when the
-Helper button generates it again.
+Helper button generates it again. The cluster module's predefined groups of the topic dots (content.topic_groups)
+stay in front with their own ranks, below all others: they hold topic dots only, these groups cards only.
 """
 
 from typing import Mapping
+
+from project.content.topic_groups import is_predefined
 
 # difficulty -> (group name, colour); the prefix keeps a user group from being taken for one of them
 DIFFICULTY_GROUPS = {
@@ -79,9 +82,11 @@ def fill_predicted_groups(core, predictions: Mapping[str, str]) -> int:
 
 def make_oldest(core) -> None:
     """The lowest ranks for the generated groups ("Quiz difficulty: predicted", then easy, medium and hard), the user's
-    groups after them in their own order; the generated groups also come first in the list, the user's keep theirs."""
+    groups after them in their own order; the generated groups also come first in the list, the user's keep theirs.
+    The cluster module's predefined topic groups keep their ranks and the very first places."""
+    predefined = [group for group in core.groups if is_predefined(group.id)]
     generated = sorted((group for group in core.groups if group.name in GENERATED_NAMES), key=lambda group: GENERATED_NAMES.index(group.name))
-    others = [group for group in core.groups if group.name not in GENERATED_NAMES]
+    others = [group for group in core.groups if group.name not in GENERATED_NAMES and not is_predefined(group.id)]
     for rank, group in enumerate(generated + sorted(others, key=_age), start=1):
         group.rank = rank
-    core.groups[:] = generated + others
+    core.groups[:] = predefined + generated + others

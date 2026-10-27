@@ -14,6 +14,15 @@ Changes against the main file:
     (the ones of Q_and_A.json). A card with "quiz" and "source" together, or a "source" other than "quizes", is
     refused like a "quiz" that is not true. The comb_ids of the JS flashcards therefore differ from the main
     project's (4... instead of 1...).
+  * The quizzes' answer options (2026-10-27, roadmap step 31): a quiz may carry "options" (the option texts),
+    "correct" (the index of the correct option, or a list of indices for a many-choice quiz) and "answers" (one
+    feedback text per option). check_quiz refuses the keys apart, on a card that is not a quiz, fewer than two
+    or repeated options, answers of another length and a bad index; parse_quiz turns them into a Quiz, with a
+    wrong option's answer stripped of a leading '"<option>": ' (the quiz file names the option again there, as
+    written or without its Markdown marks).
+    CardsFile.quiz(comb_id) gives a card's Quiz, or None: a quiz without the keys stays a card as before. The
+    card's answer stays the "feedback", the back of a correct answer; Flashcard is the package's model and
+    does not change.
 
 Card parser. Two sources:
 
@@ -227,6 +236,94 @@ def check_card_keys(raw: dict, where: str) -> None:
 def comb_id(stack: int, deck_id: str, card_id: str) -> str:
     return f"{stack}{deck_id}{card_id}"
 
+# The keys of a quiz's answer options; they come together or not at all
+QUIZ_KEYS = ("options", "correct", "answers")
+
+
+@dataclass(frozen=True)
+class Quiz:
+    """A quiz card's answer options: the option texts and their feedback texts in file order, and the indices of
+    the correct options (one index for a single-choice quiz)."""
+    options: Tuple[str, ...]
+    answers: Tuple[str, ...]
+    correct: Tuple[int, ...]
+
+    @property
+    def many(self) -> bool:
+        """A many-choice quiz: more than one correct option."""
+        return len(self.correct) > 1
+
+    def is_correct(self, checked) -> bool:
+        """True only when the checked options are exactly the correct ones: a missing correct option and an extra
+        wrong one both make the answer wrong, and nothing checked is no answer."""
+        checked = set(checked)
+        return bool(checked) and checked == set(self.correct)
+
+
+def check_quiz(raw: dict, where: str) -> None:
+    """The answer options of a quiz: the three keys together, only on a quiz, at least 2 distinct non-empty option
+    texts, one answer text per option, and `correct` an index (not a bool) or a non-empty list of distinct
+    indices, each in range. A broken quiz stops the start like a broken topic."""
+    present = [key for key in QUIZ_KEYS if key in raw]
+    if not present:
+        return
+    if len(present) != len(QUIZ_KEYS):
+        missing = ", ".join(repr(key) for key in QUIZ_KEYS if key not in raw)
+        raise ValueError(f"{where}: 'options', 'correct' and 'answers' come together; missing {missing}")
+    if raw.get("quiz") is not True:
+        raise ValueError(f"{where}: answer options belong to a quiz ('quiz': true)")
+    options = raw["options"]
+    if not isinstance(options, list) or len(options) < 2:
+        raise ValueError(f"{where}: 'options' must be a list of at least 2 texts, got {options!r}")
+    for position, option in enumerate(options, start=1):
+        if not isinstance(option, str) or not option.strip():
+            raise ValueError(f"{where}: option #{position} must be a non-empty text, got {option!r}")
+    if len({option.strip() for option in options}) != len(options):
+        raise ValueError(f"{where}: the options must differ")
+    answers = raw["answers"]
+    if not isinstance(answers, list) or len(answers) != len(options) or not all(isinstance(answer, str) for answer in answers):
+        raise ValueError(f"{where}: 'answers' must be a list of texts, one per option ({len(options)})")
+    correct = raw["correct"]
+    indices = correct if isinstance(correct, list) else [correct]
+    if not indices:
+        raise ValueError(f"{where}: 'correct' must name at least one option")
+    for index in indices:
+        if isinstance(index, bool) or not isinstance(index, int) or not 0 <= index < len(options):
+            raise ValueError(f"{where}: 'correct' must be an option index (0 to {len(options) - 1}), got {index!r}")
+    if len(set(indices)) != len(indices):
+        raise ValueError(f"{where}: 'correct' names an option twice")
+
+
+# Markdown marks an option may carry that its quote in the answer leaves out ("**Dropout**: ..." quoted as "Dropout: ...")
+_MARKDOWN_MARKS = re.compile(r"\*\*|__|`")
+
+
+def _without_option(answer: str, option: str) -> str:
+    """A wrong option's answer without the leading '"<option>": ' the quiz file often gives it (matched on the
+    raw texts, before the term formatting; the option as written or without its Markdown marks), so the back
+    names the option once."""
+    for quoted in (option, _MARKDOWN_MARKS.sub("", option)):
+        prefix = f'"{quoted}": '
+        if answer.startswith(prefix):
+            return answer[len(prefix):]
+    return answer
+
+
+def parse_quiz(raw: dict) -> Optional[Quiz]:
+    """The Quiz of a checked card, or None for a card without the three keys. The texts go through
+    _clean_markdown like the question and the feedback."""
+    if "options" not in raw:
+        return None
+    correct = raw["correct"]
+    indices = tuple(correct) if isinstance(correct, list) else (correct,)
+    options = tuple(_clean_markdown(option) for option in raw["options"])
+    answers = tuple(
+        _clean_markdown(answer if index in indices else _without_option(answer, option))
+        for index, (option, answer) in enumerate(zip(raw["options"], raw["answers"]))
+    )
+    return Quiz(options, answers, indices)
+
+
 @dataclass(frozen=True)
 class Topic:
     """A topic of a deck (course file version 3): its id within the deck, its name, and whether it is the rest
@@ -304,6 +401,7 @@ def parse_json_deck(raw_deck: dict) -> List[Flashcard]:
     for raw in raw_deck["cards"]:
         where = f"deck {deck_id} card {raw.get('card_id')!r}"
         check_card_keys(raw, where)
+        check_quiz(raw, where)
         stack = card_stack(raw)
         question = _clean_markdown(_text(raw, "question", where))
 
@@ -335,7 +433,9 @@ class CardsFile:
 
     def __init__(self, path: Path) -> None:
         self.path = Path(path)
-        self.version, self.deck_names, self._cards, self._by_id, self._topics, self._card_topics = self._read()
+        (
+            self.version, self.deck_names, self._cards, self._by_id, self._topics, self._card_topics, self._quizzes,
+        ) = self._read()
 
     def _read(self) -> tuple:
         # Decks in name order, as the sorted *.md files were; cards in file order
@@ -347,6 +447,7 @@ class CardsFile:
         seen = {}
         topics: Dict[str, Tuple[Topic, ...]] = {}
         card_topics: Dict[str, str] = {}
+        quizzes: Dict[str, Quiz] = {}
         for raw_deck in raw_decks:
             for card in parse_json_deck(raw_deck):
                 # comb_id is a plain concatenation, unique only while the widths stay 1 + 2 + 3.
@@ -355,23 +456,38 @@ class CardsFile:
                     raise ValueError(f"duplicate comb_id {card.comb_id!r} in decks {seen[card.comb_id]!r} and {card.deck!r}")
                 seen[card.comb_id] = card.deck
                 cards.append(card)
+            for raw in raw_deck["cards"]:
+                quiz = parse_quiz(raw)  # the answer options of a quiz (checked by parse_json_deck above)
+                if quiz is not None:
+                    quizzes[comb_id(card_stack(raw), raw_deck["id"], raw["card_id"])] = quiz
             if version == TOPICS_VERSION:
                 topics[raw_deck["name"]] = parse_topics(raw_deck)
                 for raw in raw_deck["cards"]:
                     card_topics[comb_id(card_stack(raw), raw_deck["id"], raw["card_id"])] = raw["topic"]
         # phase 1: every card of the course by comb_id, enabled or not, for card()
         by_id = {card.comb_id: card for card in cards}
-        # A card skipped for its empty question has no topic either
-        return version, deck_names, cards, by_id, topics, {k: v for k, v in card_topics.items() if k in by_id}
+        # A card skipped for its empty question has no topic and no quiz either
+        return (
+            version, deck_names, cards, by_id, topics,
+            {k: v for k, v in card_topics.items() if k in by_id},
+            {k: v for k, v in quizzes.items() if k in by_id},
+        )
 
     def reload(self) -> bool:
         """phase 2: read the file again. If it is missing or invalid now, the current course is kept and the
         result is False: a file being edited must not stop the running app."""
         try:
-            self.version, self.deck_names, self._cards, self._by_id, self._topics, self._card_topics = self._read()
+            (
+                self.version, self.deck_names, self._cards, self._by_id, self._topics, self._card_topics,
+                self._quizzes,
+            ) = self._read()
         except (OSError, ValueError):
             return False
         return True
+
+    def quiz(self, comb_id: str) -> Optional[Quiz]:
+        """The answer options of the quiz with this comb_id; None for a card without them or an unknown card."""
+        return self._quizzes.get(comb_id)
 
     def topics(self, deck_name: str) -> Tuple[Topic, ...]:
         """The deck's topics in file order; none for an unknown deck."""

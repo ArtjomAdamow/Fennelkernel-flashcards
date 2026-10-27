@@ -23,11 +23,24 @@ Focus in the topics and cards views (runtime only, all checked again whenever th
 the groups plus "No group". A dot is hidden when none of its groups is checked (a dot in no group: when "No group"
 is unchecked), and it takes the colour of its oldest checked group. The groups panel counts the view's dots only
 (group_count): the entered deck's cards and topic dots, or the entered topic's cards.
+
+The predefined groups of the topics view (content.topic_groups; the user, 2026-10-27): "hard quizes", "more
+flashcards" and "composite" sort the topic dots by their mix of cards, a topic of one kind of card is in no group.
+They are groups of the card state whose members are derived again whenever the dots change (sync_topic_groups,
+after a deck or topic is checked or unchecked, and at startup in compose). They are listed in the topics view
+only (`groups`), and the Add, Remove and Delete dialogs leave them out.
+
+A selected card of the cards view may have answer options (`quiz`, content.parser.Quiz, from the course file) and
+an image (`image`, content.images.ImageIndex, a file of data/images named by comb_id); both are None for a deck,
+a topic dot and outside the cards view (2026-10-27, roadmap step 31).
 """
 
 from typing import Callable, List, Optional
 
 from project.content.decks import DeckIndex
+from project.content.images import ImageIndex
+from project.content.parser import Quiz
+from project.content.topic_groups import is_predefined, sync
 from project.content.topics import TopicIndex, TopicInfo
 from project.models import Flashcard
 from project.services.dendrogram import cut_links
@@ -37,7 +50,7 @@ from project.store.view_settings import ViewSettings
 
 _OWN = {
     "decks_state", "cards_state", "decks", "topics", "settings", "view", "entered_deck", "entered_topic", "cutoffs",
-    "unchecked_groups", "_card_source",
+    "unchecked_groups", "_card_source", "quiz_of", "images",
 }
 FULL_TREE = 1.0
 NO_GROUP = "__no_group__"  # the Focus checklist's entry for the cards in no group
@@ -57,6 +70,8 @@ class ViewRouter:
         settings: ViewSettings,
         topics: TopicIndex,
         card_source: Callable[[List[str]], List[Flashcard]],
+        quiz_of: Optional[Callable[[str], Optional[Quiz]]] = None,
+        images: Optional[ImageIndex] = None,
     ) -> None:
         self.decks_state = decks_state
         self.cards_state = cards
@@ -64,6 +79,8 @@ class ViewRouter:
         self.topics = topics
         self.settings = settings
         self._card_source = card_source  # the card state's source, for the reload after a topic check
+        self.quiz_of = quiz_of  # a card's answer options (CardsFile.quiz), or None without a course of quizzes
+        self.images = images  # the cards' images, or None without a folder
         self.view = DECKS
         self.entered_deck: Optional[str] = None  # deck id
         self.entered_topic: Optional[str] = None  # topic dot id
@@ -115,6 +132,22 @@ class ViewRouter:
         topic = self.topics.by_dot_id.get(dot_id) if dot_id else None
         return bool(topic and topic.rest)
 
+    # --- a selected card's answer options and image (the cards view) ------------
+
+    def quiz(self, card_id: Optional[str]) -> Optional[Quiz]:
+        """The answer options of a selected card in the cards view; None for a deck, a topic dot, a card without
+        options, or outside the cards view."""
+        if self.view != CARDS or not card_id or self.is_topic(card_id) or self.quiz_of is None:
+            return None
+        return self.quiz_of(card_id)
+
+    def image(self, card_id: Optional[str]) -> Optional[str]:
+        """The file name of a selected card's image in the cards view; None without one, for a deck or a topic
+        dot, or outside the cards view."""
+        if self.view != CARDS or not card_id or self.is_topic(card_id) or self.images is None:
+            return None
+        return self.images.file(card_id)
+
     def _deck_dots(self, name: str, focused_group: Optional[str] = None) -> list[Flashcard]:
         """Everything of the entered deck in the card state: its cards, then its loaded topic dots."""
         return self.cards_state.visible_cards(name, focused_group)
@@ -135,6 +168,27 @@ class ViewRouter:
             shown = set(self.shown_cards())
             dots = [card for card in self._deck_dots(name, focused_group) if card.id in shown]
         return [card for card in dots if self._focused(card.id)] if self.unchecked_groups else dots
+
+    # --- the groups, the predefined ones of the topics view ----------------------
+
+    @property
+    def groups(self) -> list:
+        """The groups the view lists: the decks state's (the decks view); the card state's, the predefined ones
+        first (the topics view); the card state's without the predefined ones, which hold no cards (the cards
+        view)."""
+        if self.view == DECKS:
+            return self.decks_state.groups
+        if self.view == TOPICS:
+            return self.cards_state.groups
+        return [group for group in self.cards_state.groups if not is_predefined(group.id)]
+
+    def is_predefined(self, group_id: Optional[str]) -> bool:
+        """Whether a group is one of the topics view's predefined groups (derived members, not edited by hand)."""
+        return self.view != DECKS and is_predefined(group_id)
+
+    def sync_topic_groups(self) -> None:
+        """Derive the predefined groups' members again from the loaded topic dots."""
+        sync(self.cards_state.groups, self.topics, list(self.cards_state.card_by_id))
 
     # --- Focus in the topics and cards views -----------------------------------
 
@@ -271,6 +325,7 @@ class ViewRouter:
         whatever the source no longer gives and places what is new."""
         self.cards_state.cards[:] = self._card_source(list(self.cards_state.enabled_decks))
         self.cards_state.refresh_deck_state()
+        self.sync_topic_groups()
 
     # --- the checked cards of the entered topic (the Cards dialog) -------------
 
@@ -328,13 +383,19 @@ class ViewRouter:
         return [info.name for info in self.decks.infos]
 
     def enable_deck(self, deck_name: str) -> bool:
-        """Check a deck: its cards and the dots of its topics (all, on a fresh deck) are loaded."""
-        return self.cards_state.enable_deck(deck_name)
+        """Check a deck: its cards and the dots of its topics (all, on a fresh deck) are loaded and sorted into the
+        predefined groups."""
+        changed = self.cards_state.enable_deck(deck_name)
+        if changed:
+            self.sync_topic_groups()
+        return changed
 
     def disable_deck(self, deck_name: str) -> bool:
         """Uncheck a deck: its cards' and topics' state is stripped (as removing a deck always did), its checked
         topics and cards are forgotten, and an entered deck is left."""
         changed = self.cards_state.disable_deck(deck_name)
+        if changed:
+            self.sync_topic_groups()
         info = self.decks.by_name.get(deck_name)
         if changed and info is not None:
             self.settings.drop(info.deck_id)

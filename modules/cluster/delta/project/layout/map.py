@@ -16,7 +16,9 @@ Changes against the main file:
     between the active topic and the scrolled one whether they are connected or not.
   * One uirevision per view and entered dot, so switching views resets the camera; the view goes into the
     figure's meta for camera.js (the globe and the axis camera in the decks view, the axis camera for a selected
-    card in the cards view, the turn around the center elsewhere).
+    card in the cards view, the turn around the center elsewhere). While the image window covers the map (a
+    selected card of the cards view, 2026-10-27, roadmap step 31) the meta carries `frozen: true`, and camera.js
+    stands still.
 """
 
 import math
@@ -156,6 +158,7 @@ def make_figure(
     centroid_colors: list[str] | None = None,
     topic_color: str | None = None,
     rest_ids: set[str] | None = None,
+    frozen: bool = False,
 ) -> go.Figure:
     if state is None:
         raise TypeError("state is required: pass the UserStateService")
@@ -411,8 +414,9 @@ def make_figure(
             "zaxis": {"visible": False, "range": [-1.15, 1.15]},
             "bgcolor": "#102a43",
         },
-        # The view for camera.js, which starts the view's motion from it
-        meta={"view": view, "map_token": map_token},
+        # The view for camera.js, which starts the view's motion from it; `frozen` only while the image window
+        # covers the map, so the camera stands still under it
+        meta={"view": view, "map_token": map_token, **({"frozen": True} if frozen else {})},
     )
     if camera:
         figure.update_layout(scene_camera=camera)

@@ -17,7 +17,9 @@ def _short(text: str) -> str:
 def dendrogram_figure(forest: list[Node], label_of: dict[str, str], cut: tuple[float, int] | None = None) -> go.Figure:
     """Leaves left to right in tree order, U-shaped lines at the merge heights, trees side by side. With `cut`
     (the line's height, the full tree's number of merges) a dashed cut-off line crosses the figure, and the
-    height axis keeps the full tree's range, so the line stays where it is while the trees below it change."""
+    height axis keeps the full tree's range, so the line stays where it is while the trees below it change, and
+    the figure's meta carries `rail`: the heights of the line at 0 % and at 100 % (dendrogram.cut_line: half a
+    rank above the last kept merge), which cutoff_rail.js lines the cut-off slider's rail up with."""
     line_x: list = []
     line_y: list = []
     leaf_x: list[float] = []
@@ -44,6 +46,7 @@ def dendrogram_figure(forest: list[Node], label_of: dict[str, str], cut: tuple[f
         cursor += TREE_GAP
 
     labels = [label_of.get(dot, dot) for dot in leaf_ids]
+    meta = None
     figure = go.Figure()
     figure.add_trace(
         go.Scatter(x=line_x, y=line_y, mode="lines", line={"color": "#f5b942", "width": 2}, hoverinfo="skip", name="Merges")
@@ -75,8 +78,10 @@ def dendrogram_figure(forest: list[Node], label_of: dict[str, str], cut: tuple[f
             )
         )
         yaxis["range"] = [0, top + 1]
+        meta = {"rail": [0.5, top + 0.5]}
     figure.update_layout(
         height=320,
+        meta=meta,
         margin={"l": 34, "r": 10, "t": 10, "b": 110},
         paper_bgcolor="rgba(0, 0, 0, 0)",
         plot_bgcolor="rgba(0, 0, 0, 0)",

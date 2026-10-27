@@ -22,8 +22,15 @@
   // looks at (the centre at the default zoom), and the globe turns on with the eye there. Selecting another dot,
   // unselecting and a view change reapply the view's default zoom. Space (by card order, keyboard.js) stops the
   // motion until the next selection or view change. Within constellation, with no dot selected or one outside
-  // every constellation, Space stops the motion and the next Space lets it go on as after a drag (toggleMotion).
+  // every constellation, Space stops the motion and the next Space lets it go on as after a drag (toggleMotion);
+  // a Space that stopped the glide after a selection half-way lets the glide go on to its target first, then its
+  // motion (2026-10-27).
   // A centroid with several group colours cycles through them.
+  // The image window (2026-10-27, roadmap step 31): while the figure's meta carries `frozen` (the window covers
+  // the map with a selected card's image), the camera stands still: a selection under the window takes the
+  // card's seat at once, without the glide (nobody sees the map), and a window opened over a running motion
+  // holds the camera where it is. When the window closes, the motion goes on from the held camera, as after a
+  // drag (releaseHold).
 
   const graphId = "sphere";
   const centeringDuration = 1800;
@@ -55,6 +62,9 @@
   let paused = null;  // a motion paused by a gesture: the centre and the azimuth to measure the drag against
   let resumeTimer = null;
   let spaceStopped = null;  // a motion Space stopped without a capture (like `paused`), for the next Space
+  let gliding = null;  // the running glide (glideTo): its target and the motion after it, until it arrives
+  let held = null;  // the camera held still under the image window (meta.frozen): its camera and the motion's kind
+  let lastFrozen = false;  // whether the last figure carried `frozen`
   const centroidColorMs = 1800;
   let centroidTimer = null;
   let centroidKey = null;
@@ -99,6 +109,7 @@
   function cancelMotion(graph) {
     motionGeneration += 1;
     pendingCameraWrite = null;
+    gliding = null;
     if (!motionActive) {
       return;
     }
@@ -562,6 +573,7 @@
     cancelMotion(graph);
     paused = null;
     spaceStopped = null;  // a new motion: its first Space stops it
+    held = null;
     clearResume();
     if (!window.Plotly || typeof window.Plotly.relayout !== "function") {
       return;
@@ -572,6 +584,7 @@
     orbitCenter = clone(target.center);
     motionKind = kind;
     motionActive = true;
+    gliding = { target: clone(target), kind: kind };
 
     let startedAt;
 
@@ -583,7 +596,10 @@
       writeCamera(graph, interpolateCamera(start, target, eased(progress)));
       if (progress < 1) {
         animationFrame = window.requestAnimationFrame(step);
-      } else if (kind === "roll") {
+        return;
+      }
+      gliding = null;
+      if (kind === "roll") {
         rollCamera(graph, target);
       } else if (kind === "globe") {
         spinGlobe(graph, target);
@@ -659,7 +675,8 @@
   // outside the sphere) and the roll goes on; with the globe the eye goes back onto the line of sight through
   // the centre at that distance from the point it looks at (the centre at the default), looking where the
   // gesture left the view, and the globe turns on; elsewhere the turn goes on from where the gesture left the
-  // camera, at its distance.
+  // camera, at its distance. A glide Space stopped half-way (toggleMotion) goes on to its target first, at the
+  // target's own zoom, then its motion follows; a drag in between only sets the direction.
   function resumeMotion(graph) {
     if (!paused || pointerIsDown || motionActive) {
       return;
@@ -671,7 +688,12 @@
       orbitDirection = turned > 0 ? 1 : -1;
       dragDirection = orbitDirection;
     }
+    const glide = paused.glide;
     paused = null;
+    if (glide) {
+      glideTo(graph, glide.target, { kind: glide.kind });
+      return;
+    }
     const zoom = zoomOf(graph, camera);
     if (lastView === "decks" && !axisSelected) {
       const look = lookDirection(graph, camera) || unit(camera.center) || { x: 1, y: 0, z: 0 };
@@ -699,6 +721,48 @@
   function figureView(graph) {
     const meta = graph.layout && graph.layout.meta;
     return meta && meta.view ? meta.view : null;
+  }
+
+  // The image window covers the map: the figure's meta carries `frozen`.
+  function figureFrozen(graph) {
+    const meta = graph.layout && graph.layout.meta;
+    return Boolean(meta && meta.frozen === true);
+  }
+
+  // The camera takes `camera` at once, without a glide, and stands still under the image window; the motion of
+  // `kind` goes on from there once the window closes (releaseHold).
+  function holdCamera(graph, camera, kind) {
+    noteViewChange();
+    cancelMotion(graph);
+    paused = null;
+    spaceStopped = null;
+    clearResume();
+    motionKind = kind;
+    orbitCenter = clone(camera.center);
+    held = { camera: clone(camera), kind: kind };
+    writeCamera(graph, camera);
+  }
+
+  // The window opened over a running motion: hold the camera where it is.
+  function holdHere(graph) {
+    holdCamera(graph, currentCamera(graph), motionKind);
+  }
+
+  // The window closed: the held motion goes on from the held camera, as after a drag.
+  function releaseHold(graph) {
+    const hold = held;
+    held = null;
+    if (!hold || motionActive || pointerIsDown) {
+      return;
+    }
+    motionActive = true;
+    if (hold.kind === "roll") {
+      rollCamera(graph, hold.camera);
+    } else if (hold.kind === "globe") {
+      spinGlobe(graph, hold.camera);
+    } else {
+      rotateCamera(graph, hold.camera);
+    }
   }
 
   // The centroid's traces carry their colours in meta.colors (map.py); with several groups they take turns.
@@ -735,6 +799,7 @@
 
   function onFigureUpdated(graph) {
     const view = figureView(graph);
+    const frozen = figureFrozen(graph);
     if (view !== lastView) {
       lastView = view;
       deckSelection = undefined;
@@ -742,6 +807,8 @@
       decksKey = "";
       axisSelected = null;
       paused = null;
+      held = null;
+      lastFrozen = false;
       clearResume();
       cancelMotion(graph);
     }
@@ -749,15 +816,29 @@
     if (view === "topics" || view === "cards") {
       const current = selectedId(graph) || null;
       if (current === deckSelection) {
+        if (frozen !== lastFrozen) {
+          // The same selection: the image window opened over the motion, or closed
+          lastFrozen = frozen;
+          if (frozen) {
+            holdHere(graph);
+          } else {
+            releaseHold(graph);
+          }
+        }
         return;
       }
       deckSelection = current;
+      lastFrozen = frozen;
       axisSelected = null;
       const point = current ? selectedPoint(graph) : null;
       const outside = view === "cards" && point ? axisCamera(graph, point, cardEyeDistance(graph, point), null) : null;
       if (outside) {
         axisSelected = String(current);
-        glideTo(graph, outside, { kind: "roll" });  // the selected card: from outside on its axis, rolling
+        if (frozen) {
+          holdCamera(graph, outside, "roll");  // selected under the image window: the seat at once, standing still
+        } else {
+          glideTo(graph, outside, { kind: "roll" });  // the selected card: from outside on its axis, rolling
+        }
       } else if (point) {
         moveCamera(graph, collectSelectionSnapshot(graph, point));  // the selected topic: centred, turned around
       } else {
@@ -995,6 +1076,7 @@
     }
     paused = null;
     spaceStopped = null;  // stopped for good: a later Space without a capture stops first
+    held = null;
     clearResume();
     if (motionActive) {
       cancelMotion(graph);
@@ -1018,6 +1100,7 @@
   function stopMotion() {
     paused = null;
     spaceStopped = null;
+    held = null;
     clearResume();
     if (attachedGraph) {
       cancelMotion(attachedGraph);
@@ -1027,18 +1110,21 @@
   // Called by Space from keyboard.js within constellation when no view is captured (no dot selected, or one
   // outside every constellation): the first press stops the motion, remembering it like a gesture; the next one
   // lets it go on from where the camera is, as after a drag (with the inside camera: back on the line to the
-  // deck, then the roll). A drag in between does not resume it, but sets the direction.
+  // deck, then the roll). A press during the glide after a selection stops it half-way; the next one glides on
+  // to its target first (resumeMotion). A drag in between does not resume it, but sets the direction.
   function toggleMotion() {
     const graph = attachedGraph;
     if (!graph || pointerIsDown) {
       return;
     }
     if (!spaceStopped) {
+      const glide = gliding;  // pauseMotion cancels it
       pauseMotion(graph);
       spaceStopped = paused || {
         center: clone(orbitCenter) || { x: 0, y: 0, z: 0 },
         azimuth: azimuthOf(currentCamera(graph), orbitCenter),
       };
+      spaceStopped.glide = glide;
       paused = null;
       return;
     }

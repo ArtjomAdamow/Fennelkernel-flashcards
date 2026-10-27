@@ -35,18 +35,33 @@ Changes against the main file:
   * Focus in the topics and cards views is a checklist (the state dialog-group-checklist): Confirm keeps the
     checked groups (ViewRouter.set_checked_groups), All checks everything again; the decks view keeps the
     one-group Focus.
+  * The predefined groups of the topics view (content.topic_groups) are never edited by hand: an Add, Remove or
+    Delete that names one only closes the dialog.
   * The back of the card panel (a hook for the helper module): with `overview_back` and nothing selected, Enter
     or a click on the panel flips between the dendrogram and the back the function draws. The flip is the
     `revealed` store, which a selection and a view change reset; it is no longer reset just because nothing is
     selected. Without `overview_back` nothing flips.
+  * Quiz cards with answer options (2026-10-27, roadmap step 31; ViewRouter.quiz): a quiz's panel is not
+    clickable. Confirm (`quiz-confirm`) and Enter on its front judge the checked options (the state
+    `quiz-options.value`): with at least one checked the card turns over (`revealed`) and is marked read; with
+    nothing checked nothing happens. The answer is correct only when the checked options are exactly the
+    correct ones. On the back Enter turns the card to the front with the checks cleared; a new selection (a
+    click, Random, the arrows, the navigation's move), a view change and a vanished selection clear them too,
+    any other callback draws the checklist with its value again (the 19th output, `quiz-control`).
+  * The image window (ViewRouter.image): in the cards view every selection of a card opens the window over the
+    map (the 20th and 21st outputs, `image-window` and the `image-open` store) with the card's image or the
+    message for a card without one; the figure's meta carries `frozen` meanwhile, so the camera stands still. It
+    stays open through the flip. Backspace, the close button (`image-close`) and the bare `close-image` command
+    (Space, and within constellation the arrows, in keyboard.js) close it and do nothing else; the card stays
+    selected, the next Backspace unselects it as before. Unselecting and a view change close it.
 """
 
 from dash import Input, Output, State
 
 from project.layout.map import DEFAULT_CAMERA, make_figure
 from project.layout.panels import (
-    card_panel, choice_control, choice_label, connection_control, cutoff_control, deck_panel, delete_constellation,
-    difficulty_control, group_control, overview_panel, topic_panel,
+    card_panel, checked_options, choice_control, choice_label, connection_control, cutoff_control, deck_panel,
+    delete_constellation, difficulty_control, group_control, image_window, overview_panel, quiz_control, topic_panel,
 )
 from project.models import Constellation
 from project.services import cards as cards_service
@@ -84,6 +99,9 @@ def register_callbacks(app, state, none_deck=None, action=None, overview_back=No
         Output("random-card", "style"),
         Output("choice-open", "children"),
         Output("cutoff-control", "children"),
+        Output("quiz-control", "children"),
+        Output("image-window", "children"),
+        Output("image-open", "data"),
         Input("sphere", "clickData"),
         Input("selected-card", "n_clicks"),
         Input("random-card", "n_clicks"),
@@ -112,6 +130,8 @@ def register_callbacks(app, state, none_deck=None, action=None, overview_back=No
         Input("navigation-dialog-submit", "n_clicks"),
         Input("navigation-dialog-cancel", "n_clicks"),
         Input(ACTION_ID, "n_clicks"),
+        Input("quiz-confirm", "n_clicks"),
+        Input("image-close", "n_clicks"),
         State("selected-id", "data"),
         State("revealed", "data"),
         State("link-target", "value"),
@@ -130,6 +150,8 @@ def register_callbacks(app, state, none_deck=None, action=None, overview_back=No
         State("navigation-select", "value"),
         State("nav-state", "data"),
         State("dialog-group-checklist", "value"),
+        State("quiz-options", "value"),
+        State("image-open", "data"),
     )
     def update_card(
         click_data, panel_clicks, random_clicks, difficulty, cutoff, new_group_clicks,
@@ -139,17 +161,23 @@ def register_callbacks(app, state, none_deck=None, action=None, overview_back=No
         delete_constellation_clicks, constellation_submit_clicks,
         constellation_cancel_clicks, link_submit_clicks, link_cancel_clicks,
         navigation_open_clicks, navigation_submit_clicks, navigation_cancel_clicks,
-        action_clicks,
+        action_clicks, confirm_clicks, image_close_clicks,
         selected_id, revealed, link_target, relayout_data, hover_data,
         group_dialog, focused_group, dialog_group_name, dialog_group_color,
         dialog_group_select, choice_dialog, choice_checked, constellation_dialog, constellation_select, link_dialog,
-        navigation_select, nav_state, dialog_group_checked
+        navigation_select, nav_state, dialog_group_checked, quiz_value, image_open
     ):
         from dash import ctx
         import random
 
         cards = state.visible_cards(None, focused_group)
         trigger = ctx.triggered_id
+        image_open = bool(image_open)
+        # A selection made in this call (a click, Random, the arrows, the navigation's move): it opens the image
+        # window and clears a quiz's checks; a view change and a vanished selection clear them too
+        selected_now = False
+        clear_checks = False
+        image_closing = False  # the close button, Backspace or the bare close-image command with the window open
         nav_state = dict(nav_state) if isinstance(nav_state, dict) else {
             "mode": "card_order", "dialog": None, "preview_id": None, "previous_id": None,
             "scroll_pos": None, "scrolled_id": None, "message": None,
@@ -171,7 +199,7 @@ def register_callbacks(app, state, none_deck=None, action=None, overview_back=No
             "navigation-open", "navigation-dialog-submit", "navigation-dialog-cancel"
         } or (
             trigger == "keyboard-nav" and mode == "constellation"
-            and not (command in {"enter", "back"} and payload is None)
+            and not (command in {"enter", "back", "close-image"} and payload is None)
         )
         next_group_dialog = group_dialog
         next_focused_group = focused_group
@@ -187,10 +215,28 @@ def register_callbacks(app, state, none_deck=None, action=None, overview_back=No
             return views.ViewState(state.view, state.entered_deck, state.entered_topic, selected_id)
 
         def switch(result: views.ViewState) -> None:
-            nonlocal selected_id, revealed
+            nonlocal selected_id, revealed, clear_checks
             state.set_view(result.view, result.entered, result.entered_topic)
             selected_id = result.selected
             revealed = False
+            clear_checks = True
+
+        def flip_card() -> None:
+            """Enter, or a click on the panel, with a card selected in the cards view: a quiz with answer options
+            is judged (Confirm does the same), any other card turns over as before."""
+            nonlocal revealed, clear_checks
+            quiz = state.quiz(selected_id)
+            if quiz is None:
+                revealed = not revealed
+                if revealed:
+                    state.mark_read(selected_id)
+            elif revealed:
+                revealed = False  # the front again, with every checkbox cleared
+                clear_checks = True
+            elif checked_options(quiz_value):
+                revealed = True  # the back judges the checked options
+                state.mark_read(selected_id)
+            # nothing checked: a quiz does not turn over
 
         if trigger == "choice-open":
             next_choice_dialog = not bool(choice_dialog)
@@ -217,31 +263,39 @@ def register_callbacks(app, state, none_deck=None, action=None, overview_back=No
             if clicked_id:
                 selected_id = clicked_id
                 revealed = False
+                selected_now = True  # the same dot again counts too: it opens the image window again
         elif trigger == "selected-card" and selected_id:
             entered = views.enter(current_view())
             if entered is not None:
                 switch(entered)
-            else:
-                revealed = not revealed
-                if revealed:
-                    state.mark_read(selected_id)
+            elif state.quiz(selected_id) is None:
+                flip_card()
+            # a quiz with answer options: its panel is not clickable, on the front or the back
         elif trigger == "selected-card" and overview_back is not None:
             revealed = not revealed  # nothing selected: the panel turns between the dendrogram and its back
+        elif trigger == "quiz-confirm" and selected_id and not revealed and state.quiz(selected_id) is not None:
+            flip_card()  # Confirm does what Enter does on a quiz's front; a stale click with nothing checked does nothing
+        elif trigger == "image-close":
+            image_closing = True
         elif trigger == "random-card" and cards and state.view != views.DECKS:
             chosen = cards_service.choose_random_card(cards, state.progress, random)
             selected_id = chosen.id if chosen else None
             revealed = False
+            selected_now = True
         elif trigger == "keyboard-nav" and keyboard_nav:
             if command == "back" and payload is None:
-                switch(views.back(current_view(), dialog_open))
+                if image_open:
+                    image_closing = True  # Backspace closes the image window first and does nothing else
+                else:
+                    switch(views.back(current_view(), dialog_open))
+            elif command == "close-image" and payload is None:
+                image_closing = image_open  # ignored while the window is closed
             elif command == "enter" and payload is None and selected_id:
                 entered = views.enter(current_view())
                 if entered is not None:
                     switch(entered)
                 else:
-                    revealed = not revealed
-                    if revealed:
-                        state.mark_read(selected_id)
+                    flip_card()
             elif command == "enter" and payload is None and overview_back is not None:
                 revealed = not revealed  # nothing selected: the panel turns between the dendrogram and its back
             elif mode == "card_order" and payload is None and command in {"next", "right", "down", "previous", "prev", "left", "up"}:
@@ -249,6 +303,7 @@ def register_callbacks(app, state, none_deck=None, action=None, overview_back=No
                 adjacent = cards_service.adjacent_card(cards, selected_id, direction)
                 selected_id = adjacent.id if adjacent else None
                 revealed = False
+                selected_now = True
             # In constellation mode the JSON commands are handled after the visible
             # constellation refresh. Bare commands and malformed commands are ignored.
         elif trigger == "difficulty-slider" and selected_id and difficulty is not None and state.view == views.CARDS:
@@ -284,6 +339,8 @@ def register_callbacks(app, state, none_deck=None, action=None, overview_back=No
             group_color_value = (dialog_group_color or {}).get("hex", "#f5b942")
             state.create_group(selected_id, dialog_group_name, group_color_value)
             next_group_dialog = None
+        elif trigger == "group-dialog-submit" and group_dialog in {"add", "remove", "delete"} and state.is_predefined(dialog_group_select):
+            next_group_dialog = None  # the predefined groups' members are derived, never edited by hand
         elif trigger == "group-dialog-submit" and selected_id and group_dialog == "add" and dialog_group_select:
             state.add_to_group(selected_id, dialog_group_select)
             next_group_dialog = None
@@ -344,6 +401,7 @@ def register_callbacks(app, state, none_deck=None, action=None, overview_back=No
         if selected_id is not None and selected_id not in {card.id for card in cards}:
             selected_id = None
             revealed = False
+            clear_checks = True
         if selected_id is None and overview_back is None:
             revealed = False  # nothing to turn over
         # Constellations are runtime-derived from current visible cards and links.
@@ -496,6 +554,7 @@ def register_callbacks(app, state, none_deck=None, action=None, overview_back=No
                             )
                             if selection:
                                 selected_id = selection
+                                selected_now = True  # the navigation's move: a selection like any other
                             revealed = False
                             context = None
                             preview_id = previous_id = scroll_pos = scrolled_id = None
@@ -574,6 +633,12 @@ def register_callbacks(app, state, none_deck=None, action=None, overview_back=No
         context_members = context.get("members") if context else None
         flip_hint = f" {FLIP_HINT}" if overview_back is not None else ""
         topic = state.entered_topic_info
+        # A selected quiz's answer options and the checks that survive this call; the image window is open
+        # after a selection in the cards view and stays open until it is closed, the card unselected or the
+        # view changed
+        quiz = state.quiz(selected_id) if selected_card is not None else None
+        checked = [] if clear_checks or selected_now or quiz is None else checked_options(quiz_value)
+        next_image_open = cards_view and selected_card is not None and (selected_now or (image_open and not image_closing))
         if selected_card is None and revealed and overview_back is not None:
             panel = overview_back(state)  # the back of the card panel
         elif selected_card is None:
@@ -610,7 +675,7 @@ def register_callbacks(app, state, none_deck=None, action=None, overview_back=No
         elif topics_view:
             panel = topic_panel(selected_card)
         else:
-            panel = card_panel(selected_card, revealed)
+            panel = card_panel(selected_card, revealed, quiz, checked)
         if not deleted_links and not navigation_only_trigger:
             state.save()
         if decks_view:
@@ -630,6 +695,7 @@ def register_callbacks(app, state, none_deck=None, action=None, overview_back=No
                 centroid_colors=state.deck_colors(state.entered_deck) if topics_view else None,
                 topic_color=state.topic_color(state.entered_topic) if cards_view else None,
                 rest_ids={card.id for card in cards if state.is_rest(card.id)} if topics_view else None,
+                frozen=next_image_open,  # the camera stands still under the image window
             ),
             panel,
             # The progress slider for a selected card only (a deck or a topic has nothing to rate)
@@ -638,7 +704,7 @@ def register_callbacks(app, state, none_deck=None, action=None, overview_back=No
             connection_control(
                 selected_card, cards, state, next_constellation_dialog,
                 navigation={**nav_state, "preview_card": preview_card}, view=state.view,
-                link_dialog=next_link_dialog,
+                link_dialog=next_link_dialog, image_open=next_image_open,
             ),
             "Saved" if trigger in {"link-dialog-submit", "group-dialog-submit", "delete-group", "constellation-dialog-submit", ACTION_ID} else "",
             selected_id,
@@ -654,6 +720,11 @@ def register_callbacks(app, state, none_deck=None, action=None, overview_back=No
             choice_label(state.view),
             # The cut-off line's slider, shown while nothing is selected and the view's dots have connections to cut
             cutoff_control(state.cutoff(), hidden=selected_card is not None or not state.connected()),
+            # A quiz's answer options and Confirm under the panel (hidden for anything else), with the checks
+            quiz_control(quiz, checked, revealed),
+            # The image window over the map, with the selected card's image or the message
+            image_window(state.image(selected_id) if next_image_open else None, next_image_open),
+            next_image_open,
         )
 
     return update_card

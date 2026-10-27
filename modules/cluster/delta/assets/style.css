@@ -2,7 +2,11 @@
 /* Cluster module copy of assets/style.css. Changes: window B (groups, connections) above the map in both modes,
    two columns; the connection target dropdown in a row under the buttons; the choice dialog (Decks / Cards); the card panel's
    deck description and dendrogram; the card's window as a row with the vertical cut-off slider left of the card panel
-   (2026-10-27); the topics view's Navigation button with its dialog beside it (2026-10-27). */
+   (2026-10-27); the topics view's Navigation button with its dialog beside it (2026-10-27); the card's frame with a
+   quiz's answer options and Confirm under the panel, and the image window over the map (2026-10-27, step 31); a
+   quiz's question, options and feedback at one font size, fitted into the window by card_fit.js (--card-scale,
+   --quiz-panel-min; 2026-10-27, step 31); the cut-off slider's rail lined up with the dendrogram's height axis by
+   cutoff_rail.js (--rail-height, --rail-offset, --rail-lift; 2026-10-27). */
 
 :root {
   --ink: #f7f2e8;
@@ -16,6 +20,8 @@
   --transient-right: #20b2aa;  /* colors for cards progress are in colors.progress_color */
   --hover: rgba(247, 242, 232, 0.08);
   --line: rgba(247, 242, 232, 0.16);
+  --card-font: clamp(1.35rem, 2.5vw, 2.15rem);  /* the card's question and answer; a quiz's options and feedback too */
+  --panel-min: 270px;  /* the card panel's least height */
 }
 
 * { box-sizing: border-box; }
@@ -160,6 +166,7 @@ h1 { margin: 2px 0 0; font-size: clamp(1.8rem, 4vw, 3.4rem); line-height: 0.98; 
 .coordinate-control .dash-slider-container { flex: 1 1 auto; min-width: 0; }
 .group-list { margin-top: 12px; border-top: 1px solid var(--line); }
 .group-list-item { display: flex; align-items: center; gap: 9px; padding: 9px 0; color: var(--ink); font-size: 0.82rem; }
+.group-list-item-predefined { color: var(--muted); font-style: italic; } /* a predefined group of the topics view: its members are derived from the topics' cards */
 .group-color-swatch { width: 14px; height: 14px; display: inline-block; border: 1px solid rgba(255,255,255,0.45); border-radius: 50%; } /* Turned square into a circle */
 .group-color-swatch-shared { box-shadow: 0 0 30px currentColor, 0 0 0 1px var(--navy-deep), 0 0 0 3px currentColor; } /* another group of the selected card, not the one that colours it on the map (the swatch's inline color is the group colour) */
 .group-member-count { margin-left: auto; color: var(--muted); font: 0.7rem 'DM Mono', monospace; }
@@ -171,8 +178,34 @@ h1 { margin: 2px 0 0; font-size: clamp(1.8rem, 4vw, 3.4rem); line-height: 0.98; 
 .dialog-fields input[type='text'] { min-width: 0; flex: 1; padding: 9px 10px; border: 1px solid var(--line); background: rgba(7, 24, 39, 0.8); color: var(--ink); font: 0.82rem 'DM Mono', monospace; }
 .dialog-fields input[type='color'] { flex: 0 0 46px; height: 38px; padding: 3px; }
 .dialog-fields .Select { min-width: 0; flex: 1; }
-.card-panel { align-self: center; min-height: 270px; padding: 30px; border-left: 3px solid var(--gold); background: rgba(7, 24, 39, 0.7); cursor: pointer; display: flex; flex-direction: column; justify-content: center; }
-.card-content { margin: 18px 0; font-size: clamp(1.35rem, 2.5vw, 2.15rem); line-height: 1.12; }
+/* The card's frame: the gold border and the background around the clickable panel and, under it, a quiz's answer
+   options and Confirm (the quiz control), which are no click on the panel (2026-10-27, step 31) */
+.card-frame { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; border-left: 3px solid var(--gold); background: rgba(7, 24, 39, 0.7); }
+.card-panel { align-self: center; min-height: var(--panel-min); padding: 30px; cursor: pointer; display: flex; flex-direction: column; justify-content: center; }
+/* A quiz with answer options: Confirm or Enter judge it, a click does nothing. card_fit.js lowers its least height
+   (--quiz-panel-min, the separating line rises) and scales its texts (--card-scale) when the frame does not fit
+   the window */
+.card-frame .quiz-panel { cursor: default; min-height: var(--quiz-panel-min, var(--panel-min)); }
+/* The question, the options and the feedback at one size: the card font times the fit's scale */
+.quiz-panel .card-content, .quiz-feedback, .quiz-options { font-size: calc(var(--card-font) * var(--card-scale, 1)); line-height: 1.12; }
+.quiz-control { padding: 0 30px 26px; display: flex; flex-direction: column; gap: 14px; }
+.quiz-divider { border-top: 1px solid var(--line); }
+.quiz-options { display: flex; flex-direction: column; gap: 0.35em; }
+/* Dash 4's checklist: label.dash-options-list-option > span.dash-options-list-option-wrapper > input.quiz-checkbox, then
+   span.quiz-option (the text; labelClassName lands on the text's span, not on the label). Sizes in em follow the
+   options' font, so the fit's scale shrinks the checkbox and the gaps too */
+.quiz-options .dash-options-list-option { display: flex; align-items: flex-start; gap: 0.45em; padding: 0; color: var(--ink); cursor: pointer; }
+.quiz-options .dash-options-list-option-wrapper { flex: 0 0 auto; display: flex; align-items: center; height: 1.12em; }
+.quiz-checkbox { font-size: inherit; width: 0.7em; height: 0.7em; margin: 0; accent-color: var(--gold); outline-color: var(--gold); }  /* a form control does not inherit the font size by itself */
+.quiz-option { min-width: 0; color: var(--ink); }  /* the text keeps its colour while the checkbox has the focus */
+.quiz-option-text p, .quiz-feedback-option p, .quiz-feedback-answer p { margin: 0; }
+.quiz-confirm-row { display: flex; justify-content: flex-end; }
+.quiz-feedback { display: flex; flex-direction: column; gap: 0.5em; margin: 18px 0; }
+.quiz-feedback-block { padding: 0.1em 0 0.1em 0.45em; border-left: 2px solid var(--coral); }
+.quiz-feedback-correct { border-left-color: #69c6a5; }
+.quiz-feedback-option { font-weight: 600; }
+.quiz-feedback-answer { margin-top: 0.2em; color: var(--muted); }
+.card-content { margin: 18px 0; font-size: var(--card-font); line-height: 1.12; }
 .card-hint, .empty-state { color: var(--muted); font-size: 0.88rem; line-height: 1.5; }
 .landscape .workspace { grid-template-areas: 'window-b window-b' 'map window-a'; }
 .landscape .workspace { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
@@ -191,7 +224,7 @@ h1 { margin: 2px 0 0; font-size: clamp(1.8rem, 4vw, 3.4rem); line-height: 0.98; 
   .topbar, .toolbar { align-items: flex-start; flex-direction: column; }
   .workspace { grid-template-columns: minmax(0, 1.45fr) minmax(220px, 0.75fr); gap: 18px; }
   .map-frame { height: 480px; }
-  .card-panel { min-height: 220px; }
+  :root { --panel-min: 220px; }
   .tool-row, .coordinate-row, .position-row { flex-wrap: wrap; }
   .coordinate-control { min-width: 180px; }
   .window-b { gap: 10px; }
@@ -221,16 +254,19 @@ h1 { margin: 2px 0 0; font-size: clamp(1.8rem, 4vw, 3.4rem); line-height: 0.98; 
 
 /* The cut-off line: a vertical slider in the card's window, left of the card panel's gold border, shown with
    nothing selected (2026-10-27, roadmap step 26). The column is as wide as its label: the value stands in a
-   white box between the label and the rail, the rail has no marks and no tooltip (the user's browser check). */
-.cutoff-control { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; height: 100%; width: max-content; padding: 12px 0; }
+   white box between the label and the rail, the rail has no marks and no tooltip (the user's browser check).
+   cutoff_rail.js lines the rail up with the dendrogram's height axis: the slider's height (--rail-height), moved
+   down or up (--rail-offset), the column's top padding given up first when it moves up (--rail-lift). */
+.cutoff-control { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; height: 100%; width: max-content; padding: calc(12px - var(--rail-lift, 0px)) 0 12px; }
 .cutoff-label { margin: 0; white-space: nowrap; }
 .cutoff-value { padding: 3px 8px; border: 1px solid var(--gold); background: #ffffff; color: #000000; font: 0.72rem 'DM Mono', monospace; white-space: nowrap; }
 /* Dash 4's slider (its own classes: container, wrapper, root, track, range, thumb; the container is 100 % wide
    by default): pinned to the 20 px of its vertical root, so the column is the label's width */
-.cutoff-slider { flex: 0 0 auto; width: 20px; margin-left: 2px; }
+.cutoff-slider { flex: 0 0 auto; width: 20px; margin-left: 2px; margin-top: var(--rail-offset, 0px); }
 .cutoff-slider .dash-slider-container { display: block; width: 20px; gap: 0; container-type: normal; }
 .cutoff-slider .dash-slider-wrapper { flex: none; width: 20px; min-width: 0; }
 .cutoff-slider .dash-slider-root[data-orientation='vertical'] { width: 20px; padding: 8px 0; }
+.window-a-card[data-rail] .cutoff-slider .dash-slider-root[data-orientation='vertical'] { height: var(--rail-height) !important; }  /* over the inline verticalHeight */
 .cutoff-slider .dash-slider-root[data-orientation='vertical'] .dash-slider-track { width: 8px; background-color: rgba(247, 242, 232, 0.16); }
 .cutoff-slider .dash-slider-range { background-color: var(--gold) !important; }
 .cutoff-slider .dash-slider-thumb { width: 18px; height: 18px; background-color: #ffffff; border: 3px solid #ffffff; box-shadow: 0 0 0 4px rgba(255,255,255,0.12); }
@@ -239,3 +275,13 @@ h1 { margin: 2px 0 0; font-size: clamp(1.8rem, 4vw, 3.4rem); line-height: 0.98; 
 /* The connections panel of the topics view: the Navigation button with its dialog to the right of it (2026-10-27, step 29) */
 .navigation-row { align-items: flex-start; flex-wrap: wrap; }
 .navigation-row .group-dialog { margin-top: 0; flex: 1 1 220px; min-width: 0; }
+
+/* The image window: a layer over the map's frame that takes no pointer while it is closed; open, the overlay covers
+   the map on its own background, shows the image whole, and takes the pointer (2026-10-27, step 31) */
+.image-window { position: absolute; inset: 0; pointer-events: none; }
+.image-overlay { position: absolute; inset: 0; z-index: 5; display: flex; align-items: center; justify-content: center; background: #102a43; pointer-events: auto; }
+.image-overlay-hidden { display: none; }
+.card-image { display: block; width: 100%; height: 100%; object-fit: contain; }
+.image-message { color: var(--muted); font: 0.95rem 'DM Mono', monospace; }
+.image-close { position: absolute; top: 10px; right: 10px; z-index: 6; width: 34px; height: 34px; padding: 0; border: 1px solid var(--gold); background: rgba(7, 24, 39, 0.8); color: var(--gold); font: 600 1.25rem 'Space Grotesk', sans-serif; line-height: 1; cursor: pointer; }
+.image-close:hover { background: var(--hover); }

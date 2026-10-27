@@ -19,15 +19,30 @@ Changes against the main file:
   * Groups panel in the topics and cards views: Focus opens a checklist of the groups plus "No group"
     (dialog-group-checklist, all checked by default), like the Cards dialog, instead of the one-group dropdown;
     the counts cover the view's dots only (ViewRouter.group_count). The decks view keeps the dropdown.
+  * The predefined groups of the topics view (content.topic_groups, 2026-10-27) are listed first and muted
+    (group-list-item-predefined); the Add, Remove and Delete dialogs leave them out, since their members are
+    derived from the topics' cards.
   * Connections panel in the topics view (2026-10-27, roadmap step 29): only the Navigation button, with its
     dialog to the right of it; Connect, Disconnect, Delete, the constellation list and their dialogs stay in the
     layout hidden (they are callback inputs). Every selected topic counts as a member there: the deck's topics
     are navigated as one constellation, connected or not.
+  * Quiz cards with answer options (2026-10-27, roadmap step 31): card_panel draws a quiz's front as the
+    question alone in a panel that is not clickable (`quiz-panel`), and its back as the card's feedback for a
+    correct answer ("Correct answer"; a flashcard's back keeps "Answer") or, for a wrong one ("Wrong answer"),
+    every checked option with its own feedback (quiz_feedback). quiz_control draws, under the panel in the same
+    frame, the dividing line, the checklist of the options (`quiz-options`, valued by index, the texts as
+    Markdown) and the Confirm button (`quiz-confirm`), with the hint; it is hidden for anything else and stays
+    in the layout (a callback state and input). The question, the options and the feedback share one font size,
+    fitted into the window in the browser (assets/card_fit.js, style.css).
+  * The image window (image_window): the map's cover for a selected card of the cards view, with the card's
+    image (served by the server's `/card-image/` route) or the message for a card without one, and the close
+    button (`image-close`, always in the layout). `#nav-config` carries `data-image` while it is open.
 """
 
 import dash_daq as daq
 from dash import dcc, html
 
+from project.content.parser import Quiz
 from project.layout.dendrogram import dendrogram_figure
 from project.models import Flashcard
 from project.services.views import CARDS, DECKS, TOPICS
@@ -57,7 +72,17 @@ CONNECT_NOTE = "Lists the {noun}s not yet connected to the selected {noun}."
 DISCONNECT_NOTE = "Lists only the {noun}s connected to the selected {noun}."
 NOUNS = {DECKS: "deck", TOPICS: "topic", CARDS: "card"}
 CHOICE_LABELS = {DECKS: "Decks", TOPICS: "Topics", CARDS: "Cards"}
-CUTOFF_HEIGHT = 320  # the vertical cut-off slider's length in px: the dendrogram figure's height (layout.dendrogram)
+# The vertical cut-off slider's length in px until cutoff_rail.js lines it up with the dendrogram's plot area (the
+# figure's 320 px less its margins, layout.dendrogram)
+CUTOFF_HEIGHT = 200
+# The quiz cards' answer options and the image window (2026-10-27, roadmap step 31)
+QUIZ_FRONT_HINT = "Check one or more options, then Confirm or press Enter."
+QUIZ_BACK_HINT = "Press Enter to flip the card again."
+CORRECT_LABEL = "Correct answer"  # a quiz's back; a flashcard's back keeps "Answer"
+WRONG_LABEL = "Wrong answer"
+IMAGE_MISSING = "Image not generated yet."
+IMAGE_ROUTE = "/card-image/"  # the server serves the images folder here (server.py)
+IMAGE_CLOSE_TITLE = "Close the image (Backspace or Space)"
 
 
 def _dialog_note(text):
@@ -79,13 +104,29 @@ def delete_constellation(state, const_id: str) -> int:
     return _state(state).delete_constellation_links(const_id)
 
 
-def card_panel(card: Flashcard | None, revealed: bool = False) -> html.Div:
+def card_panel(card: Flashcard | None, revealed: bool = False, quiz: Quiz | None = None, checked=()) -> html.Div:
+    """The selected card. With a quiz's answer options (`quiz`) the panel is not clickable (`quiz-panel`): its
+    front is the question alone (the options, Confirm and the hint stand under it, quiz_control), its back the
+    judgement of the checked options (quiz_feedback)."""
     if card is None:
         return html.Div(
             [
                 html.P("Select a point to begin.", className="empty-state"),
             ],
             className="card-panel",
+        )
+    if quiz is not None:
+        if not revealed:
+            return html.Div(
+                [html.Div("Question", className="card-label"), dcc.Markdown(card.question, className="card-content")],
+                className="card-panel quiz-panel",
+            )
+        correct = quiz.is_correct(checked_options(checked))
+        return html.Div(
+            [html.Div(CORRECT_LABEL if correct else WRONG_LABEL, className="card-label")]
+            + quiz_feedback(card, quiz, checked)
+            + [html.Div(QUIZ_BACK_HINT, className="card-hint")],
+            className="card-panel quiz-panel",
         )
     content = card.answer if revealed else card.question
     label = "Answer" if revealed else "Question"
@@ -96,6 +137,87 @@ def card_panel(card: Flashcard | None, revealed: bool = False) -> html.Div:
             html.Div("Click this frame to reveal or hide the answer.", className="card-hint"),
         ],
         className="card-panel",
+    )
+
+
+def checked_options(value) -> list[int]:
+    """The checked options of the quiz checklist as sorted indices (its value; None, strings and anything else
+    tolerated)."""
+    indices = set()
+    for item in value or []:
+        if isinstance(item, bool):
+            continue
+        if isinstance(item, int):
+            indices.add(item)
+        elif isinstance(item, str) and item.isdigit():
+            indices.add(int(item))
+    return sorted(indices)
+
+
+def quiz_feedback(card: Flashcard, quiz: Quiz, checked=()) -> list:
+    """The back of a quiz: the card's feedback for a correct answer (it names the correct options); for a wrong
+    one, only the checked options in file order, each as a block of the option and its own feedback."""
+    indices = [index for index in checked_options(checked) if index < len(quiz.options)]
+    if quiz.is_correct(indices):
+        return [dcc.Markdown(card.answer, className="card-content")]
+    blocks = [
+        html.Div(
+            [
+                dcc.Markdown(quiz.options[index], className="quiz-feedback-option"),
+                dcc.Markdown(quiz.answers[index], className="quiz-feedback-answer"),
+            ],
+            className="quiz-feedback-block" + (" quiz-feedback-correct" if index in quiz.correct else " quiz-feedback-wrong"),
+        )
+        for index in indices
+    ]
+    return [html.Div(blocks, className="quiz-feedback")]
+
+
+def quiz_control(quiz: Quiz | None = None, checked=(), revealed: bool = False) -> html.Div:
+    """Under a quiz's front, inside the card's frame: the dividing line, the checklist of the answer options
+    (`quiz-options`: one entry per option in file order, the checkbox left of the text, the text as Markdown,
+    valued by the option's index), the Confirm button (`quiz-confirm`, right-aligned, disabled while nothing is
+    checked; the browser keeps that up to date, server.py) and the hint. Hidden on the back and for anything
+    that is not a quiz with options; it stays in the layout, because the checklist is a callback state and
+    Confirm a callback input. The checklist's value is the one place the checks are kept."""
+    indices = [index for index in checked_options(checked) if quiz is not None and index < len(quiz.options)]
+    options = (
+        [{"label": dcc.Markdown(text, className="quiz-option-text"), "value": index} for index, text in enumerate(quiz.options)]
+        if quiz is not None else []
+    )
+    return html.Div(
+        [
+            html.Div(className="quiz-divider"),
+            dcc.Checklist(
+                id="quiz-options",
+                options=options,
+                value=indices,
+                className="quiz-options",
+                inputClassName="quiz-checkbox",
+                labelClassName="quiz-option",
+            ),
+            html.Div(
+                [html.Button("Confirm", id="quiz-confirm", n_clicks=0, className="tool-button quiz-confirm", disabled=not indices)],
+                className="quiz-confirm-row",
+            ),
+            html.Div(QUIZ_FRONT_HINT, className="card-hint quiz-hint"),
+        ],
+        className="quiz-control",
+        style=None if quiz is not None and not revealed else {"display": "none"},
+    )
+
+
+def image_window(file_name: str | None = None, is_open: bool = False) -> html.Div:
+    """The map's cover for a selected card of the cards view: the card's image, or the message for a card without
+    one, and the close button (`image-close`, a callback input, so it is always in the layout). Hidden while
+    closed; open, it takes the pointer, so nothing reaches the map under it."""
+    if file_name:
+        body = html.Img(src=f"{IMAGE_ROUTE}{file_name}", className="card-image", alt="")
+    else:
+        body = html.Div(IMAGE_MISSING, className="image-message")
+    return html.Div(
+        [html.Button("×", id="image-close", n_clicks=0, className="image-close", title=IMAGE_CLOSE_TITLE), body],
+        className="image-overlay" if is_open else "image-overlay image-overlay-hidden",
     )
 
 
@@ -229,15 +351,20 @@ def group_control(card: Flashcard | None, dialog: str | None = None, state=None,
         id(group) for group in state.groups
         if card and card.id in group.card_ids and group is not deciding
     }
-    selected_groups = [group.id for group in state.groups if card and card.id in group.card_ids]
+    def predefined(group) -> bool:
+        return state.is_predefined(group.id) if hasattr(state, "is_predefined") else False
+
+    # Add, Remove and Delete edit the user's groups only; the predefined ones' members are derived
+    editable = [group for group in state.groups if not predefined(group)]
+    selected_groups = [group.id for group in editable if card and card.id in group.card_ids]
     dialog_options = [
         {"label": group.name, "value": group.id}
-        for group in state.groups
+        for group in (state.groups if dialog == "focus" else editable)
         if dialog != "remove" or card is None or card.id in group.card_ids
     ]
     dialog_title = {"new": "New group", "add": "Add to group", "remove": "Remove from group", "delete": "Delete group", "focus": "Focus group"}.get(dialog)
     note = {"new": NEW_GROUP_NOTE, "delete": DELETE_GROUP_NOTE}.get(dialog)
-    if dialog == "add" and card is not None and any(card.id in group.card_ids for group in state.groups):
+    if dialog == "add" and card is not None and any(card.id in group.card_ids for group in editable):
         note = ADD_TO_GROUP_NOTE
     if focus_checklist:
         dialog_title, note = "Focus groups", FOCUS_GROUPS_NOTE
@@ -282,7 +409,7 @@ def group_control(card: Flashcard | None, dialog: str | None = None, state=None,
                 [
                     html.Div(
                         [html.Span(className="group-color-swatch group-color-swatch-shared" if id(group) in shares_members else "group-color-swatch", style={"backgroundColor": group.color, "color": group.color}), html.Span(group.name), html.Span(f"{count(group)} cards", className="group-member-count")],
-                        className="group-list-item",
+                        className="group-list-item group-list-item-predefined" if predefined(group) else "group-list-item",
                     )
                     for group in state.groups
                 ] or [html.Div("No saved groups yet.", className="tool-status")],
@@ -413,9 +540,11 @@ def connection_control(
     navigation=None,
     view: str = DECKS,
     link_dialog: str | None = None,
+    image_open: bool = False,
 ) -> html.Div:
     """Connections panel, retaining its existing positional-compatible Delete flow; `link_dialog` is None,
-    "connect" or "disconnect" (the open Connect or Disconnect dialog).
+    "connect" or "disconnect" (the open Connect or Disconnect dialog); `image_open` says whether the image
+    window covers the map (`data-image` for keyboard.js: Space and the navigation's arrows then close it).
 
     In the topics view (`view == TOPICS`) the panel is reduced to the Navigation button with its dialog to the
     right of it: Connect, Disconnect, Delete, the constellation list and their dialogs stay in the layout hidden
@@ -540,6 +669,7 @@ def connection_control(
                     "data-selected": "1" if card is not None else "",
                     "data-member": "1" if is_member else "",
                     "data-view": view,
+                    "data-image": "1" if image_open else "",
                 },
             ),
             dcc.Store(id="constellation-dialog", data=dialog),

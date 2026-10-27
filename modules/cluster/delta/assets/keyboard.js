@@ -7,7 +7,13 @@
   // order, Space stops the camera's motion (camera.js, constellationNav.stopMotion) and sends nothing; within
   // constellation, with no dot selected or one outside every constellation, Space stops the motion and the next
   // Space resumes it (constellationNav.toggleMotion), as in the main project; Enter is sent with nothing selected
-  // too (it turns the card panel over where a module gives it a back).
+  // too (it turns the card panel over where a module gives it a back). The quiz cards' answer options and the
+  // image window (2026-10-27, roadmap step 31): a toggled quiz checkbox (a change inside .quiz-options) gives
+  // up the focus 300 ms later (CHECKBOX_BLUR_MS), so the keys reach this handler again; within that time the
+  // checkbox keeps its own keys (Space toggles it, Enter and the arrows are ignored as on any input). A clicked
+  // Confirm (.quiz-confirm) gives up the focus at once, like the top bar buttons. While the image window covers
+  // the map (#nav-config data-image), Space sends the bare "close-image" command instead of stopping the motion
+  // or capturing the view, and within constellation the arrows send it too (their scroll needs the map).
   //
   // Browser key handling for constellation navigation.
   // By card order arrows remain bare directions. Within constellation, arrows send a generation;
@@ -15,6 +21,8 @@
   // view; otherwise the next Space resumes the motion. Enter always flips the selected card.
 
   const KEY_WINDOW_MS = 200;
+  const CHECKBOX_BLUR_MS = 300;  // a toggled quiz checkbox keeps the focus this long
+  const CLOSE_IMAGE = "close-image";  // the bare command that closes the image window
   const ARROWS = { ArrowLeft: "left", ArrowRight: "right", ArrowUp: "up", ArrowDown: "down" };
 
   // Controls that own their arrow keys (dropdowns, sliders, text entry).
@@ -58,6 +66,7 @@
       preview: attribute("data-preview") === "1",
       selected: attribute("data-selected") === "1",
       member: attribute("data-member") === "1",
+      image: attribute("data-image") === "1",  // the image window covers the map
     };
   }
 
@@ -106,7 +115,15 @@
       const config = env.readConfig();
       event.preventDefault();
       if (config.mode !== "constellation") {
-        env.sender.sendBare(direction);
+        env.sender.sendBare(direction);  // by card order the next card, whose image the window then shows
+        return;
+      }
+      if (config.image) {
+        // Within constellation the scroll needs the map (the ring's order on the screen, the white line): the
+        // arrows close the image window first
+        if (!event.repeat) {
+          env.sender.sendBare(CLOSE_IMAGE);
+        }
         return;
       }
       const nav = env.getNav();
@@ -165,6 +182,14 @@
     function handleSpace(event) {
       const config = env.readConfig();
       if (isIgnoredTarget(event.target, ACTION_IGNORED)) {
+        return;
+      }
+      if (config.image) {
+        // The image window covers the map: Space closes it and does nothing else, in both modes
+        event.preventDefault();
+        if (!event.repeat) {
+          env.sender.sendBare(CLOSE_IMAGE);
+        }
         return;
       }
       if (config.mode !== "constellation") {
@@ -231,6 +256,23 @@
     };
   }
 
+  // A toggled quiz checkbox (a change event inside .quiz-options) gives up the focus CHECKBOX_BLUR_MS later, if
+  // it still has it: Enter, Space and the arrows then reach the key handler again, as after the click on
+  // Random. A focus it lost in between (a click elsewhere) is left alone.
+  function createChangeHandler(env) {
+    return function onChange(event) {
+      const target = event && event.target;
+      if (!target || typeof target.closest !== "function" || !target.closest(".quiz-options")) {
+        return;
+      }
+      env.setTimeout(function () {
+        if (env.activeElement() === target && typeof target.blur === "function") {
+          target.blur();
+        }
+      }, CHECKBOX_BLUR_MS);
+    };
+  }
+
   if (typeof document !== "undefined" && typeof document.addEventListener === "function") {
     const sender = createCommandSender(defaultSetProps);
     window.constellationKeys = sender;
@@ -240,21 +282,29 @@
       sender: sender,
       now: function () { return window.performance.now(); },
     }), true);
-    // A clicked top bar button (Random, Decks) keeps no focus: Enter then reaches the handler above
+    // A clicked top bar button (Random, Decks) or a quiz's Confirm keeps no focus: Enter then reaches the
+    // handler above
     document.addEventListener("click", function (event) {
       const button = event.target && typeof event.target.closest === "function"
-        ? event.target.closest(".random-button") : null;
+        ? event.target.closest(".random-button, .quiz-confirm") : null;
       if (button && typeof button.blur === "function") {
         button.blur();
       }
     });
+    document.addEventListener("change", createChangeHandler({
+      setTimeout: function (fn, ms) { return window.setTimeout(fn, ms); },
+      activeElement: function () { return document.activeElement; },
+    }));
   }
 
   if (typeof module !== "undefined" && module.exports) {
     module.exports = {
       ACTION_IGNORED: ACTION_IGNORED,
       ARROW_IGNORED: ARROW_IGNORED,
+      CHECKBOX_BLUR_MS: CHECKBOX_BLUR_MS,
+      CLOSE_IMAGE: CLOSE_IMAGE,
       KEY_WINDOW_MS: KEY_WINDOW_MS,
+      createChangeHandler: createChangeHandler,
       createCommandSender: createCommandSender,
       createKeyDownHandler: createKeyDownHandler,
       isIgnoredTarget: isIgnoredTarget,
