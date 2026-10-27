@@ -15,6 +15,8 @@ def _state(state):
 NEW_GROUP_NOTE = "The selected card will be added to the new group."
 ADD_TO_GROUP_NOTE = "Membership and color of the previously assigned group will remain until removed from the other group."
 DELETE_GROUP_NOTE = "Connections of member cards will remain."
+CONNECT_NOTE = "Lists the cards not yet connected to the selected card."
+DISCONNECT_NOTE = "Lists only the cards connected to the selected card."
 REMOVE_DECK_NOTE = "Settings of all deck member cards will be erased."
 # phase 4: constellations
 DELETE_CONSTELLATION_NOTE = "Deleting a constellation will disconnect all members"
@@ -275,7 +277,7 @@ def navigation_readout(card: Flashcard | None = None) -> html.Div:
         return html.Div(id="nav-preview", className="nav-preview nav-preview-hidden")
     return html.Div(
         [
-            html.Div("Keyboard preview", className="card-label"),
+            html.Div("navigation preview", className="card-label"),
             dcc.Markdown(card.question, className="nav-preview-question"),
             html.Div(card.id, className="nav-preview-id"),
         ],
@@ -283,6 +285,20 @@ def navigation_readout(card: Flashcard | None = None) -> html.Div:
         className="nav-preview",
     )
 
+def link_options(card, candidate_cards, state, link_dialog):
+    """Connect: the visible cards not connected to the selected card. Disconnect: the ones connected to it."""
+    if card is None or state is None or link_dialog not in {"connect", "disconnect"}:
+        return []
+    connected = {
+        link.target_id if link.source_id == card.id else link.source_id
+        for link in state.links
+        if card.id in (link.source_id, link.target_id)
+    }
+    return [
+        {"label": other.question[:55], "value": other.id}
+        for other in candidate_cards
+        if other.id != card.id and ((other.id in connected) == (link_dialog == "disconnect"))
+    ]
 
 def connection_control(
     card: Flashcard | None,
@@ -290,6 +306,7 @@ def connection_control(
     state=None,
     dialog: str | None = None,
     navigation=None,
+    link_dialog: str | None = None,
 ) -> html.Div:
     """Connections panel, retaining its existing positional-compatible Delete flow."""
     constellations = state.constellations if state is not None else []
@@ -305,11 +322,8 @@ def connection_control(
     if navigation.get("preview_id") == (card.id if card else None):
         preview_card = None
     is_member = bool(card and any(card.id in item.members for item in constellations))
-    options = [
-        {"label": other.question[:55], "value": other.id}
-        for other in candidate_cards
-        if other.id != (card.id if card else "")
-    ]
+    options = link_options(card, candidate_cards, state, link_dialog)
+    has_links = bool(card and state is not None and any(card.id in (link.source_id, link.target_id) for link in state.links))
     return html.Div(
         [
             html.Div("Connections", className="card-label"),
@@ -318,22 +332,28 @@ def connection_control(
                     html.Div(
                         [
                             html.Button("Connect", id="create-link", n_clicks=0, disabled=card is None, className="tool-button"),
-                            html.Button("Disconnect", id="disconnect-link", n_clicks=0, disabled=card is None, className="tool-button"),
+                            html.Button("Disconnect", id="disconnect-link", n_clicks=0, disabled=not has_links, className="tool-button"), # old disabled=card is None, 
                             html.Button("Delete", id="delete-constellation", n_clicks=0, disabled=not constellations, className="tool-button"),
                             html.Button("Navigation", id="navigation-open", n_clicks=0, className="tool-button"),
                         ],
                         className="connection-buttons",
                     ),
-                    dcc.Dropdown(
-                        id="link-target",
-                        className="closed-dropdown",
-                        options=options,
-                        placeholder="Select a card",
-                        disabled=card is None,
-                        clearable=True,
-                    ),
                 ],
                 className="connection-actions",
+            ),
+            html.Div(
+                [
+                    html.Div("Disconnect from a card" if link_dialog == "disconnect" else "Connect to a card", className="dialog-title"),
+                    dcc.Dropdown(id="link-target", className="closed-dropdown", options=options, placeholder="Select a card", clearable=True),
+                    html.Div(
+                        [
+                            html.Button("Confirm", id="link-dialog-submit", n_clicks=0, className="tool-button"),
+                            html.Button("Cancel", id="link-dialog-cancel", n_clicks=0, className="tool-button"),
+                        ] + _dialog_note(DISCONNECT_NOTE if link_dialog == "disconnect" else CONNECT_NOTE),
+                        className="tool-row",
+                    ),
+                ],
+                className="group-dialog" if link_dialog else "group-dialog group-dialog-hidden",
             ),
             html.Div(
                 [
@@ -398,6 +418,7 @@ def connection_control(
                 },
             ),
             dcc.Store(id="constellation-dialog", data=dialog),
+            dcc.Store(id="link-dialog", data=link_dialog),
         ],
         className="tool-panel compact-panel",
     )

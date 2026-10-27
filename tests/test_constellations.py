@@ -312,6 +312,16 @@ def delete_dialog(panel):
     )
 
 
+def link_dialog(panel):
+    """The dialog container that holds the Connect or Disconnect Confirm button."""
+    submit = by_id(panel, "link-dialog-submit")
+    return next(
+        item for item in components(panel)
+        if (getattr(item, "className", None) or "").startswith("group-dialog")
+        and any(child is submit for child in components(item))
+    )
+
+
 def constellation_state(*groups):
     """A stand-in for the service: runtime constellations and a recording Delete."""
     deleted = []
@@ -331,18 +341,49 @@ def a_card(card_id="a"):
 class ConnectionPanelTest(unittest.TestCase):
     def test_the_servers_two_argument_call_still_builds_the_panel(self) -> None:
         panel = panels.connection_control(None, [])
-        for component_id in ("create-link", "disconnect-link", "link-target", "constellation-select"):
+        for component_id in (
+            "create-link", "disconnect-link", "link-target", "link-dialog-submit", "link-dialog-cancel", "link-dialog",
+            "constellation-select",
+        ):
             self.assertIsNotNone(by_id(panel, component_id), component_id)
         self.assertTrue(by_id(panel, "delete-constellation").disabled)
         self.assertEqual(by_id(panel, "constellation-select").options, [])
         self.assertIsNone(by_id(panel, "constellation-dialog").data)
         self.assertIn("No visible constellations.", texts(panel))
 
-    def test_the_card_options_are_unchanged(self) -> None:
+    def test_the_dropdown_is_empty_until_a_link_dialog_is_open(self) -> None:
         cards = [a_card(name) for name in "abc"]
-        panel = panels.connection_control(cards[0], cards)
-        self.assertEqual([option["value"] for option in by_id(panel, "link-target").options], ["b", "c"])
+        service, _, _ = make_service([("a", "b")], "abc", cards)
+        panel = panels.connection_control(cards[0], cards, service)
+        self.assertEqual(by_id(panel, "link-target").options, [])
         self.assertFalse(by_id(panel, "create-link").disabled)
+        self.assertIsNone(by_id(panel, "link-dialog").data)
+        self.assertEqual(link_dialog(panel).className, "group-dialog group-dialog-hidden")
+
+    def test_the_connect_dialog_lists_the_cards_not_yet_connected(self) -> None:
+        cards = [a_card(name) for name in "abc"]
+        service, _, _ = make_service([("a", "b")], "abc", cards)
+        panel = panels.connection_control(cards[0], cards, service, link_dialog="connect")
+        self.assertEqual([option["value"] for option in by_id(panel, "link-target").options], ["c"])
+        self.assertEqual(by_id(panel, "link-dialog").data, "connect")
+        self.assertEqual(link_dialog(panel).className, "group-dialog")
+        self.assertIn("Connect to a card", texts(panel))
+        self.assertIn(panels.CONNECT_NOTE, texts(panel))
+
+    def test_the_disconnect_dialog_lists_only_the_connected_cards(self) -> None:
+        cards = [a_card(name) for name in "abc"]
+        service, _, _ = make_service([("a", "b")], "abc", cards)
+        panel = panels.connection_control(cards[0], cards, service, link_dialog="disconnect")
+        self.assertEqual([option["value"] for option in by_id(panel, "link-target").options], ["b"])
+        self.assertIn("Disconnect from a card", texts(panel))
+        self.assertIn(panels.DISCONNECT_NOTE, texts(panel))
+
+    def test_disconnect_is_disabled_for_a_card_without_connections(self) -> None:
+        cards = [a_card(name) for name in "abc"]
+        service, _, _ = make_service([("a", "b")], "abc", cards)
+        self.assertFalse(by_id(panels.connection_control(cards[0], cards, service), "disconnect-link").disabled)
+        self.assertTrue(by_id(panels.connection_control(cards[2], cards, service), "disconnect-link").disabled)
+        self.assertTrue(by_id(panels.connection_control(None, cards, service), "disconnect-link").disabled)
 
     def test_lists_constellations_without_swatches(self) -> None:
         panel = panels.connection_control(None, [], constellation_state((1, ["a", "b", "c"]), (2, ["x", "y"])))
@@ -400,12 +441,16 @@ NEW_DEPENDENCIES = [
     ("Input", "delete-constellation", "n_clicks"),
     ("Input", "constellation-dialog-submit", "n_clicks"),
     ("Input", "constellation-dialog-cancel", "n_clicks"),
+    ("Input", "link-dialog-submit", "n_clicks"),
+    ("Input", "link-dialog-cancel", "n_clicks"),
     ("State", "constellation-dialog", "data"),
     ("State", "constellation-select", "value"),
+    ("State", "link-dialog", "data"),
 ]
 NEW_PARAMETERS = [
     "delete_constellation_clicks", "constellation_submit_clicks", "constellation_cancel_clicks",
-    "constellation_dialog", "constellation_select",
+    "link_submit_clicks", "link_cancel_clicks",
+    "constellation_dialog", "constellation_select", "link_dialog",
 ]
 
 # c1-c2 (deck a), c2-c3 (c3 is in deck b), c3-c4 (deck b): one constellation across two decks; c5-c6: a second one
@@ -481,11 +526,43 @@ class ConstellationCallbackTest(unittest.TestCase):
     def test_connect_and_disconnect_refresh_the_constellations(self) -> None:
         service, core, _ = make_app_service()
         call_update(service, "deck-filter", deck="all")
-        call_update(service, "create-link", selected_id="c1", link_target="c5")
+        call_update(service, "link-dialog-submit", selected_id="c1", link_dialog="connect", link_target="c5")
         self.assertEqual(shown(service), {"1": ["c1", "c2", "c3", "c4", "c5", "c6"]})
-        call_update(service, "disconnect-link", selected_id="c1", link_target="c5")
+        call_update(service, "link-dialog-submit", selected_id="c1", link_dialog="disconnect", link_target="c5")
         self.assertEqual(shown(service), {"1": ["c1", "c2", "c3", "c4"], "2": ["c5", "c6"]})
         self.assertEqual(link_pairs(core), APP_LINKS)
+
+    def test_connect_opens_its_dialog_with_the_unconnected_cards_and_cancel_closes_it(self) -> None:
+        service, core, _ = make_app_service()
+        call_update(service, "deck-filter", deck="all")
+        opened = call_update(service, "create-link", selected_id="c1")[OUT_CONNECTION]
+        self.assertEqual(by_id(opened, "link-dialog").data, "connect")
+        self.assertEqual([option["value"] for option in by_id(opened, "link-target").options], ["c3", "c4", "c5", "c6"])
+        closed = call_update(service, "link-dialog-cancel", selected_id="c1", link_dialog="connect")[OUT_CONNECTION]
+        self.assertIsNone(by_id(closed, "link-dialog").data)
+        self.assertEqual(link_pairs(core), APP_LINKS)
+
+    def test_disconnect_opens_its_dialog_with_the_connected_cards_only(self) -> None:
+        service, _, _ = make_app_service()
+        call_update(service, "deck-filter", deck="all")
+        opened = call_update(service, "disconnect-link", selected_id="c2")[OUT_CONNECTION]
+        self.assertEqual(by_id(opened, "link-dialog").data, "disconnect")
+        self.assertEqual([option["value"] for option in by_id(opened, "link-target").options], ["c1", "c3"])
+
+    def test_a_confirm_without_a_target_keeps_the_dialog_and_the_links(self) -> None:
+        service, core, _ = make_app_service()
+        call_update(service, "deck-filter", deck="all")
+        result = call_update(service, "link-dialog-submit", selected_id="c1", link_dialog="connect", link_target=None)
+        self.assertEqual(by_id(result[OUT_CONNECTION], "link-dialog").data, "connect")
+        self.assertEqual(link_pairs(core), APP_LINKS)
+
+    def test_selecting_another_card_closes_the_link_dialog(self) -> None:
+        service, _, _ = make_app_service()
+        call_update(service, "deck-filter", deck="all")
+        result = call_update(
+            service, "sphere", selected_id="c1", link_dialog="connect", click_data={"points": [{"customdata": "c2"}]}
+        )
+        self.assertIsNone(by_id(result[OUT_CONNECTION], "link-dialog").data)
 
     def test_the_panel_shows_the_constellations_after_every_callback(self) -> None:
         service, _, _ = make_app_service()

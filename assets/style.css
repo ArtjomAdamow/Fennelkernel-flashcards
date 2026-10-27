@@ -138,6 +138,8 @@ h1 { margin: 2px 0 0; font-size: clamp(1.8rem, 4vw, 3.4rem); line-height: 0.98; 
 .tool-button:hover { background: var(--hover); }
 .tool-button:disabled { opacity: 0.4; cursor: not-allowed; }
 .tool-status { min-height: 1.2em; margin-top: 10px; color: var(--muted); font-size: 0.78rem; }
+.nav-preview { border-top: 1px solid var(--line); margin-top: 12px; padding-top: 10px; }
+.nav-preview-hidden { display: none; }
 .keyboard-nav { position: fixed; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 .drag-controls { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 4px 10px; align-items: center; margin-top: 14px; }
 .drag-controls label, .drag-controls .rc-slider-mark-text { color: var(--ink) !important; }
@@ -153,7 +155,7 @@ h1 { margin: 2px 0 0; font-size: clamp(1.8rem, 4vw, 3.4rem); line-height: 0.98; 
 .group-list { margin-top: 12px; border-top: 1px solid var(--line); }
 .group-list-item { display: flex; align-items: center; gap: 9px; padding: 9px 0; color: var(--ink); font-size: 0.82rem; }
 .group-color-swatch { width: 14px; height: 14px; display: inline-block; border: 1px solid rgba(255,255,255,0.45); border-radius: 50%; } /* Turned square into a circle */
-.group-color-swatch-shared { box-shadow: 0 0 24px currentColor; } /* another group of the selected card, not the one that colours it on the map (the swatch's inline color is the group colour) */
+.group-color-swatch-shared {  box-shadow: 0 0 30px currentColor, 0 0 0 1px var(--navy-deep), 0 0 0 3px currentColor; } /* another group of the selected card, not the one that colours it on the map (the swatch's inline color is the group colour) */
 .group-member-count { margin-left: auto; color: var(--muted); font: 0.7rem 'DM Mono', monospace; }
 .group-dialog { margin-top: 12px; padding: 14px; border: 1px solid var(--gold); background: rgba(16, 42, 67, 0.9); }
 .group-dialog-hidden { display: none; }

@@ -174,9 +174,12 @@ class UserStateService:
         """The constellations of the last refresh (copies; reading never recalculates)."""
         return [Constellation(item.const_id, item.name, list(item.members)) for item in self._constellations]
 
-    def refresh_constellations(self, visible_cards: Iterable[Flashcard]) -> list[Constellation]:
-        """Derive the constellations again for the cards the map shows (deck and group focus already applied)."""
-        self._derive([card.id for card in visible_cards])
+    def refresh_constellations(
+        self, visible_cards: Iterable[Flashcard], links: Optional[Iterable[CardLink]] = None
+    ) -> list[Constellation]:
+        """Derive the constellations again for the cards the map shows (deck and group focus already applied).
+        `links` restricts the connections considered (the cluster module's cut-off line); by default all stored links."""
+        self._derive([card.id for card in visible_cards], links)
         return self.constellations
 
     def delete_constellation_links(self, const_id: str) -> int:
@@ -237,7 +240,7 @@ class UserStateService:
 
     # --- internals ---------------------------------------------------------
 
-    def _derive(self, visible_ids: list[str]) -> None:
+    def _derive(self, visible_ids: list[str], links: Optional[Iterable[CardLink]] = None) -> None:
         self._visible_ids = list(visible_ids)
-        components = derive_components(self._visible_ids, self._core.links)
+        components = derive_components(self._visible_ids, self._core.links if links is None else links)
         self._constellations = reconcile_constellations(self._constellations, components)
