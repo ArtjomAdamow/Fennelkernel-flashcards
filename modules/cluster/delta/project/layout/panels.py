@@ -12,11 +12,17 @@ Changes against the main file:
   * Connect and Disconnect open a dialog with the dropdown (as in the main project since 2026-10-22): Connect
     lists the dots not yet connected to the selected one, Disconnect only the connected ones; the dialog's state
     lives in the panel's `link-dialog` store, like the Delete dialog's.
-  * With no dot selected the progress slider becomes the cut-off line of the dendrogram (cutoff_control), and
-    overview_panel draws that line across the dendrogram.
+  * The cut-off line of the dendrogram is a vertical slider of its own (cutoff_control, `cutoff-slider`) in the
+    card's window, left of the card panel, shown only while no dot is selected; overview_panel draws the line
+    across the dendrogram. The progress slider (difficulty_control, `difficulty-slider`) is shown for a selected
+    card only (2026-10-27, roadmap step 26; until then one slider had both roles).
   * Groups panel in the topics and cards views: Focus opens a checklist of the groups plus "No group"
     (dialog-group-checklist, all checked by default), like the Cards dialog, instead of the one-group dropdown;
     the counts cover the view's dots only (ViewRouter.group_count). The decks view keeps the dropdown.
+  * Connections panel in the topics view (2026-10-27, roadmap step 29): only the Navigation button, with its
+    dialog to the right of it; Connect, Disconnect, Delete, the constellation list and their dialogs stay in the
+    layout hidden (they are callback inputs). Every selected topic counts as a member there: the deck's topics
+    are navigated as one constellation, connected or not.
 """
 
 import dash_daq as daq
@@ -51,6 +57,7 @@ CONNECT_NOTE = "Lists the {noun}s not yet connected to the selected {noun}."
 DISCONNECT_NOTE = "Lists only the {noun}s connected to the selected {noun}."
 NOUNS = {DECKS: "deck", TOPICS: "topic", CARDS: "card"}
 CHOICE_LABELS = {DECKS: "Decks", TOPICS: "Topics", CARDS: "Cards"}
+CUTOFF_HEIGHT = 320  # the vertical cut-off slider's length in px: the dendrogram figure's height (layout.dendrogram)
 
 
 def _dialog_note(text):
@@ -140,42 +147,42 @@ def overview_panel(
     )
 
 
-def cutoff_control(cutoff: float) -> html.Div:
-    """The slider as the cut-off line of the dendrogram while no dot is selected (the same slider id: it is a
-    callback input). 100 % is the full tree; lower it and the tree falls apart below the line, on the map as
-    separate constellations. The value shows in the slider's box as a percentage."""
+def cutoff_control(cutoff: float, hidden: bool = False) -> html.Div:
+    """The cut-off line of the dendrogram: a vertical slider in the card's window, left of the card panel, shown
+    while no dot is selected and the view's dots have connections to cut (`hidden` otherwise; it stays in the
+    layout: it is a callback input). The full tree is at the top (100 %); lower the line and the tree falls
+    apart below it, on the map as separate constellations. The value stands in a box between the label and the
+    rail (black on white); the rail has no marks and no tooltip, and the column is left-aligned and as narrow
+    as its label (the user's browser checks, 2026-10-27)."""
     value = int(round(min(1.0, max(0.0, cutoff)) * 100))
     return html.Div(
         [
-            html.Label("Cut-off line", htmlFor="difficulty-slider", className="card-label"),
+            html.Label("Cut-off", htmlFor="cutoff-slider", className="card-label cutoff-label"),
+            html.Div(f"{value} %", className="cutoff-value"),
             html.Div(
                 dcc.Slider(
-                    id="difficulty-slider",
+                    id="cutoff-slider",
                     min=0,
                     max=100,
                     step=1,
                     value=value,
-                    disabled=False,
-                    marks={
-                        0: {"label": "0 %", "style": {"color": "#ffffff"}},
-                        50: {"label": "50 %", "style": {"color": "#ffffff"}},
-                        100: {"label": "full tree", "style": {"color": "#ffffff"}},
-                    },
-                    tooltip={"placement": "bottom", "always_visible": True, "template": "{value} %"},
+                    vertical=True,
+                    verticalHeight=CUTOFF_HEIGHT,
+                    marks=None,  # an explicit None: no marks (left out, Dash generates them)
                 ),
-                className="progress-slider",
-                style={"--progress": f"{value}%"},
+                className="cutoff-slider",
             ),
         ],
-        className="progress-control",
+        className="cutoff-control",
+        style={"display": "none"} if hidden else None,
     )
 
 
-def difficulty_control(card: Flashcard | None, state=None, hidden: bool = False, cutoff: float | None = None) -> html.Div:
-    """The progress slider of the selected card; with no card and a `cutoff`, the cut-off line slider instead."""
+def difficulty_control(card: Flashcard | None, state=None, hidden: bool = False) -> html.Div:
+    """The progress slider of the selected card, shown for a selected card only: hidden with nothing selected and
+    when `hidden` (a selected deck or topic has nothing to rate). It stays in the layout: it is a callback
+    input."""
     state = _state(state)
-    if card is None and cutoff is not None and not hidden:
-        return cutoff_control(cutoff)
     is_flipped = bool(card and state.progress[card.id].read)
     current_value = state.progress[card.id].difficulty if card and card.id in state.progress else 1
     progress_percent = (current_value - 1) / 99 * 100
@@ -201,8 +208,8 @@ def difficulty_control(card: Flashcard | None, state=None, hidden: bool = False,
             ),
         ],
         className="progress-control",
-        # The slider stays in the layout (it is a callback input); the decks view just does not show it
-        style={"display": "none"} if hidden else None,
+        # The slider stays in the layout (it is a callback input); it is shown for a selected card only
+        style={"display": "none"} if hidden or card is None else None,
     )
 
 
@@ -408,7 +415,12 @@ def connection_control(
     link_dialog: str | None = None,
 ) -> html.Div:
     """Connections panel, retaining its existing positional-compatible Delete flow; `link_dialog` is None,
-    "connect" or "disconnect" (the open Connect or Disconnect dialog)."""
+    "connect" or "disconnect" (the open Connect or Disconnect dialog).
+
+    In the topics view (`view == TOPICS`) the panel is reduced to the Navigation button with its dialog to the
+    right of it: Connect, Disconnect, Delete, the constellation list and their dialogs stay in the layout hidden
+    (they are callback inputs), and every selected topic is a member (`data-member`), since the deck's topics
+    are navigated as one constellation, connected or not."""
     constellations = state.constellations if state is not None else []
     navigation = navigation if isinstance(navigation, dict) else {}
     mode = navigation.get("mode", "card_order")
@@ -421,26 +433,46 @@ def connection_control(
     preview_card = navigation.get("preview_card")
     if navigation.get("preview_id") == (card.id if card else None):
         preview_card = None
-    is_member = bool(card and any(card.id in item.members for item in constellations))
+    topics_only = view == TOPICS
+    is_member = bool(card and (topics_only or any(card.id in item.members for item in constellations)))
     noun = NOUNS.get(view, NOUNS[CARDS])
     options = link_options(card, candidate_cards, state, link_dialog)
     has_links = bool(card and state is not None and any(card.id in (link.source_id, link.target_id) for link in state.links))
     link_note = (DISCONNECT_NOTE if link_dialog == "disconnect" else CONNECT_NOTE).format(noun=noun)
+    hidden = {"display": "none"} if topics_only else None
+    navigation_dialog_box = html.Div(
+        [
+            html.Div("Navigation", className="dialog-title"),
+            dcc.Dropdown(
+                id="navigation-select",
+                className="closed-dropdown",
+                options=navigation_options(),
+                value=mode,
+                clearable=False,
+            ),
+            html.Div(
+                [
+                    html.Button("Confirm", id="navigation-dialog-submit", n_clicks=0, className="tool-button"),
+                    html.Button("Cancel", id="navigation-dialog-cancel", n_clicks=0, className="tool-button"),
+                ],
+                className="tool-row",
+            ),
+        ],
+        className="group-dialog" if navigation_dialog else "group-dialog group-dialog-hidden",
+    )
+    buttons = [
+        html.Button("Connect", id="create-link", n_clicks=0, disabled=card is None, className="tool-button", style=hidden),
+        html.Button("Disconnect", id="disconnect-link", n_clicks=0, disabled=not has_links, className="tool-button", style=hidden),
+        html.Button("Delete", id="delete-constellation", n_clicks=0, disabled=not constellations, className="tool-button", style=hidden),
+        html.Button("Navigation", id="navigation-open", n_clicks=0, className="tool-button"),
+    ]
+    if topics_only:
+        buttons.append(navigation_dialog_box)  # the dialog to the right of the button
     return html.Div(
         [
             html.Div("Connections", className="card-label"),
             html.Div(
-                [
-                    html.Div(
-                        [
-                            html.Button("Connect", id="create-link", n_clicks=0, disabled=card is None, className="tool-button"),
-                            html.Button("Disconnect", id="disconnect-link", n_clicks=0, disabled=not has_links, className="tool-button"),
-                            html.Button("Delete", id="delete-constellation", n_clicks=0, disabled=not constellations, className="tool-button"),
-                            html.Button("Navigation", id="navigation-open", n_clicks=0, className="tool-button"),
-                        ],
-                        className="connection-buttons",
-                    ),
-                ],
+                [html.Div(buttons, className="connection-buttons navigation-row" if topics_only else "connection-buttons")],
                 className="connection-actions",
             ),
             html.Div(
@@ -461,7 +493,7 @@ def connection_control(
                         className="tool-row",
                     ),
                 ],
-                className="group-dialog" if link_dialog else "group-dialog group-dialog-hidden",
+                className="group-dialog" if link_dialog and not topics_only else "group-dialog group-dialog-hidden",
             ),
             html.Div(
                 [
@@ -472,6 +504,7 @@ def connection_control(
                     for item in constellations
                 ] or [html.Div("No visible constellations.", className="tool-status")],
                 className="group-list",
+                style=hidden,
             ),
             html.Div(
                 [
@@ -491,28 +524,11 @@ def connection_control(
                         className="tool-row",
                     ),
                 ],
-                className="group-dialog" if dialog else "group-dialog group-dialog-hidden",
+                className="group-dialog" if dialog and not topics_only else "group-dialog group-dialog-hidden",
             ),
-            html.Div(
-                [
-                    html.Div("Navigation", className="dialog-title"),
-                    dcc.Dropdown(
-                        id="navigation-select",
-                        className="closed-dropdown",
-                        options=navigation_options(),
-                        value=mode,
-                        clearable=False,
-                    ),
-                    html.Div(
-                        [
-                            html.Button("Confirm", id="navigation-dialog-submit", n_clicks=0, className="tool-button"),
-                            html.Button("Cancel", id="navigation-dialog-cancel", n_clicks=0, className="tool-button"),
-                        ],
-                        className="tool-row",
-                    ),
-                ],
-                className="group-dialog" if navigation_dialog else "group-dialog group-dialog-hidden",
-            ),
+        ]
+        + ([] if topics_only else [navigation_dialog_box])
+        + [
             html.Div(message_text, id="nav-message", className="tool-status nav-message"),
             navigation_readout(preview_card),
             html.Div(

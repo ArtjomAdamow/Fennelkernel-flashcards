@@ -15,6 +15,10 @@ below 1 the router's `links` are only the connections below the line (services.d
 draws the tree's lower part, the constellations fall apart accordingly, and the dendrogram shows the sub-trees
 side by side. The stored links are never touched.
 
+The topics view has no constellations (`constellations`, `refresh_constellations`; 2026-10-27, roadmap step 29):
+the callback navigates the entered deck's visible topics as one constellation, connected or not, and the map
+draws no topic connections; the stored ones stay for the dendrogram, and a module on top may add them.
+
 Focus in the topics and cards views (runtime only, all checked again whenever the view changes): a checklist of
 the groups plus "No group". A dot is hidden when none of its groups is checked (a dot in no group: when "No group"
 is unchecked), and it takes the colour of its oldest checked group. The groups panel counts the view's dots only
@@ -205,6 +209,12 @@ class ViewRouter:
     def set_cutoff(self, value: float) -> None:
         self.cutoffs[self.view_key()] = min(FULL_TREE, max(0.0, float(value)))
 
+    def connected(self) -> bool:
+        """Whether the view's dots have stored connections at all (the full tree, whatever the cut-off line):
+        without any there is nothing to cut, and the cut-off slider is hidden (2026-10-27, the user)."""
+        visible = {card.id for card in self.visible_cards()}
+        return any(link.source_id in visible and link.target_id in visible for link in self.active.links)
+
     @property
     def links(self) -> list:
         """The active view's connections below the cut-off line; at the full tree the stored list itself."""
@@ -214,9 +224,20 @@ class ViewRouter:
             return stored
         return cut_links([card.id for card in self.visible_cards()], stored, cutoff)
 
+    @property
+    def constellations(self) -> list:
+        """The active view's constellations; none in the topics view (2026-10-27, roadmap step 29), where the
+        entered deck's topics are navigated as one constellation, connected or not, and nothing creates
+        constellations. The topics' stored connections stay for the dendrogram."""
+        if self.view == TOPICS:
+            return []
+        return self.active.constellations
+
     def refresh_constellations(self, visible_cards) -> list:
         """The active view's constellations over the connections below the cut-off line (the package's
-        refresh_constellations takes the links to consider)."""
+        refresh_constellations takes the links to consider); nothing in the topics view."""
+        if self.view == TOPICS:
+            return []
         if self.cutoff() >= FULL_TREE:
             return self.active.refresh_constellations(visible_cards)
         return self.active.refresh_constellations(visible_cards, links=self.links)

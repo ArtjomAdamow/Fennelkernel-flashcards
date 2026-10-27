@@ -12,6 +12,8 @@ Changes against the main file:
     oldest group; grey without one), and the cards as in the main project, sized by the card's difficulty
     (easy, medium, hard). The connections between cards bend along the sphere's surface (great-circle arcs,
     surface_arc) instead of cutting through it; the decks and topics views keep straight lines.
+  * The topics view draws no connections (2026-10-27, roadmap step 29); the navigation's white line is drawn
+    between the active topic and the scrolled one whether they are connected or not.
   * One uirevision per view and entered dot, so switching views resets the camera; the view goes into the
     figure's meta for camera.js (the globe and the axis camera in the decks view, the axis camera for a selected
     card in the cards view, the turn around the center elsewhere).
@@ -222,8 +224,9 @@ def make_figure(
         xs, ys, zs = surface_arc(source, target) if view == CARDS else _straight(source, target)
         return xs + [None], ys + [None], zs + [None]
 
-    # Draw connection lines between the dots
-    for link in state.links:
+    # Draw connection lines between the dots. The topics view draws none (2026-10-27, roadmap step 29): its
+    # topics are navigated as one constellation, and their stored connections serve the dendrogram only.
+    for link in state.links if view != TOPICS else []:
         source = position_by_id.get(link.source_id)
         target = position_by_id.get(link.target_id)
         if source is None or target is None:
@@ -237,10 +240,11 @@ def make_figure(
             )
         )
 
-    # A separate overlay emphasizes only the currently scrolled direct link.
-    linked = bool(preview_id and scrolled_id) and any(
+    # A separate overlay emphasizes only the currently scrolled direct link; in the topics view the scrolled
+    # topic is reachable connected or not, so the line is drawn whenever one is scrolled (straight).
+    linked = bool(preview_id and scrolled_id) and (view == TOPICS or any(
         {link.source_id, link.target_id} == {preview_id, scrolled_id} for link in state.links
-    )
+    ))
     if linked and preview_id in position_by_id and scrolled_id in position_by_id:
         xs, ys, zs = link_line(position_by_id[preview_id], position_by_id[scrolled_id])
         figure.add_trace(

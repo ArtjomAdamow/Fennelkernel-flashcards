@@ -1,7 +1,8 @@
 @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600;700&display=swap');
 /* Cluster module copy of assets/style.css. Changes: window B (groups, connections) above the map in both modes,
    two columns; the connection target dropdown in a row under the buttons; the choice dialog (Decks / Cards); the card panel's
-   deck description and dendrogram. */
+   deck description and dendrogram; the card's window as a row with the vertical cut-off slider left of the card panel
+   (2026-10-27); the topics view's Navigation button with its dialog beside it (2026-10-27). */
 
 :root {
   --ink: #f7f2e8;
@@ -57,7 +58,9 @@ h1 { margin: 2px 0 0; font-size: clamp(1.8rem, 4vw, 3.4rem); line-height: 0.98; 
 #sphere { width: 100%; height: 100%; background: rgba(16, 42, 67, 0.5); }
 .layout-window { min-width: 0; }
 .window-a { grid-area: window-a; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-areas: 'progress' 'card' 'position'; gap: 14px; align-items: stretch; }
-.window-a-card { grid-area: card; min-width: 0; }
+.window-a-card { grid-area: card; min-width: 0; display: flex; gap: 14px; align-items: stretch; }  /* the cut-off slider's column, then the card panel (2026-10-27) */
+.window-a-cutoff { flex: 0 0 auto; min-width: 0; }
+.window-a-panel { flex: 1 1 auto; min-width: 0; }
 .window-a-progress { grid-area: progress; min-width: 0; }
 .window-a-position { grid-area: position; min-width: 0; }
 .window-b { grid-area: window-b; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; align-items: start; }
@@ -215,3 +218,24 @@ h1 { margin: 2px 0 0; font-size: clamp(1.8rem, 4vw, 3.4rem); line-height: 0.98; 
 .deck-description { margin: 4px 0 8px; color: var(--muted); font-size: 0.95rem; line-height: 1.4; }
 .overview-panel { justify-content: flex-start; cursor: default; }
 .dendrogram-graph { width: 100%; height: 320px; }
+
+/* The cut-off line: a vertical slider in the card's window, left of the card panel's gold border, shown with
+   nothing selected (2026-10-27, roadmap step 26). The column is as wide as its label: the value stands in a
+   white box between the label and the rail, the rail has no marks and no tooltip (the user's browser check). */
+.cutoff-control { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; height: 100%; width: max-content; padding: 12px 0; }
+.cutoff-label { margin: 0; white-space: nowrap; }
+.cutoff-value { padding: 3px 8px; border: 1px solid var(--gold); background: #ffffff; color: #000000; font: 0.72rem 'DM Mono', monospace; white-space: nowrap; }
+/* Dash 4's slider (its own classes: container, wrapper, root, track, range, thumb; the container is 100 % wide
+   by default): pinned to the 20 px of its vertical root, so the column is the label's width */
+.cutoff-slider { flex: 0 0 auto; width: 20px; margin-left: 2px; }
+.cutoff-slider .dash-slider-container { display: block; width: 20px; gap: 0; container-type: normal; }
+.cutoff-slider .dash-slider-wrapper { flex: none; width: 20px; min-width: 0; }
+.cutoff-slider .dash-slider-root[data-orientation='vertical'] { width: 20px; padding: 8px 0; }
+.cutoff-slider .dash-slider-root[data-orientation='vertical'] .dash-slider-track { width: 8px; background-color: rgba(247, 242, 232, 0.16); }
+.cutoff-slider .dash-slider-range { background-color: var(--gold) !important; }
+.cutoff-slider .dash-slider-thumb { width: 18px; height: 18px; background-color: #ffffff; border: 3px solid #ffffff; box-shadow: 0 0 0 4px rgba(255,255,255,0.12); }
+.cutoff-slider .dash-slider-mark, .cutoff-slider .dash-slider-dot, .cutoff-slider .dash-slider-tooltip { display: none; }
+
+/* The connections panel of the topics view: the Navigation button with its dialog to the right of it (2026-10-27, step 29) */
+.navigation-row { align-items: flex-start; flex-wrap: wrap; }
+.navigation-row .group-dialog { margin-top: 0; flex: 1 1 220px; min-width: 0; }

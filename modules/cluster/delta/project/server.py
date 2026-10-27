@@ -3,7 +3,8 @@
 Changes against the main file:
   * top bar: "Random" (a random topic or card; hidden in the decks view) and the choice button (Decks, Topics
     or Cards, by the view), with its checkbox dialog under it;
-  * window A: the card panel and the progress control (the position panel is gone);
+  * window A: the card's window as a row (the vertical cut-off slider, then the card panel; 2026-10-27, roadmap
+    step 26) and the progress control (the position panel is gone);
   * window B: groups and connections (the deck panel is gone); assets/style.css puts it above the map;
   * no reset confirmation and no drag store; a store for the choice dialog;
   * a module action button (services.actions) left of Random: a module on top of this one (the helper) gives it
@@ -19,7 +20,7 @@ from flask import jsonify
 
 from project.layout.map import color_legend, make_figure
 from project.layout.panels import (
-    card_panel, choice_control, choice_label, connection_control, difficulty_control, group_control,
+    card_panel, choice_control, choice_label, connection_control, cutoff_control, difficulty_control, group_control,
 )
 from project.services.actions import ACTION_ID
 from project.services.views import DECKS
@@ -94,7 +95,17 @@ def create_app(base_dir, server_boot_id, state, action=None):
                     ),
                     html.Div(
                         [
-                            html.Div(id="selected-card", children=card_panel(None), n_clicks=0, className="window-a-card"),
+                            html.Div(
+                                [
+                                    # The cut-off line's slider, outside the card panel so a move is no panel click
+                                    html.Div(
+                                        id="cutoff-control", className="window-a-cutoff",
+                                        children=cutoff_control(state.cutoff(), hidden=not state.connected()),
+                                    ),
+                                    html.Div(id="selected-card", children=card_panel(None), n_clicks=0, className="window-a-panel"),
+                                ],
+                                className="window-a-card",
+                            ),
                             html.Div(id="difficulty-control", children=difficulty_control(None, state=state), className="window-a-progress"),
                         ],
                         className="layout-window window-a",

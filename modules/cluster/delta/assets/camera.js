@@ -13,12 +13,16 @@
   // view: around the center (the origin, where the deck's centroid is drawn) with nothing selected; a selected
   // topic is centred and the camera turns around it, as the main app does.
   // A mouse drag, a wheel or a double click pauses the motion; once the gesture is over, the motion goes on in
-  // the direction the drag turned the camera, from where the gesture left it (with the axis camera: back on the
-  // axis, a deck's eye back at the centre, a card's eye at the distance the gesture left but outside the
-  // sphere; with the globe: back at the centre, looking where the gesture left the view). Space (by card order,
-  // keyboard.js) stops the motion until the next selection or view change. Within constellation, with no dot
-  // selected or one outside every constellation, Space stops the motion and the next Space lets it go on as
-  // after a drag (toggleMotion).
+  // the direction the drag turned the camera, from where the gesture left it, and at the user's zoom (2026-10-27,
+  // roadmap step 27): the zoom is the eye's distance from the point it looks at (what a wheel changes; a
+  // turntable drag keeps it), and the motion resumes on the view's path at that distance. With the axis camera
+  // the eye goes back onto the axis: a deck's eye at the zoomed distance from the deck (the centre of the sphere
+  // at the default zoom), a card's eye at the zoomed distance beyond the card but outside the sphere; with the
+  // globe the eye goes back onto the line of sight through the centre at the zoomed distance from the point it
+  // looks at (the centre at the default zoom), and the globe turns on with the eye there. Selecting another dot,
+  // unselecting and a view change reapply the view's default zoom. Space (by card order, keyboard.js) stops the
+  // motion until the next selection or view change. Within constellation, with no dot selected or one outside
+  // every constellation, Space stops the motion and the next Space lets it go on as after a drag (toggleMotion).
   // A centroid with several group colours cycles through them.
 
   const graphId = "sphere";
@@ -375,17 +379,6 @@
     };
   }
 
-  // Where the eye sits along the axis through the centre and the dot, as a distance from the centre in data
-  // coordinates (negative behind the centre).
-  function distanceAlongAxis(graph, camera, point) {
-    const axis = unit(point);
-    if (!axis) {
-      return null;
-    }
-    const scale = dataScaleOf(graph);
-    return (camera.eye.x / scale[0]) * axis.x + (camera.eye.y / scale[1]) * axis.y + (camera.eye.z / scale[2]) * axis.z;
-  }
-
   // The eye's seat for a selected card: outside the sphere, beyond the card on its axis, the main app's close-up
   // distance (zoomFactor of the default eye distance) away from the card.
   function cardEyeDistance(graph, point) {
@@ -397,6 +390,14 @@
   // The nearest seat outside the sphere for a card: a wheel zoom never takes the eye inside.
   function outsideDistance(point, distance) {
     return Math.max(axisMargin * Math.hypot(point.x, point.y, point.z), distance);
+  }
+
+  // The user's zoom: the eye's distance from the point the camera looks at, in data coordinates. A wheel
+  // changes it, a turntable drag keeps it, so the motion resumes at it (the default zoom is the view's own
+  // distance: 1 for the globe and a selected deck, the close-up for a card).
+  function zoomOf(graph, camera) {
+    const scale = Math.max.apply(null, dataScaleOf(graph));
+    return Math.hypot(camera.eye.x - camera.center.x, camera.eye.y - camera.center.y, camera.eye.z - camera.center.z) / scale;
   }
 
   // --- the globe: nothing selected in the decks view ---------------------------------------------
@@ -411,12 +412,15 @@
     return { x: Math.cos(angle), y: Math.sin(angle), z: 0 };
   }
 
-  // The globe camera: the eye at the centre of the sphere, looking in `direction` (a unit vector in data
-  // coordinates), the up vector upright.
-  function globeCameraAt(graph, direction) {
+  // The globe camera: the eye on the line of sight through the centre of the sphere, looking in `direction` (a
+  // unit vector in data coordinates) at the point of the sphere's surface in that direction, `zoom` (data
+  // units, 1 by default) away from it: at the default zoom the eye is at the centre; a user's zoom moves it
+  // along the line (toward the surface, or behind the centre). The up vector upright.
+  function globeCameraAt(graph, direction, zoom) {
     const scale = dataScaleOf(graph);
+    const offset = 1 - (Number.isFinite(zoom) ? zoom : 1);
     return {
-      eye: { x: 0, y: 0, z: 0 },
+      eye: { x: direction.x * offset * scale[0], y: direction.y * offset * scale[1], z: direction.z * offset * scale[2] },
       up: perpendicularUp(direction, { x: 0, y: 0, z: 1 }),
       center: { x: direction.x * scale[0], y: direction.y * scale[1], z: direction.z * scale[2] },
     };
@@ -432,12 +436,16 @@
     });
   }
 
-  // The globe's turn: the look direction turns around the polar (z) axis, the eye stays at the centre.
+  // The globe's turn: the look direction turns around the polar (z) axis. The eye turns with it, so an eye at
+  // the centre stays there and a zoomed eye keeps its distance along the line of sight.
   function spunGlobe(camera, elapsed, direction) {
     const angle = (direction || 1) * (elapsed / rotationDuration) * Math.PI * 2;
-    const center = rotateAbout(camera.center, { x: 0, y: 0, z: 1 }, angle);
-    const axis = unit({ x: center.x - camera.eye.x, y: center.y - camera.eye.y, z: center.z - camera.eye.z });
+    const polar = { x: 0, y: 0, z: 1 };
+    const center = rotateAbout(camera.center, polar, angle);
+    const eye = rotateAbout(camera.eye, polar, angle);
+    const axis = unit({ x: center.x - eye.x, y: center.y - eye.y, z: center.z - eye.z });
     return Object.assign({}, camera, {
+      eye: eye,
       center: center,
       up: axis ? perpendicularUp(axis, { x: 0, y: 0, z: 1 }) : camera.up,
     });
@@ -645,10 +653,13 @@
   }
 
   // The gesture is over: go on in the direction the drag turned the camera (a drag that did not turn it keeps
-  // the direction). With the axis camera the eye goes back onto the axis through the centre and the dot (a
-  // deck: to the centre, the zoom dropped; a card: at the distance the gesture left, outside the sphere) and the
-  // roll goes on; with the globe the eye goes back to the centre of the sphere, looking where the gesture left
-  // the view, and the globe turns on; elsewhere the turn goes on from where the gesture left the camera.
+  // the direction), at the user's zoom (zoomOf: the eye's distance from the point it looks at, which a wheel
+  // changes and a drag keeps). With the axis camera the eye goes back onto the axis through the centre and the
+  // dot at that distance from the dot (a deck: toward the centre, which is the default; a card: beyond the card,
+  // outside the sphere) and the roll goes on; with the globe the eye goes back onto the line of sight through
+  // the centre at that distance from the point it looks at (the centre at the default), looking where the
+  // gesture left the view, and the globe turns on; elsewhere the turn goes on from where the gesture left the
+  // camera, at its distance.
   function resumeMotion(graph) {
     if (!paused || pointerIsDown || motionActive) {
       return;
@@ -661,15 +672,16 @@
       dragDirection = orbitDirection;
     }
     paused = null;
+    const zoom = zoomOf(graph, camera);
     if (lastView === "decks" && !axisSelected) {
       const look = lookDirection(graph, camera) || unit(camera.center) || { x: 1, y: 0, z: 0 };
-      glideTo(graph, globeCameraAt(graph, look), { kind: "globe" });
+      glideTo(graph, globeCameraAt(graph, look, zoom), { kind: "globe" });
       return;
     }
     if ((lastView === "decks" || lastView === "cards") && axisSelected) {
       const point = selectedPoint(graph);
-      const along = point ? distanceAlongAxis(graph, camera, point) : null;
-      const distance = lastView === "decks" ? 0 : (along == null ? null : outsideDistance(point, along));
+      const radius = point ? Math.hypot(point.x, point.y, point.z) : null;
+      const distance = radius == null ? null : (lastView === "decks" ? radius - zoom : outsideDistance(point, radius + zoom));
       const target = point && distance != null ? axisCamera(graph, point, distance, camera.up) : null;
       if (target) {
         glideTo(graph, target, { kind: "roll" });
@@ -1106,6 +1118,7 @@
       globeCameraAt: globeCameraAt,
       moveCamera: moveCamera,
       onFigureUpdated: onFigureUpdated,
+      zoomOf: zoomOf,
     };
   }
 })();

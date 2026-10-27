@@ -22,9 +22,16 @@ Changes against the main file:
     on the router; the change is then saved and drawn like any other (a hook for the helper module).
   * Connect and Disconnect open a dialog (link-dialog-submit/cancel, the link-dialog store), as in the main
     project since 2026-10-22; the dialog closes on a view change too, and the back key is blocked while it is open.
-  * With no dot selected the progress slider is the cut-off line of the view's dendrogram (ViewRouter.cutoff):
-    moving it cuts the tree, the map's connections and the constellations below the line; the dendrogram shows
-    the line. The cut-off is runtime only and starts at the full tree.
+  * The cut-off line of the view's dendrogram is a vertical slider of its own (`cutoff-slider`, the output
+    `cutoff-control`; ViewRouter.cutoff), shown while no dot is selected and the view's dots have stored
+    connections (ViewRouter.connected): moving it cuts the tree, the map's connections and the constellations
+    below the line; the dendrogram shows the line. The cut-off is runtime only and starts at the full tree. The progress slider is shown for a selected card only (2026-10-27,
+    roadmap step 26; until then one slider had both roles).
+  * The topics view navigates the entered deck's visible topics as one constellation (2026-10-27, roadmap
+    step 29): Space on any selected topic starts the navigation, every other topic is a candidate (rated
+    clockwise as before), and the white line is drawn to the scrolled topic, connected or not. No constellations
+    exist there (ViewRouter.constellations), and the map draws no topic connections; the connections panel is
+    reduced to Navigation (panels.connection_control).
   * Focus in the topics and cards views is a checklist (the state dialog-group-checklist): Confirm keeps the
     checked groups (ViewRouter.set_checked_groups), All checks everything again; the decks view keeps the
     one-group Focus.
@@ -38,9 +45,10 @@ from dash import Input, Output, State
 
 from project.layout.map import DEFAULT_CAMERA, make_figure
 from project.layout.panels import (
-    card_panel, choice_control, choice_label, connection_control, deck_panel, delete_constellation,
+    card_panel, choice_control, choice_label, connection_control, cutoff_control, deck_panel, delete_constellation,
     difficulty_control, group_control, overview_panel, topic_panel,
 )
+from project.models import Constellation
 from project.services import cards as cards_service
 from project.services import dendrogram, navigation, views
 from project.services.actions import ACTION_ID
@@ -75,10 +83,12 @@ def register_callbacks(app, state, none_deck=None, action=None, overview_back=No
         Output("nav-state", "data"),
         Output("random-card", "style"),
         Output("choice-open", "children"),
+        Output("cutoff-control", "children"),
         Input("sphere", "clickData"),
         Input("selected-card", "n_clicks"),
         Input("random-card", "n_clicks"),
         Input("difficulty-slider", "value"),
+        Input("cutoff-slider", "value"),
         Input("new-group", "n_clicks"),
         Input("create-link", "n_clicks"),
         Input("disconnect-link", "n_clicks"),
@@ -122,7 +132,7 @@ def register_callbacks(app, state, none_deck=None, action=None, overview_back=No
         State("dialog-group-checklist", "value"),
     )
     def update_card(
-        click_data, panel_clicks, random_clicks, difficulty, new_group_clicks,
+        click_data, panel_clicks, random_clicks, difficulty, cutoff, new_group_clicks,
         create_link_clicks, disconnect_link_clicks, add_group_clicks, remove_group_clicks,
         delete_group_clicks, focus_group_clicks, all_groups_clicks, dialog_submit_clicks, dialog_cancel_clicks,
         keyboard_nav, choice_open_clicks, choice_submit_clicks, choice_cancel_clicks,
@@ -243,8 +253,8 @@ def register_callbacks(app, state, none_deck=None, action=None, overview_back=No
             # constellation refresh. Bare commands and malformed commands are ignored.
         elif trigger == "difficulty-slider" and selected_id and difficulty is not None and state.view == views.CARDS:
             state.set_difficulty(selected_id, difficulty)
-        elif trigger == "difficulty-slider" and not selected_id and difficulty is not None:
-            state.set_cutoff(difficulty / 100)  # the slider is the cut-off line while nothing is selected
+        elif trigger == "cutoff-slider" and not selected_id and cutoff is not None:
+            state.set_cutoff(cutoff / 100)  # the cut-off line, shown (and acting) while nothing is selected
         elif trigger == "new-group" and selected_id:
             next_group_dialog = "new"
         elif trigger == "create-link" and selected_id:
@@ -355,6 +365,13 @@ def register_callbacks(app, state, none_deck=None, action=None, overview_back=No
         selected_constellation = next(
             (item for item in state.constellations if selected_id and selected_id in item.members), None
         )
+        # The topics view: the entered deck's visible topics are the one constellation the navigation runs in,
+        # connected or not (the router lists no constellations there)
+        topics_scope = state.view == views.TOPICS and selected_id is not None and selected_id in visible_ids
+        if topics_scope:
+            selected_constellation = Constellation(
+                f"{views.TOPICS}:{state.entered_deck}", state.entered_name or "", sorted(visible_ids)
+            )
         context = nav_state.get("context") if isinstance(nav_state.get("context"), dict) else None
         preview_id = nav_state.get("preview_id")
         previous_id = nav_state.get("previous_id")
@@ -442,7 +459,11 @@ def register_callbacks(app, state, none_deck=None, action=None, overview_back=No
                         )
                         if not reusable:
                             adjacency = {member: set() for member in members}
-                            for link in visible_links:
+                            if topics_scope:
+                                # Every topic is reachable from the active one
+                                for member in members:
+                                    adjacency[member] = set(members) - {member}
+                            for link in [] if topics_scope else visible_links:
                                 left, right = link.source_id, link.target_id
                                 if left in adjacency and right in adjacency and left != right:
                                     adjacency[left].add(right)
@@ -611,12 +632,8 @@ def register_callbacks(app, state, none_deck=None, action=None, overview_back=No
                 rest_ids={card.id for card in cards if state.is_rest(card.id)} if topics_view else None,
             ),
             panel,
-            # A selected card: its progress; a selected deck or topic: nothing to rate; nothing selected: the
-            # cut-off line
-            difficulty_control(
-                selected_card, state, hidden=not cards_view and selected_card is not None,
-                cutoff=None if selected_card else state.cutoff(),
-            ),
+            # The progress slider for a selected card only (a deck or a topic has nothing to rate)
+            difficulty_control(selected_card, state, hidden=not cards_view),
             group_control(selected_card, next_group_dialog, state, next_focused_group),
             connection_control(
                 selected_card, cards, state, next_constellation_dialog,
@@ -635,6 +652,8 @@ def register_callbacks(app, state, none_deck=None, action=None, overview_back=No
             nav_state,
             {"display": "none"} if decks_view else {},
             choice_label(state.view),
+            # The cut-off line's slider, shown while nothing is selected and the view's dots have connections to cut
+            cutoff_control(state.cutoff(), hidden=selected_card is not None or not state.connected()),
         )
 
     return update_card
